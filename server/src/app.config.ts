@@ -11,6 +11,12 @@ import {
  * Import your Room files
  */
 import { MyRoom } from "./rooms/MyRoom.js";
+import { QwenClient } from "./qwen/qwenClient.js";
+import {
+    isQwenClientError,
+    isQwenConfigurationError
+} from "./qwen/qwenErrors.js";
+import type { Response } from "express";
 
 const server = defineServer({
     /**
@@ -42,6 +48,24 @@ const server = defineServer({
             res.send("It's time to kick ass and chew bubblegum!");
         });
 
+        app.get("/internal/qwen/health", async (_req, res) => {
+            try {
+                const qwen = new QwenClient();
+                res.status(200).json(await qwen.health());
+            } catch (error) {
+                sendQwenRouteError(res, error);
+            }
+        });
+
+        app.get("/internal/qwen/model", async (_req, res) => {
+            try {
+                const qwen = new QwenClient();
+                res.status(200).json(await qwen.model());
+            } catch (error) {
+                sendQwenRouteError(res, error);
+            }
+        });
+
         /**
          * Use @colyseus/monitor
          * It is recommended to protect this route with a password
@@ -61,3 +85,36 @@ const server = defineServer({
 });
 
 export default server;
+
+function sendQwenRouteError(res: Response, error: unknown) {
+    if (isQwenClientError(error)) {
+        res.status(error.status === 0 ? 502 : error.status).json({
+            ok: false,
+            error: {
+                code: error.code,
+                message: error.message
+            },
+            retry_policy: error.retryPolicy
+        });
+        return;
+    }
+
+    if (isQwenConfigurationError(error)) {
+        res.status(500).json({
+            ok: false,
+            error: {
+                code: error.code,
+                message: error.message
+            }
+        });
+        return;
+    }
+
+    res.status(500).json({
+        ok: false,
+        error: {
+            code: "QWEN_INTERNAL_ROUTE_ERROR",
+            message: error instanceof Error ? error.message : "Unknown Qwen route error"
+        }
+    });
+}
