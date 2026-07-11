@@ -5,7 +5,7 @@ After=network.target
 [Service]
 WorkingDirectory=/opt/qwen-prompt-server
 EnvironmentFile=/opt/qwen-prompt-server/.env
-ExecStart=/opt/qwen-prompt-server/.venv-vllm/bin/vllm serve ${VLLM_MODEL_PATH} --served-model-name ${VLLM_MODEL_ID} --host 127.0.0.1 --port 8000 --dtype float16 --max-model-len ${VLLM_MAX_MODEL_LEN} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION} --limit-mm-per-prompt ${VLLM_LIMIT_MM_PER_PROMPT} --api-key ${VLLM_API_KEY}
+ExecStart=/opt/qwen-prompt-server/.venv-vllm/bin/vllm serve ${VLLM_MODEL_PATH} --served-model-name ${VLLM_MODEL_ID} --host 127.0.0.1 --port 8000 --dtype float16 --max-model-len ${VLLM_MAX_MODEL_LEN} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION} --limit-mm-per-prompt ${VLLM_LIMIT_MM_PER_PROMPT}
 Restart=always
 RestartSec=10
 
