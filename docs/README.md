@@ -14,6 +14,7 @@
 | [ai-pipeline.md](KJH/ai-pipeline.md) | AI 생성 파이프라인 — LLM 프롬프트, 크로마키, bbox 정규화, 잡 큐(우선순위·쿨타임 5분) | ✅ |
 | [asset-attributes.md](KJH/asset-attributes.md) | 에셋 속성 시스템 — attrs Zod 검증의 원본 명세. **⚠️ 미완성: 세부 조정 진행 중** | 🔧 |
 | [screen-design.md](KJH/screen-design.md) | 화면 설계 — 로그인~에셋 스튜디오까지 확정, 로비 이후 미설계. **⚠️ 미완성** | 🔧 |
+| [dev-console.md](KJH/dev-console.md) | 개발자 콘솔 + baseworld 테스트 방 설계 (VITE_DEV_CONSOLE 스위치) | ✅ |
 
 ## LSJ
 

@@ -6,3 +6,7 @@ node_modules/
 .env
 .env.*
 dist/
+
+# 비밀 정보 (접속 정보·키) — 절대 커밋 금지
+*.local.md
+secrets.local.*
