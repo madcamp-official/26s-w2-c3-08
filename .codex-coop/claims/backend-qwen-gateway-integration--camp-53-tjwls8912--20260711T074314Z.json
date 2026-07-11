@@ -1,0 +1,20 @@
+{
+  "protocol": "codex-coop.v1",
+  "type": "claim",
+  "task_id": "backend-qwen-gateway-integration",
+  "server_id": "camp-53-tjwls8912",
+  "claimed_at": "2026-07-11T07:43:14Z",
+  "lease_minutes": 90,
+  "expected_finish_at": "2026-07-11T09:13:14Z",
+  "role": "Worker",
+  "planned_files": [
+    "server/src/qwen/**",
+    "server/src/app.config.ts",
+    "server/.env.example",
+    "server/scripts/**",
+    "server/src/**/*.test.ts",
+    ".codex-coop/results/**"
+  ],
+  "work_branch": "work/camp-53-tjwls8912/backend-qwen-gateway-integration",
+  "notes": "Integrate server-side Qwen Gateway client with real HTTP responses only; no mock, dummy, or fake refine success data."
+}
