@@ -55,6 +55,19 @@ export class QwenClient {
       );
     }
 
+    if (
+      parsed.data.ok !== true ||
+      parsed.data.vllm_ok !== true ||
+      parsed.data.model_loaded !== true
+    ) {
+      throw new QwenClientError(
+        503,
+        parsed.data.vllm_error_code ?? "MODEL_NOT_READY",
+        "Qwen model is not ready",
+        parsed.data
+      );
+    }
+
     return parsed.data;
   }
 

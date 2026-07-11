@@ -15,13 +15,16 @@ export const qwenHealthSchema = z.object({
 }).passthrough();
 
 export const qwenModelSchema = z.object({
-  ok: z.literal(true),
+  ok: z.boolean(),
   model_id: z.string().min(1),
   model_path: z.string().optional(),
   engine: z.string().min(1),
   engine_url: z.string().optional(),
   vllm_ok: z.boolean(),
-  model_loaded: z.boolean()
+  model_loaded: z.boolean(),
+  available_models: z.array(z.string()).optional(),
+  model_path_exists: z.boolean().optional(),
+  vllm_error_code: z.string().nullable().optional()
 }).passthrough();
 
 export const qwenSpriteRequirementsSchema = z.object({
