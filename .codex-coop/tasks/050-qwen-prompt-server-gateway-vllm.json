@@ -1,0 +1,42 @@
+{
+  "protocol": "codex-coop.v1",
+  "task_id": "qwen-prompt-server-gateway-vllm",
+  "title": "Qwen Prompt Gateway and vLLM integration",
+  "status": "queued",
+  "priority": 50,
+  "created_at": "2026-07-11T06:36:31Z",
+  "created_by": "camp-11-root",
+  "desired_role": "Worker",
+  "allowed_agents": ["*"],
+  "blocked_by": [],
+  "target_branch": "codex/communication",
+  "work_branch": "work/camp-11-root/qwen-prompt-server-gateway-vllm",
+  "scope": {
+    "files": [
+      "qwen-prompt-server/**",
+      ".codex-coop/**"
+    ],
+    "avoid": [
+      ".env",
+      "secrets/**",
+      ".git/**"
+    ]
+  },
+  "goal": "Implement a FastAPI gateway for Qwen2-VL prompt refinement backed by a local vLLM OpenAI-compatible server.",
+  "acceptance_criteria": [
+    "GET /health reports real gateway, vLLM, and model status.",
+    "GET /v1/model requires X-Internal-Token and returns configured model metadata.",
+    "POST /v1/prompts/refine validates multipart image and prompt input, calls vLLM, validates model JSON, and never returns fake success.",
+    "Model or vLLM unavailable states return standard failure JSON with appropriate HTTP status.",
+    "Deployment examples, requirements, verification scripts, and systemd units are included without committing secrets."
+  ],
+  "verification": [
+    "python -m compileall qwen-prompt-server",
+    "curl -i http://127.0.0.1:8001/health",
+    "curl -i http://127.0.0.1:8001/v1/model"
+  ],
+  "notes": [
+    "Actual QWEN_API_TOKEN, VLLM_API_KEY, and .env must remain outside Git.",
+    "Successful refine testing requires a real backend job, user ID, user prompt, and uploaded image."
+  ]
+}

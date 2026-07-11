@@ -1,0 +1,16 @@
+{
+  "protocol": "codex-coop.v1",
+  "type": "claim",
+  "task_id": "qwen-prompt-server-gateway-vllm",
+  "server_id": "camp-11-root",
+  "claimed_at": "2026-07-11T06:36:31Z",
+  "lease_minutes": 45,
+  "expected_finish_at": "2026-07-11T07:21:31Z",
+  "role": "Worker",
+  "planned_files": [
+    "qwen-prompt-server/**",
+    ".codex-coop/results/**"
+  ],
+  "work_branch": "work/camp-11-root/qwen-prompt-server-gateway-vllm",
+  "notes": "Implement the Qwen FastAPI gateway and vLLM integration files. Do not commit secrets or .env."
+}
