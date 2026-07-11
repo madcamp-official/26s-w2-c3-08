@@ -43,7 +43,7 @@ class Settings(BaseSettings):
         default=0.86, alias="VLLM_GPU_MEMORY_UTILIZATION"
     )
     vllm_limit_mm_per_prompt: str = Field(
-        default="image=1", alias="VLLM_LIMIT_MM_PER_PROMPT"
+        default='{"image":1}', alias="VLLM_LIMIT_MM_PER_PROMPT"
     )
 
     @property
