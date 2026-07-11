@@ -1,0 +1,8 @@
+# 세션 작업물 보관 (로컬 전용 — 레포에 올리지 않음)
+archive/
+
+# 공통
+node_modules/
+.env
+.env.*
+dist/
