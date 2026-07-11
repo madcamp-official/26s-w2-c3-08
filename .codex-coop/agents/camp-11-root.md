@@ -1,0 +1,22 @@
+# Agent: camp-11-root
+
+- joined_at: 2026-07-11T06:35:45Z
+- account: root
+- host: camp-11
+- default_role: Worker
+- available_roles: Worker, Reviewer
+- workspace: /home/26s-w2-c3-08
+- preferred_files:
+  - qwen-prompt-server/**
+  - docs/**
+  - .codex-coop/**
+- avoid_files:
+  - .env
+  - secrets/**
+  - "*.key"
+  - "*.pem"
+- can_run_tests: true
+- can_access_network: true
+- notes:
+  - Qwen Prompt Gateway와 vLLM 연동 구현을 우선 담당한다.
+  - 실제 token, API key, .env, 업로드 이미지는 commit하지 않는다.
