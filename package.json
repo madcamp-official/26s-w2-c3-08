@@ -1,0 +1,10 @@
+{
+  "name": "26s-w2-c3-08",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "shared",
+    "gpu-worker"
+  ]
+}

@@ -1,0 +1,185 @@
+// =============================================================================
+// 멀티플레이 UGC 플랫포머 — Prisma 스키마 v1 초안 (2026-07-11)
+// 서버 레포 구조 미정 → 팀원 전달용 docs/ 초안. 서버 레포로 옮긴 뒤 마이그레이션.
+//
+// 작성 원칙:
+// 1. 확정된 3개 모델(User, Asset, AssetSprite)만 활성 코드 — v1 마이그레이션 대상.
+// 2. 미확정 모델 5개(Room, RoomMember, Line, Placement, RaceResult)는 주석 블록 + 사유.
+// 3. enum 대신 String — 값 추가 시 마이그레이션 없이 확장. 허용 값은 모델 위 주석에 나열.
+// 4. attrs JSON의 형식 강제는 DB가 아니라 서버 Zod (형식 정의: docs/asset-attributes.md).
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// 활성 모델 (2026-07-10 확정)
+// =============================================================================
+
+// ── User ─────────────────────────────────────────────────
+// nickname:        표시용, 중복 허용, 설정에서 변경 가능
+// token:           재접속 식별용, 클라이언트 localStorage 저장
+//                  (MySQL에는 uuid 타입이 없어 Char(36)으로 저장)
+// deviceLinkCode:  기기 연동 단축 코드 — 5분 유효, 1회 소비 복제 모델
+// equippedSkillId: 확장 예약 — 추후 Asset 참조 예정, 지금은 컬럼만 예약
+model User {
+  id                  BigInt    @id @default(autoincrement())
+  nickname            String    @db.VarChar(20)
+  token               String    @unique @db.Char(36)
+  avatarAssetId       BigInt?                                  // NULL = 기본 아바타(졸라맨)
+  avatarAsset         Asset?    @relation("EquippedAvatar", fields: [avatarAssetId], references: [id])
+  deviceLinkCode      String?
+  deviceLinkExpiresAt DateTime?
+  equippedSkillId     BigInt?                                  // 예약 (관계 미연결)
+  createdAt           DateTime  @default(now())
+
+  createdAssets Asset[] @relation("CreatedAssets")             // 이 유저가 제작한 에셋
+}
+
+// ── Asset ────────────────────────────────────────────────
+// category:     avatar | platform | obstacle | monster | background | item
+//               (item은 isSystem 전용 — 유저 제작 불가)
+// colliderType: rect | slope | none(배경)
+// slopeDir:     floor-asc(◢) | floor-desc(◣) | ceil-desc(◥) | ceil-asc(◤)
+//               — 1차 구현은 바닥 2종, 천장 2종은 예약
+// status:       draft → generating → ready | failed
+// attrs:        형식 = docs/asset-attributes.md, 강제 = 서버 Zod (DB는 그릇만)
+// hitboxHPx:    아바타 전용 키(px) — 알파 bbox 높이를 83~125px(1.3~1.95타일)로 클램프
+// remixOfId:    [에셋 불러오기] 파생 시 원작 추적 — 수정해야 저장 가능 (그대로 복제 불가)
+model Asset {
+  id                 BigInt   @id @default(autoincrement())
+  creatorId          BigInt?                                   // NULL = 시스템 에셋
+  creator            User?    @relation("CreatedAssets", fields: [creatorId], references: [id])
+  isSystem           Boolean  @default(false)                  // 기본 제공(졸라맨·스타터·아이템 2종)
+  category           String
+  name               String   @db.VarChar(30)                  // 이름 필수 확정
+  description        String?                                   // 유저 입력 — LLM 프롬프트 원료
+  attrs              Json
+  colliderType       String   @default("rect")
+  slopeDir           String?                                   // colliderType='slope'일 때만
+  widthCells         Int?     @db.SmallInt                     // 가로 타일 수 — 아바타는 NULL(1타일 고정)
+  heightCells        Int?     @db.SmallInt                     // 세로 타일 수
+  hitboxHPx          Int?     @db.SmallInt
+  sourceImageUrl     String                                    // 그림판 원본 (투명 배경)
+  projectileImageUrl String?                                   // 발사체 정지 이미지 또는 기본 탄 — 회전은 코드 처리
+  remixOfId          BigInt?
+  remixOf            Asset?   @relation("Remixes", fields: [remixOfId], references: [id])
+  remixes            Asset[]  @relation("Remixes")
+  status             String   @default("draft")
+  isPublic           Boolean  @default(true)                   // 다른 유저 불러오기 허용 여부
+  createdAt          DateTime @default(now())
+
+  sprites         AssetSprite[]                                // 액션별 스프라이트 시트
+  equippedByUsers User[]        @relation("EquippedAvatar")    // 이 에셋을 아바타로 장착한 유저
+
+  @@index([creatorId])
+  @@index([isSystem])
+  @@index([category])
+}
+
+// ── AssetSprite ──────────────────────────────────────────
+// action:   idle | walk | onair — 액션 세트는 카테고리+옵션이 자동 결정
+// status:   queued → generating → ready | failed
+// priority: 첫 생성은 높음, 재생성은 낮음(GPU 유휴 시 처리)
+// 재생성은 새 행 추가가 아니라 기존 행 갱신 (assetId+action 유니크)
+model AssetSprite {
+  id          BigInt    @id @default(autoincrement())
+  assetId     BigInt
+  asset       Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  action      String
+  sheetUrl    String?                                          // 생성 완료 전 NULL
+  frameCount  Int?      @db.SmallInt
+  frameW      Int?      @db.SmallInt
+  frameH      Int?      @db.SmallInt
+  status      String    @default("queued")
+  lastRegenAt DateTime?                                        // 재생성 쿨타임(액션별 5분) 계산용
+  priority    Int       @default(0) @db.SmallInt
+  createdAt   DateTime  @default(now())
+
+  @@unique([assetId, action])
+}
+
+// =============================================================================
+// 미확정 모델 (참고용 — 주석 처리, 마이그레이션 대상 아님)
+// =============================================================================
+
+// ⚠️ Room 미확정 — 방 상세(난입 규칙, 페이즈 구조, 시간 조정 투표 등) 논의 대기.
+// 레이스 중 실시간 상태는 Colyseus Room 메모리가 원본, 이 테이블은 로비 목록 + 영구 기록만 담당.
+// status: lobby → building → validating → playing → finished
+//
+// model Room {
+//   id             BigInt    @id @default(autoincrement())
+//   code           String    @unique                          // 초대 코드
+//   name           String?                                    // 미지정 시 "OO님의 방"
+//   hostId         BigInt                                     // 방장 유저 id
+//   isPublic       Boolean   @default(true)
+//   passwordHash   String?                                    // 비공개방 비밀번호 해시
+//   maxPlayers     Int
+//   status         String    @default("lobby")
+//   phaseStartedAt DateTime?                                  // 로비 카드 진행 경과 계산용
+//   createdAt      DateTime  @default(now())
+// }
+
+// ⚠️ RoomMember 미확정 — 중간 난입 허용 여부 재논의 중.
+// (허용 시 joinedMidGame 등 컬럼 추가 가능성)
+//
+// model RoomMember {
+//   roomId     BigInt
+//   userId     BigInt
+//   finalOrder Int?                                           // 랜덤 배치 순서
+//
+//   @@id([roomId, userId])
+// }
+
+// ⚠️ Line 미확정 — 라인 지형(땅) 저장 방식 미결.
+// (placements에 타일 포함 vs terrain Json 분리)
+//
+// model Line {
+//   id      BigInt  @id @default(autoincrement())
+//   roomId  BigInt
+//   ownerId BigInt
+//   startY  Int
+//   goalY   Int
+//   cleared Boolean @default(false)                           // 검증(플레이 가능성) 통과 여부
+//
+//   @@unique([roomId, ownerId])
+// }
+
+// ⚠️ Placement 미확정 — Line과 동일 사유(라인 지형 저장 방식 미결).
+//
+// model Placement {
+//   id        BigInt @id @default(autoincrement())
+//   lineId    BigInt
+//   assetId   BigInt
+//   x         Int
+//   y         Int
+//   overrides Json?                                           // 배치 시 개별 오버라이드 속성
+// }
+
+// ⚠️ RaceResult 미확정 — 결과 화면(F)·순위 규칙 확정 대기.
+//
+// model RaceResult {
+//   roomId   BigInt
+//   userId   BigInt
+//   finishMs Int?                                             // 완주 시간(ms), 미완주 시 NULL
+//   finalX   Int?                                             // 미완주 시 도달 거리 (거리순 순위용)
+//   rank     Int
+//
+//   @@id([roomId, userId])
+// }
+
+// =============================================================================
+// 다음 확정 대기 항목
+// =============================================================================
+// - 방 상세 규칙 (난입 규칙, 페이즈 구조, 시간 조정 투표 등)
+// - 중간 난입 허용 여부
+// - 라인 지형 저장 방식 (placements 포함 vs terrain Json 분리)
+// - 결과·순위 규칙
+// - 커스텀 스킬 관계 연결 (User.equippedSkillId → Asset)
+// =============================================================================
