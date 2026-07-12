@@ -45,6 +45,7 @@ export interface Avatar {
   jumpBufferLeftMs: number;
   prevJumpHeld: boolean;
   freezeLeftMs: number;      // 아이템 획득 0.4초 고정 (§58)
+  stunLeftMs: number;        // 내려찍기에 밟힘 = 기절(조작 무시, 물리는 유지)
   // modifier 스택 (§25): 이름 → 배율/잔여ms
   speedMult: number;
   speedMultLeftMs: number;
@@ -62,7 +63,7 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
     crouch: false, slide: false, spinLeftMs: 0, spinUsed: false,
     wallGrabMs: 0, wallClingGraceMs: 0,
     coyoteLeftMs: 0, jumpBufferLeftMs: 0, prevJumpHeld: false,
-    freezeLeftMs: 0,
+    freezeLeftMs: 0, stunLeftMs: 0,
     speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: 0,
     fx: new Set(),
   };
@@ -90,6 +91,12 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
     a.freezeLeftMs -= dtMs;
     b.vx = 0; b.vy = 0;
     return;
+  }
+
+  // 기절(내려찍기에 밟힘): 조작 무시. 물리(중력·넉백 속도·충돌)는 그대로 진행
+  if (a.stunLeftMs > 0) {
+    a.stunLeftMs -= dtMs;
+    input = { ...input, left: false, right: false, jump: false, down: false, run: false, grab: false };
   }
 
   // modifier 타이머
@@ -238,7 +245,7 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
 }
 
 // ── 내부 헬퍼 ─────────────────────────────────────────
-function startSpin(a: Avatar, t: Tuning): void {
+export function startSpin(a: Avatar, t: Tuning): void {
   a.spinLeftMs = t.spin.durationMs;
   a.spinUsed = true;
   a.fx.add("spin");

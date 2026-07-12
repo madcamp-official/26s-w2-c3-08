@@ -8,7 +8,7 @@ import "shared/behavior";
 import "shared/properties";
 import {
   type Avatar, type AvatarInput, createAvatar, stepAvatar, applyItem, clearItemEffects,
-  pushSelfOut, checkIStomped, checkStompedMe, headStand,
+  pushSelfOut, checkIStomped, checkStompedMe, headStand, startSpin,
   createCarryState, stepCarry, type CarryState, type Carryable,
   blockRect, type ItemSpec,
 } from "shared/parts";
@@ -32,6 +32,10 @@ interface View {
   lastTick: number;   // 마지막으로 본 상대 tick (백그라운드=정지 감지용)
   lastTickAt: number; // tick이 마지막으로 오른 시각(ms)
   stale: boolean;     // 일정 시간 tick 정지 = 탭 백그라운드 → 충돌 통과(B)
+  pound: number;      // 상대 내려찍기 상태 (넉백+스턴 판정용)
+  pushRole: "none" | "iPush" | "ghostPush" | "mutual";  // 밀기 역할 (히스테리시스)
+  pushRoleLeftMs: number;  // 역할 고정 잔여(요동 방지)
+  pushDir: number;    // 고정된 밀기 방향
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -201,6 +205,7 @@ export class BaseworldScene extends Phaser.Scene {
       w, h,
       fxLeftMs: 0,
       lastTick: -1, lastTickAt: 0, stale: false,
+      pound: 0, pushRole: "none", pushRoleLeftMs: 0, pushDir: 1,
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -270,7 +275,7 @@ export class BaseworldScene extends Phaser.Scene {
     const ghostViews = [...this.players.values()].filter((v) => !v.stale);
     // 판정은 외삽 위치가 아니라 서버 확정 위치(srv)로 → 오버슈트 관통 방지. 렌더만 g.x 사용
     const ghosts = ghostViews.map((v) => ({
-      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy,
+      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound,
     }));
     // 유예 감쇠: 접촉이 순간 끊겨도 GRACE 동안 연출 유지 (깜빡임 방지)
     for (const v of ghostViews) {
@@ -285,6 +290,12 @@ export class BaseworldScene extends Phaser.Scene {
       this.me.fx.add("stompedOther");
       setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
       ghostViews[stompedIdx].fxLeftMs = GRACE;
+      if (this.me.pound !== 0) {
+        // B: 내려찍기로 플레이어 밟음 → 큰 바운스 + 스핀 + 내려찍기 종료 (강화점프 창은 checkIStomped가 이미 설정)
+        b.vy = TUNING.stomp.poundBounceVelocity;
+        this.me.pound = 0;
+        startSpin(this.me, TUNING);
+      }
     }
     const stompedMe = checkStompedMe(this.me, ghosts);
     headStand(b, ghosts);
@@ -301,36 +312,38 @@ export class BaseworldScene extends Phaser.Scene {
         }
       }
     }
-    // 밀기 연출 역할 구분 (§26 정정):
-    //  - 밀리는 쪽 = squeeze(찌부)
-    //  - 미는 쪽 = 찌부 아님, 상대가 찌부된 만큼 미는 방향으로 스프라이트 shift
+    // 밀기 연출 역할 구분 (§26): 밀리는 쪽=squeeze(접촉면 찌부), 미는 쪽=shift.
+    // D: 역할을 유예 동안 고정(히스테리시스) → 임계값 근처 속도 요동으로 역할이 뒤바뀌며 타닥거리는 것 방지.
+    const RATIO = TUNING.push.squeezeRatio;
     for (let i = 0; i < ghosts.length; i++) {
       const g = ghosts[i];
-      // 접촉 여유(pad): pushSelfOut이 걷기속도보다 빨리 밀어내 겹침이 0이 돼도 "맞닿아 눌림"을 연출로 인정
+      const v = ghostViews[i];
+      v.pushRoleLeftMs = Math.max(0, v.pushRoleLeftMs - FIXED_MS);
+      // 접촉 여유(pad): pushSelfOut이 걷기속도보다 빨리 밀어내 겹침이 0이 돼도 "맞닿아 눌림"을 인정
       const contact = Math.abs(g.x - b.x) < (g.w + b.w) / 2 + TUNING.push.contactPad
         && g.y > b.y - b.h && g.y - g.h < b.y;
       if (!contact) continue;
       const dirToGhost = g.x >= b.x ? 1 : -1;
       const iPush = (input.right && dirToGhost === 1) || (input.left && dirToGhost === -1);
-      // 상대가 나를 향해 이동 중이면 "상대가 미는 중" (임계값 튜닝)
-      const RATIO = TUNING.push.squeezeRatio;   // 찌부 비율 = shift 비율 (폭 비례 → 크기단계 자동)
-      const ghostPush = Math.abs(ghostViews[i].ghost.lastVx) > TUNING.push.velThreshold
-        && Math.sign(ghostViews[i].ghost.lastVx) === -dirToGhost;
-      if (iPush && ghostPush) {
-        // 맞밀기: 둘 다 접촉면 앵커 찌부
-        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO, g.w);
-        ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
-      } else if (iPush) {
-        // 내가 밈: 상대=접촉면 찌부(접촉면이 폭×RATIO 전체만큼 캐임), 나=그만큼 파고드는 shift
-        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO, g.w);
-        ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * RATIO, left: GRACE };
-      } else if (ghostPush) {
-        // 상대가 나를 밈: 나=접촉면 찌부, 상대=내 접촉면 후퇴량(폭×RATIO)만큼 shift
-        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * RATIO);
-        ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
+      const ghostPush = Math.abs(v.ghost.lastVx) > TUNING.push.velThreshold
+        && Math.sign(v.ghost.lastVx) === -dirToGhost;
+      const inst: View["pushRole"] = (iPush && ghostPush) ? "mutual" : iPush ? "iPush" : ghostPush ? "ghostPush" : "none";
+      if (inst !== "none") { v.pushRole = inst; v.pushDir = dirToGhost; v.pushRoleLeftMs = GRACE; }
+      const role = v.pushRoleLeftMs > 0 ? v.pushRole : "none";
+      if (role === "none") continue;
+      const dir = v.pushDir;
+      if (role === "mutual") {
+        setSquash(v.squash, "squeeze", dir, RATIO, g.w);
+        v.fxLeftMs = GRACE;
+        this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE };
+      } else if (role === "iPush") {
+        setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 상대=접촉면 찌부
+        v.fxLeftMs = GRACE;
+        this.selfFx = { kind: "shift", dir, amt: g.w * RATIO, left: GRACE };  // 나=파고드는 shift
+      } else {   // ghostPush
+        setSquash(v.squash, "shift", -dir, b.w * RATIO);   // 상대=shift
+        v.fxLeftMs = GRACE;
+        this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE };  // 나=찌부
       }
     }
     // 자기 스프라이트 연출 (우선순위: 밟힘 > 천장 > shift 유예)
@@ -356,14 +369,26 @@ export class BaseworldScene extends Phaser.Scene {
       const hOv = Math.min(b.x + halfW, mx + m.w / 2) - Math.max(b.x - halfW, mx - m.w / 2);
       const vOv = Math.min(b.y, my) - Math.max(b.y - b.h, my - m.h);
       if (hOv <= 0 || vOv <= 0) return;
-      const falling = prevVy > TUNING.stomp.minFallSpeed || prevPound === 2;
-      const onHead = b.y <= my - m.h + TUNING.stomp.headBandPx * poundMult;
-      if (falling && onHead) {
-        // 밟기 성공: 즉시 튕김(손맛) + 강화점프 창 + 서버 타격 등록 (§21-2)
-        b.vy = TUNING.stomp.bounceVelocity;
-        this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
+      // A: 위에서 내려오면 확실히 밟기(데미지 없음). 빠른 낙하 터널링 방지 — 발이 몬스터 상반부까지면 인정
+      const descending = prevVy > 0 || prevPound === 2;
+      const fromAbove = b.y <= my - m.h * 0.5;
+      if (descending && fromAbove) {
+        const willKill = m.hitCount + 1 >= m.hp;   // 이번 타격이 마지막인지 예측(클라)
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
         if (v) setSquash(v.squash, "stomped");
+        if (prevPound === 2 && willKill) {
+          // 내려찍기로 죽임 → 원작대로 튕김 없이 flatten(pound가 계속 내려감)
+        } else if (prevPound === 2) {
+          // B2: 내려찍었는데 안 죽음 → 큰 바운스 + 스핀 + 강화점프 창 + 내려찍기 종료
+          b.vy = TUNING.stomp.poundBounceVelocity;
+          this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
+          this.me.pound = 0;
+          startSpin(this.me, TUNING);
+        } else {
+          // 일반 밟기 → 튕김 + 강화점프 창
+          b.vy = TUNING.stomp.bounceVelocity;
+          this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
+        }
       } else if (this.me.invincibleLeftMs > 0) {
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
       } else {
@@ -501,7 +526,7 @@ export class BaseworldScene extends Phaser.Scene {
       } else if (nowMs - v.lastTickAt > TUNING.net.staleMs) v.stale = true;
       ghostStep(v.ghost, delta);   // 매 프레임: 속도로 외삽 + LERP 수렴
       stepSquash(v.squash);
-      v.w = p.w; v.h = p.h;
+      v.w = p.w; v.h = p.h; v.pound = p.pound;
       v.rect.setSize(p.w, p.h);
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);   // 찌부/shift 앵커 적용(내 몸과 동일)
@@ -622,7 +647,7 @@ export class BaseworldScene extends Phaser.Scene {
 
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
 interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string }
-interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; windupAnim: string; windupEndsAt: number }
+interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number }
 interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
 interface CarryNet { x: number; y: number; alive: boolean; heldBy: string }

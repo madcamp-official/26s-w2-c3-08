@@ -11,8 +11,8 @@
     "hangMs": 250, "riseMs": 150, "riseVelocity": -260, "fallVelocity": 1300,
     "minHeightPx": 48, "jumpWindowMs": 150, "jumpMult": 1.4
   },
-  "stomp": { "minFallSpeed": 350, "downVelocity": 300, "bounceVelocity": -430, "headBandPx": 24, "jumpWindowMs": 170, "jumpMult": 1.35, "poundReachMult": 1.25 },
-  "push": { "separatePerTick": 5, "visualGraceMs": 160, "squeezeRatio": 0.15, "velThreshold": 20, "contactPad": 8 },
+  "stomp": { "minFallSpeed": 350, "downVelocity": 300, "bounceVelocity": -430, "headBandPx": 24, "jumpWindowMs": 170, "jumpMult": 1.35, "poundReachMult": 1.25, "poundBounceVelocity": -640, "stunMs": 600 },
+  "push": { "separatePerTick": 5, "visualGraceMs": 200, "squeezeRatio": 0.15, "velThreshold": 20, "contactPad": 8 },
   "corner": { "footSnapPx": 10, "headSnapPx": 8 },
   "sizeStage": { "smallW": 64, "smallH": 64, "bigWMult": 2.0, "bigHMult": 1.5 },
   "carry": { "throwSpeed": 520, "upThrowSpeed": -680, "vxCarryFactor": 0.5, "selfIgnoreMs": 400, "handLerp": 0.25 },

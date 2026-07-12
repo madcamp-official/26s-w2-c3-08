@@ -20,20 +20,29 @@ export function pushSelfOut(me: Body, ghosts: Ghost[], t: Tuning = TUNING): void
     const o = overlap(me, g);
     if (!o) continue;
     if (o.oy <= t.stomp.headBandPx) continue; // 머리 밴드는 밟기/서기 몫
-    const dir = me.x < g.x ? -1 : 1;
+    // 탈출 방향 = 내가 들어온 쪽(이동 방향의 반대)으로 고정 → 반대편으로 뒤집혀 관통하는 것 방지.
+    // 겹침은 유지되므로(상한 유지) 상대 클라가 상대를 밀어내는 "밀기"는 그대로 동작.
+    const dir = me.vx > 0 ? -1 : me.vx < 0 ? 1 : (me.x < g.x ? -1 : 1);
     me.x += dir * Math.min(o.ox, t.push.separatePerTick);
   }
 }
 
 /** 내가 밟혔는가 (당하는 쪽 판정): 고스트 발이 내 머리 밴드에 + 빠른 낙하 */
-export function checkStompedMe(me: Avatar, ghosts: (Ghost & { vy: number })[], t: Tuning = TUNING): boolean {
+export function checkStompedMe(me: Avatar, ghosts: (Ghost & { vy: number; pound?: number })[], t: Tuning = TUNING): boolean {
   const b = me.body;
   for (const g of ghosts) {
     if (g.vy < t.stomp.minFallSpeed) continue;
     const hOv = Math.min(right(b), g.x + g.w / 2) - Math.max(left(b), g.x - g.w / 2);
     if (hOv <= b.w * 0.3) continue;
     if (g.y >= top(b) && g.y <= top(b) + t.stomp.headBandPx) {
-      b.vy = b.vy < 0 ? t.stomp.downVelocity : b.vy + t.stomp.downVelocity;
+      if (g.pound) {
+        // 내려찍기에 밟힘 → 넉백 + 기절 (§원작 멀티)
+        b.vx = (b.x >= g.x ? 1 : -1) * t.item.knockbackVx;
+        b.vy = t.item.knockbackVy;
+        me.stunLeftMs = t.stomp.stunMs;
+      } else {
+        b.vy = b.vy < 0 ? t.stomp.downVelocity : b.vy + t.stomp.downVelocity;
+      }
       return true;
     }
   }
