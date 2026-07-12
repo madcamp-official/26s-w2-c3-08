@@ -306,7 +306,9 @@ export class BaseworldScene extends Phaser.Scene {
     //  - 미는 쪽 = 찌부 아님, 상대가 찌부된 만큼 미는 방향으로 스프라이트 shift
     for (let i = 0; i < ghosts.length; i++) {
       const g = ghosts[i];
-      const contact = Math.abs(g.x - b.x) < (g.w + b.w) / 2 && g.y > b.y - b.h && g.y - g.h < b.y;
+      // 접촉 여유(pad): pushSelfOut이 걷기속도보다 빨리 밀어내 겹침이 0이 돼도 "맞닿아 눌림"을 연출로 인정
+      const contact = Math.abs(g.x - b.x) < (g.w + b.w) / 2 + TUNING.push.contactPad
+        && g.y > b.y - b.h && g.y - g.h < b.y;
       if (!contact) continue;
       const dirToGhost = g.x >= b.x ? 1 : -1;
       const iPush = (input.right && dirToGhost === 1) || (input.left && dirToGhost === -1);
