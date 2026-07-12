@@ -14,10 +14,12 @@ export function createSquash(): SquashState {
  *  - squeeze = 밀리는/밟히는 쪽: 찌부 (스케일)
  *  - shift   = 미는 쪽: 찌부되지 않고, 상대가 찌부된 만큼 그 방향으로 스프라이트만 이동 */
 export type SquashKind = "none" | "stomped" | "squeeze" | "shift" | "ceil";
-export function setSquash(s: SquashState, kind: SquashKind, dir = 1, amount = 8): void {
+// w = 찌부 대상 폭(px). 접촉면 앵커용 — 밀린 방향(dir)의 반대편 모서리를 고정하고 접촉면만 캐이게 함.
+export function setSquash(s: SquashState, kind: SquashKind, dir = 1, amount = 8, w = 0): void {
   switch (kind) {
     case "stomped": s.targetSx = 1.15; s.targetSy = 0.7; s.targetOx = 0; s.targetOy = 0; break;
-    case "squeeze": s.targetSx = 1 - amount; s.targetSy = 1 + amount * 0.25; s.targetOx = 0; s.targetOy = 0; break; // amount = 비율(0~1). 중심 대칭 스케일만(오프셋 0 → shift와 정확 대칭)
+    // amount = 비율(0~1). offsetX = dir×(폭×비율÷2) → far 모서리 고정, 접촉(-dir)면이 폭×비율 전체만큼 캐임
+    case "squeeze": s.targetSx = 1 - amount; s.targetSy = 1 + amount * 0.25; s.targetOx = dir * (w * amount / 2); s.targetOy = 0; break;
     case "shift": s.targetSx = 1; s.targetSy = 1; s.targetOx = dir * amount; s.targetOy = 0; break;
     case "ceil": s.targetSx = 1.1; s.targetSy = 0.8; s.targetOx = 0; s.targetOy = -6; break; // 위로 압축(§26-2)
     default: s.targetSx = 1; s.targetSy = 1; s.targetOx = 0; s.targetOy = 0;

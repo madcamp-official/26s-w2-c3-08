@@ -315,19 +315,18 @@ export class BaseworldScene extends Phaser.Scene {
       const ghostPush = Math.abs(ghostViews[i].ghost.lastVx) > TUNING.push.velThreshold
         && Math.sign(ghostViews[i].ghost.lastVx) === -dirToGhost;
       if (iPush && ghostPush) {
-        // 맞밀기: 둘 다 찌부
-        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO);
+        // 맞밀기: 둘 다 접촉면 앵커 찌부
+        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO, g.w);
         ghostViews[i].fxLeftMs = GRACE;
         this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
       } else if (iPush) {
-        // 내가 밈: 상대=찌부, 나=상대 접촉면이 들어간 만큼 shift.
-        // 찌부는 중심 기준이라 접촉면 후퇴 = 폭×RATIO의 절반 → shift도 ÷2로 일치.
-        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO);
+        // 내가 밈: 상대=접촉면 찌부(접촉면이 폭×RATIO 전체만큼 캐임), 나=그만큼 파고드는 shift
+        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO, g.w);
         ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * RATIO / 2, left: GRACE };
+        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * RATIO, left: GRACE };
       } else if (ghostPush) {
-        // 상대가 나를 밈: 나=찌부, 상대=내 접촉면 후퇴량(폭×RATIO÷2)만큼 shift
-        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * RATIO / 2);
+        // 상대가 나를 밈: 나=접촉면 찌부, 상대=내 접촉면 후퇴량(폭×RATIO)만큼 shift
+        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * RATIO);
         ghostViews[i].fxLeftMs = GRACE;
         this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
       }
@@ -337,7 +336,7 @@ export class BaseworldScene extends Phaser.Scene {
     else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE }; }
     if (this.selfFx.left > 0) {
       if (this.selfFx.kind === "shift") setSquash(this.mySquash, "shift", this.selfFx.dir, this.selfFx.amt);
-      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir, this.selfFx.amt || TUNING.push.squeezeRatio);
+      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir, this.selfFx.amt || TUNING.push.squeezeRatio, b.w);
       else setSquash(this.mySquash, this.selfFx.kind === "none" ? "none" : this.selfFx.kind);
     } else {
       setSquash(this.mySquash, "none");
