@@ -28,6 +28,7 @@ interface View {
   ghost: GhostView;
   squash: SquashState;
   w: number; h: number;
+  fxLeftMs: number;   // 연출 유예 (접촉 순간 끊김 시 깜빡임 방지)
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -61,6 +62,8 @@ export class BaseworldScene extends Phaser.Scene {
   macroStart = { x: 0, y: 0 };
   grabHighlightUntil = 0;
   monsterHitSeq = 0;
+  // 자기 스프라이트 연출 (유예 포함): kind/dir/amount/남은ms
+  selfFx = { kind: "none" as "none" | "stomped" | "shift" | "ceil", dir: 1, amt: 8, left: 0 };
 
   constructor(room: Room) {
     super("baseworld");
@@ -185,6 +188,7 @@ export class BaseworldScene extends Phaser.Scene {
       ghost: createGhostView(x, y),
       squash: createSquash(),
       w, h,
+      fxLeftMs: 0,
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -237,34 +241,59 @@ export class BaseworldScene extends Phaser.Scene {
     stepAvatar(this.me, input, FIXED_MS, terrain);
 
     // ── PvP: 자기 화면 판정 (§14) ──
+    const GRACE = TUNING.push.visualGraceMs;
     const ghostViews = [...this.players.values()];
     const ghosts = ghostViews.map((v) => ({
       x: v.ghost.x, y: v.ghost.y, w: v.w, h: v.h, vy: v.ghost.lastVy,
     }));
-    // 매 틱 원인 리셋 → 접촉 시 재설정 (원인 지속=유지, 소멸=원복 §26)
-    for (const v of ghostViews) setSquash(v.squash, "none");
+    // 유예 감쇠: 접촉이 순간 끊겨도 GRACE 동안 연출 유지 (깜빡임 방지)
+    for (const v of ghostViews) {
+      v.fxLeftMs = Math.max(0, v.fxLeftMs - FIXED_MS);
+      if (v.fxLeftMs <= 0) setSquash(v.squash, "none");
+    }
+    this.selfFx.left = Math.max(0, this.selfFx.left - FIXED_MS);
     pushSelfOut(b, ghosts);
     const stompedIdx = checkIStomped(this.me, ghosts);
     if (stompedIdx >= 0) {
       this.me.fx.add("stompedOther");
-      setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대도 찌부 (내 화면 연출)
+      setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
+      ghostViews[stompedIdx].fxLeftMs = GRACE;
     }
     const stompedMe = checkStompedMe(this.me, ghosts);
     headStand(b, ghosts);
-    // 접촉해 밀리는 상대 찌부 + 내 찌부 (§14-3 양쪽)
-    let pushedGhost = -1;
+    // 밀기 연출 역할 구분 (§26 정정):
+    //  - 밀리는 쪽 = squeeze(찌부)
+    //  - 미는 쪽 = 찌부 아님, 상대가 찌부된 만큼 미는 방향으로 스프라이트 shift
     for (let i = 0; i < ghosts.length; i++) {
       const g = ghosts[i];
-      if (Math.abs(g.x - b.x) < (g.w + b.w) / 2 && g.y > b.y - b.h && g.y - g.h < b.y) {
-        pushedGhost = i;
-        setSquash(ghostViews[i].squash, "pushed", g.x < b.x ? -1 : 1);  // 상대가 밀리는 방향
+      const contact = Math.abs(g.x - b.x) < (g.w + b.w) / 2 && g.y > b.y - b.h && g.y - g.h < b.y;
+      if (!contact) continue;
+      const dirToGhost = g.x >= b.x ? 1 : -1;
+      const iPush = (input.right && dirToGhost === 1) || (input.left && dirToGhost === -1);
+      // 상대가 나를 향해 이동 중이면 "상대가 미는 중"
+      const ghostPush = Math.abs(ghostViews[i].ghost.lastVx) > 40
+        && Math.sign(ghostViews[i].ghost.lastVx) === -dirToGhost;
+      if (iPush) {
+        // 상대 찌부 + 나는 상대 찌부량만큼 파고드는 shift
+        setSquash(ghostViews[i].squash, "squeeze", dirToGhost);
+        ghostViews[i].fxLeftMs = GRACE;
+        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * 0.2 * 0.5, left: GRACE };
+      } else if (ghostPush) {
+        // 상대가 나를 밈: 상대는 미는 쪽(shift), 나는 밀린 방향으로 살짝 이동
+        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * 0.2 * 0.5);
+        ghostViews[i].fxLeftMs = GRACE;
+        this.selfFx = { kind: "shift", dir: -dirToGhost, amt: 8, left: GRACE };
       }
     }
-    if (stompedMe) setSquash(this.mySquash, "stomped");
-    else if (this.me.fx.has("ceilBonk")) setSquash(this.mySquash, "ceil");
-    else if (pushedGhost >= 0)
-      setSquash(this.mySquash, "pushed", b.x < ghosts[pushedGhost].x ? -1 : 1);
-    else setSquash(this.mySquash, "none");
+    // 자기 스프라이트 연출 (우선순위: 밟힘 > 천장 > shift 유예)
+    if (stompedMe) { this.selfFx = { kind: "stomped", dir: 1, amt: 0, left: GRACE }; }
+    else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE }; }
+    if (this.selfFx.left > 0) {
+      if (this.selfFx.kind === "shift") setSquash(this.mySquash, "shift", this.selfFx.dir, this.selfFx.amt);
+      else setSquash(this.mySquash, this.selfFx.kind === "none" ? "none" : this.selfFx.kind);
+    } else {
+      setSquash(this.mySquash, "none");
+    }
 
     // ── 몬스터: 자기 화면 판정 ──
     for (const v of this.monsters.values()) setSquash(v.squash, "none");
