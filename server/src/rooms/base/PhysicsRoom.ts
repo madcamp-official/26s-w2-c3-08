@@ -264,6 +264,7 @@ export abstract class PhysicsRoom extends Room {
       stepBlockRespawn(b, FIXED_MS);
       const st = this.state.blocks.get(id);
       if (!st) continue;
+      st.vx = 0; st.vy = 0;   // 기본 정지 (안 움직이면 클라가 예측 안 하도록)
       if (b.spec.rules && b.state === "active") {
         const motionOk = !b.spec.switchReact || b.spec.switchReact.mode !== "motion"
           || this.state.switchOn === b.spec.switchReact.whenOn;
@@ -286,6 +287,7 @@ export abstract class PhysicsRoom extends Room {
           b.mem["__facing"] = body.facing;
           b.x = body.x - b.spec.w / 2;
           b.y = body.y - b.spec.h;
+          st.vx = body.vx; st.vy = body.vy;   // dead reckoning용 속도 전송
         }
       }
       st.active = b.state === "active";

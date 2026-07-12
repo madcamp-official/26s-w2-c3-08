@@ -45,6 +45,8 @@ export class MonsterState extends Schema {
 export class BlockState extends Schema {
   @type("number") x = 0;                 // 이동 블록 현재 좌상단
   @type("number") y = 0;
+  @type("number") vx = 0;                // dead reckoning용 (§21-1, 이동 발판 보간)
+  @type("number") vy = 0;
   @type("boolean") active = true;        // 파괴/재생성
   @type("boolean") emptied = false;      // 물음표 소진
   @type("boolean") visibleNow = true;    // 스위치·점멸 반영 (서버 계산)

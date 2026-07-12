@@ -49,6 +49,10 @@ export class BaseworldScene extends Phaser.Scene {
   itemRects = new Map<string, Phaser.GameObjects.Rectangle>();
   carryRects = new Map<string, Phaser.GameObjects.Rectangle>();
   blockRects = new Map<string, Phaser.GameObjects.Rectangle>();
+  // 보간 상태 (dead reckoning) — 모든 움직이는 것 (§21-1)
+  projGhosts = new Map<string, GhostView>();
+  carryGhosts = new Map<string, GhostView>();
+  blockGhosts = new Map<string, GhostView>();
   myRect!: Phaser.GameObjects.Rectangle;
   handRect!: Phaser.GameObjects.Rectangle;
   debugGfx!: Phaser.GameObjects.Graphics;
@@ -86,7 +90,10 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.blocks.forEach((bs: { x: number; y: number; active: boolean; visibleNow: boolean }, id: string) => {
       if (!bs.active || !bs.visibleNow) return;
       const spec = TESTMAP.blocks.find((b) => b.id === id);
-      if (spec) solids.push({ x: bs.x, y: bs.y, w: spec.w, h: spec.h, faces: spec.faces });
+      if (!spec) return;
+      const g = this.blockGhosts.get(id);   // 충돌도 보간 위치로 (렌더와 일치 → 라이딩 일관)
+      const bx = g ? g.x : bs.x, by = g ? g.y : bs.y;
+      solids.push({ x: bx, y: by, w: spec.w, h: spec.h, faces: spec.faces });
     });
     return { solids, slopes: TESTMAP.terrain.slopes };
   }
@@ -149,6 +156,7 @@ export class BaseworldScene extends Phaser.Scene {
     $(this.room.state).projectiles.onRemove((_pr: ProjNet, id: string) => {
       this.projectiles.get(id)?.destroy();
       this.projectiles.delete(id);
+      this.projGhosts.delete(id);
     });
     // 아이템
     $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
@@ -211,9 +219,21 @@ export class BaseworldScene extends Phaser.Scene {
     return this.keys[k].some((key) => key.isDown);
   }
 
+  /** 이동 발판 보간 전진: 충돌(currentTerrain)·렌더가 같은 위치를 쓰도록 fixedTick에서 갱신 */
+  stepBlockGhosts(): void {
+    if (!this.room.state?.blocks) return;
+    this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
+      let g = this.blockGhosts.get(id);
+      if (!g) { g = createGhostView(bs.x, bs.y); this.blockGhosts.set(id, g); }
+      if (bs.x !== g.srvX || bs.y !== g.srvY) ghostServerUpdate(g, bs.x, bs.y, bs.vx, bs.vy); // 새 패치만
+      ghostStep(g, FIXED_MS, TUNING.net.monsterLerp);
+    });
+  }
+
   fixedTick(): void {
     if (!this.stateReady()) return;   // 첫 상태 도착 전 스킵 (§28)
     this.tick++;
+    this.stepBlockGhosts();           // 죽어도 발판은 계속 움직여야 하므로 dead 체크 앞
     const now = this.time.now;
     if (this.dead) {
       if (now >= this.deadUntil) this.respawn();
@@ -248,8 +268,9 @@ export class BaseworldScene extends Phaser.Scene {
     const GRACE = TUNING.push.visualGraceMs;
     // 정지(백그라운드) 고스트는 밀기·밟기·서기 판정에서 제외 = 충돌 통과 (B)
     const ghostViews = [...this.players.values()].filter((v) => !v.stale);
+    // 판정은 외삽 위치가 아니라 서버 확정 위치(srv)로 → 오버슈트 관통 방지. 렌더만 g.x 사용
     const ghosts = ghostViews.map((v) => ({
-      x: v.ghost.x, y: v.ghost.y, w: v.w, h: v.h, vy: v.ghost.lastVy,
+      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy,
     }));
     // 유예 감쇠: 접촉이 순간 끊겨도 GRACE 동안 연출 유지 (깜빡임 방지)
     for (const v of ghostViews) {
@@ -327,7 +348,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       if (!m.alive || m.hidden) return;
       const v = this.monsters.get(id);
-      const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
+      const mx = v ? v.ghost.srvX : m.x, my = v ? v.ghost.srvY : m.y;   // 판정=서버 확정 위치
       // 내려찍기 시 판정 확대 (몬스터 한정 — 지형·블록은 그대로)
       const poundMult = prevPound === 2 ? TUNING.stomp.poundReachMult : 1;
       const halfW = (b.w * poundMult) / 2;
@@ -364,7 +385,9 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       const spec = TESTMAP.blocks.find((bl) => bl.id === id);
       if (!spec || !bs.active || !bs.visibleNow) return;
-      const r = blockRect({ spec, x: bs.x, y: bs.y, state: "active", respawnLeftMs: 0, emptied: bs.emptied, mem: {} });
+      const g = this.blockGhosts.get(id);   // 상호작용도 보간 위치로 (충돌과 일치)
+      const bx = g ? g.x : bs.x, by = g ? g.y : bs.y;
+      const r = blockRect({ spec, x: bx, y: by, state: "active", respawnLeftMs: 0, emptied: bs.emptied, mem: {} });
       const withinX = Math.abs(b.x - (r.x + r.w / 2)) < (b.w + r.w) / 2;
       const headAt = b.y - b.h;
       const bonkHead = withinX && prevVy < 0 && Math.abs(headAt - (r.y + r.h)) < 10;
@@ -498,9 +521,15 @@ export class BaseworldScene extends Phaser.Scene {
       v.rect.fillColor = m.stunned ? 0x999999 : m.windupAnim ? 0xff8888 : 0xcc66ff;
       v.label.setPosition(v.ghost.x, v.ghost.y - m.h - 4);
     });
-    // 발사체·아이템·블록
+    // 발사체·아이템·블록 (발사체는 dead reckoning, 피격 판정은 서버 좌표 유지)
     this.room.state.projectiles.forEach((pr: ProjNet, id: string) => {
-      this.projectiles.get(id)?.setPosition(pr.x, pr.y);
+      const rr = this.projectiles.get(id);
+      if (!rr) return;
+      let g = this.projGhosts.get(id);
+      if (!g) { g = createGhostView(pr.x, pr.y); this.projGhosts.set(id, g); }
+      if (pr.x !== g.srvX || pr.y !== g.srvY) ghostServerUpdate(g, pr.x, pr.y, pr.vx, pr.vy);
+      ghostStep(g, delta);
+      rr.setPosition(g.x, g.y);
     });
     this.room.state.items.forEach((it: ItemNet, id: string) => {
       const r = this.itemRects.get(id);
@@ -516,11 +545,15 @@ export class BaseworldScene extends Phaser.Scene {
       const r = this.carryRects.get(id);
       if (!r) return;
       r.setVisible(c.alive);
-      if (!c.alive) return;
+      if (!c.alive) { this.carryGhosts.delete(id); return; }   // 재생성 시 순간이동 방지(다시 생성)
       if (this.carry.heldId === id) {
         r.setPosition(b.x + b.facing * (b.w / 2 + 20), b.y - b.h * 0.3);
       } else {
-        r.setPosition(c.x, c.y);
+        let g = this.carryGhosts.get(id);
+        if (!g) { g = createGhostView(c.x, c.y); this.carryGhosts.set(id, g); }
+        ghostServerUpdate(g, c.x, c.y, 0, 0);   // 속도 없음 → 순수 lerp 수렴
+        ghostStep(g, delta);
+        r.setPosition(g.x, g.y);
       }
       if (this.grabHighlightUntil > this.time.now && !c.heldBy) r.setStrokeStyle(3, 0xffff00);
       else r.setStrokeStyle();
@@ -540,7 +573,8 @@ export class BaseworldScene extends Phaser.Scene {
       const r = this.blockRects.get(id);
       if (!r) return;
       r.setVisible(bs.active && bs.visibleNow);
-      r.setPosition(bs.x, bs.y);
+      const g = this.blockGhosts.get(id);   // 충돌과 동일한 보간 위치
+      r.setPosition(g ? g.x : bs.x, g ? g.y : bs.y);
       r.fillColor = bs.emptied ? 0x555555 : 0x8888aa;
     });
     this.renderServerview();
@@ -588,7 +622,7 @@ export class BaseworldScene extends Phaser.Scene {
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
 interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string }
 interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; windupAnim: string; windupEndsAt: number }
-interface BlockNet { x: number; y: number; active: boolean; emptied: boolean; visibleNow: boolean }
+interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
 interface CarryNet { x: number; y: number; alive: boolean; heldBy: string }
 interface ProjNet { asset: string; x: number; y: number; vx: number; vy: number; effect: string; ownerId: string }
