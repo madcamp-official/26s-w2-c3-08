@@ -270,24 +270,25 @@ export class BaseworldScene extends Phaser.Scene {
       if (!contact) continue;
       const dirToGhost = g.x >= b.x ? 1 : -1;
       const iPush = (input.right && dirToGhost === 1) || (input.left && dirToGhost === -1);
-      // 상대가 나를 향해 이동 중이면 "상대가 미는 중"
-      const ghostPush = Math.abs(ghostViews[i].ghost.lastVx) > 40
+      // 상대가 나를 향해 이동 중이면 "상대가 미는 중" (임계값 튜닝)
+      const RATIO = TUNING.push.squeezeRatio;   // 찌부 비율 = shift 비율 (폭 비례 → 크기단계 자동)
+      const ghostPush = Math.abs(ghostViews[i].ghost.lastVx) > TUNING.push.velThreshold
         && Math.sign(ghostViews[i].ghost.lastVx) === -dirToGhost;
       if (iPush && ghostPush) {
-        // 맞밀기: 둘 다 찌부 (서로 밀어붙임)
-        setSquash(ghostViews[i].squash, "squeeze", dirToGhost);
+        // 맞밀기: 둘 다 찌부
+        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO);
         ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: 0, left: GRACE };
+        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
       } else if (iPush) {
-        // 내가 밈: 상대=찌부, 나=상대 찌부량만큼 파고드는 shift
-        setSquash(ghostViews[i].squash, "squeeze", dirToGhost);
+        // 내가 밈: 상대=찌부(폭×RATIO), 나=같은 px만큼 파고드는 shift
+        setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO);
         ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * 0.2 * 0.5, left: GRACE };
+        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * RATIO, left: GRACE };
       } else if (ghostPush) {
-        // 상대가 나를 밈: 나=찌부(밀리는 쪽), 상대=내 찌부량만큼 파고드는 shift
-        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * 0.2 * 0.5);
+        // 상대가 나를 밈: 나=찌부, 상대=내 찌부량(px)만큼 shift
+        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * RATIO);
         ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: 0, left: GRACE };
+        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
       }
     }
     // 자기 스프라이트 연출 (우선순위: 밟힘 > 천장 > shift 유예)
@@ -295,7 +296,7 @@ export class BaseworldScene extends Phaser.Scene {
     else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE }; }
     if (this.selfFx.left > 0) {
       if (this.selfFx.kind === "shift") setSquash(this.mySquash, "shift", this.selfFx.dir, this.selfFx.amt);
-      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir);
+      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir, this.selfFx.amt || TUNING.push.squeezeRatio);
       else setSquash(this.mySquash, this.selfFx.kind === "none" ? "none" : this.selfFx.kind);
     } else {
       setSquash(this.mySquash, "none");

@@ -17,7 +17,7 @@ export type SquashKind = "none" | "stomped" | "squeeze" | "shift" | "ceil";
 export function setSquash(s: SquashState, kind: SquashKind, dir = 1, amount = 8): void {
   switch (kind) {
     case "stomped": s.targetSx = 1.15; s.targetSy = 0.7; s.targetOx = 0; s.targetOy = 0; break;
-    case "squeeze": s.targetSx = 0.8; s.targetSy = 1.05; s.targetOx = dir * 3; s.targetOy = 0; break;
+    case "squeeze": s.targetSx = 1 - amount; s.targetSy = 1 + amount * 0.25; s.targetOx = dir * 3; s.targetOy = 0; break; // amount = 비율(0~1)
     case "shift": s.targetSx = 1; s.targetSy = 1; s.targetOx = dir * amount; s.targetOy = 0; break;
     case "ceil": s.targetSx = 1.1; s.targetSy = 0.8; s.targetOx = 0; s.targetOy = -6; break; // 위로 압축(§26-2)
     default: s.targetSx = 1; s.targetSy = 1; s.targetOx = 0; s.targetOy = 0;
