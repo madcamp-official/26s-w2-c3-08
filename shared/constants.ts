@@ -16,4 +16,24 @@ export const CROUCH = { hitboxPx: Math.round(0.95 * TILE_PX), visualPx: TILE_PX 
 /** 스프라이트 재생성 쿨타임 (액션별, ms) */
 export const REGEN_COOLDOWN_MS = 5 * 60 * 1000;
 
-// TODO: 프리셋 → 물리값 매핑 (slow/normal/fast 등) — asset-attributes.md 확정분 반영
+/**
+ * 프리셋(enum 문자열) → 실제 물리값 매핑.
+ * DB에는 프리셋 문자열만 저장(shared/schemas/presets.ts), 실측 값은 여기서만 관리 (asset-attributes.md 수치 정책).
+ * ⚠️ 전부 밸런스 미조정 초기값 — 그레이박스 플레이 테스트로 튜닝 대상.
+ */
+export const PRESET = {
+  /** 속도 (px/s) — slow/normal/fast */
+  speed: { slow: 40, normal: 80, fast: 160 },
+  /** 주기 (ms) — short/normal/long */
+  period: { short: 1000, normal: 2000, long: 4000 },
+  /** 감지 거리·반경 (px) — near/normal/far */
+  range: { near: 2 * TILE_PX, normal: 4 * TILE_PX, far: 8 * TILE_PX },
+  /** 반발·도약 초속 (px/s) — low/high */
+  power: { low: 320, high: 640 },
+} as const;
+
+/**
+ * 접촉 반응(도넛 블록류) 고정 상수 — asset-attributes.md §1: 옵션 아님, 항상 재생.
+ * ⚠️ 문서 내 모순: 서두 수치 정책은 "재생 3초", §1 표는 "5초 후 재생" — 표 값(5초) 채택, 팀 확정 필요.
+ */
+export const CONTACT_REACTION = { delayMs: 2000, respawnMs: 5000 } as const;

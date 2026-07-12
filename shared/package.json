@@ -6,6 +6,10 @@
   "exports": {
     ".": "./constants.ts",
     "./physics": "./physics/index.ts",
-    "./schemas": "./schemas/index.ts"
+    "./schemas": "./schemas/index.ts",
+    "./actions": "./actions/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }
