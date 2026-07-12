@@ -33,14 +33,12 @@ interface View {
   lastTickAt: number; // tick이 마지막으로 오른 시각(ms)
   stale: boolean;     // 일정 시간 tick 정지 = 탭 백그라운드 → 충돌 통과(B)
   pound: number;      // 상대 내려찍기 상태 (넉백+스턴 판정용)
-  pushRole: "none" | "iPush" | "ghostPush" | "mutual";  // 밀기 역할 (히스테리시스)
-  pushRoleLeftMs: number;  // 역할 고정 잔여(요동 방지)
-  pushDir: number;    // 고정된 밀기 방향
+  ghostPushLeftMs: number;  // 상대-밀기(노이즈) 스무딩 잔여 — iPush(내 입력)는 즉시라 스무딩 안 함
 }
 
 export class BaseworldScene extends Phaser.Scene {
   room: Room;
-  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, 115);
+  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
   carry: CarryState = createCarryState();
   mySquash = createSquash();
   tick = 0;
@@ -155,7 +153,7 @@ export class BaseworldScene extends Phaser.Scene {
     $(this.room.state).monsters.onRemove((_m: MonsterNet, id: string) => this.dropView(this.monsters, id));
     // 발사체
     $(this.room.state).projectiles.onAdd((pr: ProjNet, id: string) => {
-      this.projectiles.set(id, this.add.rectangle(pr.x, pr.y, 24, 24, 0xffaa33).setOrigin(0.5, 1).setDepth(4));
+      this.projectiles.set(id, this.add.rectangle(pr.x, pr.y, TUNING.sizes.projectile, TUNING.sizes.projectile, 0xffaa33).setOrigin(0.5, 1).setDepth(4));
     });
     $(this.room.state).projectiles.onRemove((_pr: ProjNet, id: string) => {
       this.projectiles.get(id)?.destroy();
@@ -164,11 +162,11 @@ export class BaseworldScene extends Phaser.Scene {
     });
     // 아이템
     $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
-      this.itemRects.set(id, this.add.rectangle(it.x, it.y, 28, 28, 0x66ffcc).setOrigin(0.5, 1).setDepth(3));
+      this.itemRects.set(id, this.add.rectangle(it.x, it.y, TUNING.sizes.item, TUNING.sizes.item, 0x66ffcc).setOrigin(0.5, 1).setDepth(3));
     });
     // 잡기 파츠 (돌)
     $(this.room.state).carryables.onAdd((c: CarryNet, id: string) => {
-      this.carryRects.set(id, this.add.rectangle(c.x, c.y, 36, 36, 0xb08850).setOrigin(0.5, 1).setDepth(3));
+      this.carryRects.set(id, this.add.rectangle(c.x, c.y, TUNING.sizes.carryable, TUNING.sizes.carryable, 0xb08850).setOrigin(0.5, 1).setDepth(3));
     });
     // 잡기 거부 (서버 소유권 패배 §30-4) — 손에서 사라짐, 이전 행동 원복 없음
     this.room.onMessage("grabDenied", (m: { objId: string }) => {
@@ -205,7 +203,7 @@ export class BaseworldScene extends Phaser.Scene {
       w, h,
       fxLeftMs: 0,
       lastTick: -1, lastTickAt: 0, stale: false,
-      pound: 0, pushRole: "none", pushRoleLeftMs: 0, pushDir: 1,
+      pound: 0, ghostPushLeftMs: 0,
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -257,7 +255,7 @@ export class BaseworldScene extends Phaser.Scene {
         this.macroIdx = 0;
         if (this.macroMode === "reset") {
           // 위치·능력 전부 초기화 (로컬 권위라 서버 동기화 불필요 — relay가 전파)
-          this.me = createAvatar(this.macroStart.x, this.macroStart.y, 115);
+          this.me = createAvatar(this.macroStart.x, this.macroStart.y, TUNING.sizes.playerHeight);
         }
       }
       input = { ...this.macroBuf[this.macroIdx++], tick: this.tick };
@@ -266,6 +264,7 @@ export class BaseworldScene extends Phaser.Scene {
     const b = this.me.body;
     const prevVy = b.vy;
     const prevPound = this.me.pound;
+    const prevBottomY = b.y;   // 스윕 밟기 판정용(직전 발 위치)
 
     stepAvatar(this.me, input, FIXED_MS, terrain);
 
@@ -283,9 +282,24 @@ export class BaseworldScene extends Phaser.Scene {
       if (v.fxLeftMs <= 0) setSquash(v.squash, "none");
     }
     this.selfFx.left = Math.max(0, this.selfFx.left - FIXED_MS);
-    pushSelfOut(b, ghosts);
+    // 밀기 판정 사전 계산 — fix1: iPush(내 입력)는 즉시, ghostPush(relay 속도)는 노이즈라 스무딩
+    const RATIO = TUNING.push.squeezeRatio;
+    const pushInfo = ghosts.map((g, i) => {
+      const v = ghostViews[i];
+      const dirToGhost = g.x >= b.x ? 1 : -1;
+      const contact = Math.abs(g.x - b.x) < (g.w + b.w) / 2 + TUNING.push.contactPad
+        && g.y > b.y - b.h && g.y - g.h < b.y;
+      const iPush = (input.right && dirToGhost === 1) || (input.left && dirToGhost === -1);
+      const ghostPushInst = Math.abs(v.ghost.lastVx) > TUNING.push.velThreshold
+        && Math.sign(v.ghost.lastVx) === -dirToGhost;
+      if (ghostPushInst) v.ghostPushLeftMs = GRACE;
+      else v.ghostPushLeftMs = Math.max(0, v.ghostPushLeftMs - FIXED_MS);
+      return { dirToGhost, contact, iPush, ghostPush: v.ghostPushLeftMs > 0 };
+    });
+    // 밀기(3): 내가 미는 중(상대 저항X)이면 겹침 유지 → 상대가 밀림(걷기로도). 방향고정으로 관통 방지(C)
+    pushSelfOut(b, ghosts, TUNING, pushInfo.map((p) => p.iPush && !p.ghostPush));
     const poundReach = this.me.pound !== 0 ? TUNING.stomp.poundReachMult : 1;
-    const stompedIdx = checkIStomped(this.me, ghosts, TUNING, poundReach);
+    const stompedIdx = checkIStomped(this.me, ghosts, TUNING, poundReach, prevBottomY);
     if (stompedIdx >= 0) {
       this.me.fx.add("stompedOther");
       setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
@@ -312,31 +326,17 @@ export class BaseworldScene extends Phaser.Scene {
         }
       }
     }
-    // 밀기 연출 역할 구분 (§26): 밀리는 쪽=squeeze(접촉면 찌부), 미는 쪽=shift.
-    // D: 역할을 유예 동안 고정(히스테리시스) → 임계값 근처 속도 요동으로 역할이 뒤바뀌며 타닥거리는 것 방지.
-    const RATIO = TUNING.push.squeezeRatio;
+    // 밀기 연출 (§26): 밀리는 쪽=squeeze(접촉면 찌부), 미는 쪽=shift. iPush 즉시/ghostPush 스무딩(fix1)
     for (let i = 0; i < ghosts.length; i++) {
       const g = ghosts[i];
       const v = ghostViews[i];
-      v.pushRoleLeftMs = Math.max(0, v.pushRoleLeftMs - FIXED_MS);
-      // 접촉 여유(pad): pushSelfOut이 걷기속도보다 빨리 밀어내 겹침이 0이 돼도 "맞닿아 눌림"을 인정
-      const contact = Math.abs(g.x - b.x) < (g.w + b.w) / 2 + TUNING.push.contactPad
-        && g.y > b.y - b.h && g.y - g.h < b.y;
-      if (!contact) continue;
-      const dirToGhost = g.x >= b.x ? 1 : -1;
-      const iPush = (input.right && dirToGhost === 1) || (input.left && dirToGhost === -1);
-      const ghostPush = Math.abs(v.ghost.lastVx) > TUNING.push.velThreshold
-        && Math.sign(v.ghost.lastVx) === -dirToGhost;
-      const inst: View["pushRole"] = (iPush && ghostPush) ? "mutual" : iPush ? "iPush" : ghostPush ? "ghostPush" : "none";
-      if (inst !== "none") { v.pushRole = inst; v.pushDir = dirToGhost; v.pushRoleLeftMs = GRACE; }
-      const role = v.pushRoleLeftMs > 0 ? v.pushRole : "none";
-      if (role === "none") continue;
-      const dir = v.pushDir;
-      if (role === "mutual") {
-        setSquash(v.squash, "squeeze", dir, RATIO, g.w);
+      const { contact, iPush, ghostPush, dirToGhost: dir } = pushInfo[i];
+      if (!contact || (!iPush && !ghostPush)) continue;
+      if (iPush && ghostPush) {
+        setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 맞밀기: 둘 다 접촉면 찌부
         v.fxLeftMs = GRACE;
         this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE };
-      } else if (role === "iPush") {
+      } else if (iPush) {
         setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 상대=접촉면 찌부
         v.fxLeftMs = GRACE;
         this.selfFx = { kind: "shift", dir, amt: g.w * RATIO, left: GRACE };  // 나=파고드는 shift
@@ -369,10 +369,12 @@ export class BaseworldScene extends Phaser.Scene {
       const hOv = Math.min(b.x + halfW, mx + m.w / 2) - Math.max(b.x - halfW, mx - m.w / 2);
       const vOv = Math.min(b.y, my) - Math.max(b.y - b.h, my - m.h);
       if (hOv <= 0 || vOv <= 0) return;
-      // A: 위에서 내려오면 확실히 밟기(데미지 없음). 빠른 낙하 터널링 방지 — 발이 몬스터 상반부까지면 인정
+      // A: 위에서 내려오면 확실히 밟기(데미지 없음). fromAbove(현재 상반부) OR 스윕(직전엔 머리 위, 지금 통과)
       const descending = prevVy > 0 || prevPound === 2;
+      const monsterTop = my - m.h;
       const fromAbove = b.y <= my - m.h * 0.5;
-      if (descending && fromAbove) {
+      const crossed = prevBottomY <= monsterTop && b.y >= monsterTop;  // 빠른 낙하 터널링도 잡음
+      if (descending && (fromAbove || crossed)) {
         const willKill = m.hitCount + 1 >= m.hp;   // 이번 타격이 마지막인지 예측(클라)
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
         if (v) setSquash(v.squash, "stomped");
@@ -399,8 +401,8 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 발사체 피격 (자책 방지 §30-1) ──
     this.room.state.projectiles.forEach((pr: ProjNet, _id: string) => {
       if (pr.ownerId === this.room.sessionId && this.carry.selfIgnoreLeftMs > 0) return;
-      const hOv = Math.abs(pr.x - b.x) < (24 + b.w) / 2;
-      const vOv = pr.y > b.y - b.h && pr.y - 24 < b.y;
+      const hOv = Math.abs(pr.x - b.x) < (TUNING.sizes.projectile + b.w) / 2;
+      const vOv = pr.y > b.y - b.h && pr.y - TUNING.sizes.projectile < b.y;
       if (hOv && vOv && this.me.invincibleLeftMs <= 0) {
         if (pr.effect === "knockback") { b.vx = Math.sign(b.x - pr.x) * TUNING.item.knockbackVx; b.vy = TUNING.item.knockbackVy; }
         else this.takeHit();
@@ -447,7 +449,7 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 아이템 접촉 → 서버 경합 (§60) ──
     this.room.state.items.forEach((it: ItemNet, id: string) => {
       if (!it.available) return;
-      if (Math.abs(it.x - b.x) < (28 + b.w) / 2 && Math.abs(it.y - b.y) < b.h) {
+      if (Math.abs(it.x - b.x) < (TUNING.sizes.item + b.w) / 2 && Math.abs(it.y - b.y) < b.h) {
         this.room.send("claimItem", { itemId: id });
       }
     });
@@ -456,7 +458,7 @@ export class BaseworldScene extends Phaser.Scene {
     const carryables: Carryable[] = [];
     this.room.state.carryables.forEach((c: CarryNet, id: string) => {
       if (!c.alive) return;
-      const cb = { x: c.x, y: c.y, vx: 0, vy: 0, w: 36, h: 36, grounded: true, facing: 1 as const, touchingWall: 0 as const, onSlopeDir: 0 as const, gravity: true, tags: [] };
+      const cb = { x: c.x, y: c.y, vx: 0, vy: 0, w: TUNING.sizes.carryable, h: TUNING.sizes.carryable, grounded: true, facing: 1 as const, touchingWall: 0 as const, onSlopeDir: 0 as const, gravity: true, tags: [] };
       carryables.push({ id, body: cb, grabbable: true, heldBy: c.heldBy || null });
     });
     const ev = stepCarry(this.carry, this.me, input, carryables);
@@ -465,7 +467,7 @@ export class BaseworldScene extends Phaser.Scene {
     else if (ev.kind === "throw" && ev.id) {
       this.room.send("throwObj", {
         objId: ev.id,
-        x: b.x + b.facing * (b.w / 2 + 20), y: b.y - b.h * 0.5,
+        x: b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset), y: b.y - b.h * 0.5,
         vx: ev.vx ?? 0, vy: ev.vy ?? 0,
       });
     }
@@ -498,7 +500,7 @@ export class BaseworldScene extends Phaser.Scene {
 
   respawn(): void {
     this.dead = false;
-    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, 115);
+    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
     this.me.hp = 1;
     this.myRect.setVisible(true);
   }
@@ -573,7 +575,7 @@ export class BaseworldScene extends Phaser.Scene {
       r.setVisible(c.alive);
       if (!c.alive) { this.carryGhosts.delete(id); return; }   // 재생성 시 순간이동 방지(다시 생성)
       if (this.carry.heldId === id) {
-        r.setPosition(b.x + b.facing * (b.w / 2 + 20), b.y - b.h * 0.3);
+        r.setPosition(b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset), b.y - b.h * 0.3);
       } else {
         let g = this.carryGhosts.get(id);
         if (!g) { g = createGhostView(c.x, c.y); this.carryGhosts.set(id, g); }
@@ -586,7 +588,7 @@ export class BaseworldScene extends Phaser.Scene {
     });
     // 손 연출 (§30-3): 기본 손 + 캐릭터색 틴트 + 스프링(늦게 따라옴)
     if (this.carry.heldId) {
-      const hx = b.x + b.facing * (b.w / 2 + 20);
+      const hx = b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset);
       const hy = b.y - b.h * 0.3;
       this.handRect.setVisible(true);
       this.handRect.x += (hx - this.handRect.x) * TUNING.carry.handLerp;

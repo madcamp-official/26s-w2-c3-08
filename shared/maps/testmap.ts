@@ -5,8 +5,9 @@ import type { BlockSpec } from "../parts/block.js";
 import type { MonsterSpec } from "../parts/monster.js";
 import type { ItemSpec } from "../parts/item.js";
 import type { LineBounds } from "../parts/world.js";
+import { TUNING } from "../physics/tuning.js";
 
-const T = 64;
+const T = TUNING.world.tileSize;   // 타일 크기 단일 원천 — tileSize 바꾸면 맵도 비례
 
 export const TESTMAP = {
   width: 40 * T,   // 2560
