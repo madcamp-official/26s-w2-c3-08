@@ -40,16 +40,19 @@ export function checkStompedMe(me: Avatar, ghosts: (Ghost & { vy: number })[], t
   return false;
 }
 
-/** 내가 밟았는가 (공격자 연출·튕김 즉시, §14-5). 밟은 고스트 index 반환, 없으면 -1 */
-export function checkIStomped(me: Avatar, ghosts: Ghost[], t: Tuning = TUNING): number {
+/** 내가 밟았는가 (공격자 연출·튕김 즉시, §14-5). 밟은 고스트 index 반환, 없으면 -1.
+ *  reachMult: 내려찍기 시 판정 확대 배율 (아바타 한정 — 지형·블록은 무관) */
+export function checkIStomped(me: Avatar, ghosts: Ghost[], t: Tuning = TUNING, reachMult = 1): number {
   const b = me.body;
   if (b.vy < t.stomp.minFallSpeed) return -1;
+  const band = t.stomp.headBandPx * reachMult;
+  const minOv = b.w * 0.3 / reachMult;
   for (let i = 0; i < ghosts.length; i++) {
     const g = ghosts[i];
     const hOv = Math.min(right(b), g.x + g.w / 2) - Math.max(left(b), g.x - g.w / 2);
-    if (hOv <= b.w * 0.3) continue;
+    if (hOv <= minOv) continue;
     const gTop = g.y - g.h;
-    if (bottom(b) >= gTop && bottom(b) <= gTop + t.stomp.headBandPx) {
+    if (bottom(b) >= gTop && bottom(b) <= gTop + band) {
       b.vy = t.stomp.bounceVelocity;
       b.y = gTop;
       me.stompComboLeftMs = t.stomp.jumpWindowMs;   // 밟기 직후 강화 점프 창

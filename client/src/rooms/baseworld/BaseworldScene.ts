@@ -29,6 +29,9 @@ interface View {
   squash: SquashState;
   w: number; h: number;
   fxLeftMs: number;   // 연출 유예 (접촉 순간 끊김 시 깜빡임 방지)
+  lastTick: number;   // 마지막으로 본 상대 tick (백그라운드=정지 감지용)
+  lastTickAt: number; // tick이 마지막으로 오른 시각(ms)
+  stale: boolean;     // 일정 시간 tick 정지 = 탭 백그라운드 → 충돌 통과(B)
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -189,6 +192,7 @@ export class BaseworldScene extends Phaser.Scene {
       squash: createSquash(),
       w, h,
       fxLeftMs: 0,
+      lastTick: -1, lastTickAt: 0, stale: false,
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -242,7 +246,8 @@ export class BaseworldScene extends Phaser.Scene {
 
     // ── PvP: 자기 화면 판정 (§14) ──
     const GRACE = TUNING.push.visualGraceMs;
-    const ghostViews = [...this.players.values()];
+    // 정지(백그라운드) 고스트는 밀기·밟기·서기 판정에서 제외 = 충돌 통과 (B)
+    const ghostViews = [...this.players.values()].filter((v) => !v.stale);
     const ghosts = ghostViews.map((v) => ({
       x: v.ghost.x, y: v.ghost.y, w: v.w, h: v.h, vy: v.ghost.lastVy,
     }));
@@ -253,7 +258,8 @@ export class BaseworldScene extends Phaser.Scene {
     }
     this.selfFx.left = Math.max(0, this.selfFx.left - FIXED_MS);
     pushSelfOut(b, ghosts);
-    const stompedIdx = checkIStomped(this.me, ghosts);
+    const poundReach = this.me.pound !== 0 ? TUNING.stomp.poundReachMult : 1;
+    const stompedIdx = checkIStomped(this.me, ghosts, TUNING, poundReach);
     if (stompedIdx >= 0) {
       this.me.fx.add("stompedOther");
       setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
@@ -308,11 +314,14 @@ export class BaseworldScene extends Phaser.Scene {
       if (!m.alive || m.hidden) return;
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
-      const hOv = Math.min(b.x + b.w / 2, mx + m.w / 2) - Math.max(b.x - b.w / 2, mx - m.w / 2);
+      // 내려찍기 시 판정 확대 (몬스터 한정 — 지형·블록은 그대로)
+      const poundMult = prevPound === 2 ? TUNING.stomp.poundReachMult : 1;
+      const halfW = (b.w * poundMult) / 2;
+      const hOv = Math.min(b.x + halfW, mx + m.w / 2) - Math.max(b.x - halfW, mx - m.w / 2);
       const vOv = Math.min(b.y, my) - Math.max(b.y - b.h, my - m.h);
       if (hOv <= 0 || vOv <= 0) return;
       const falling = prevVy > TUNING.stomp.minFallSpeed || prevPound === 2;
-      const onHead = b.y <= my - m.h + TUNING.stomp.headBandPx;
+      const onHead = b.y <= my - m.h + TUNING.stomp.headBandPx * poundMult;
       if (falling && onHead) {
         // 밟기 성공: 즉시 튕김(손맛) + 강화점프 창 + 서버 타격 등록 (§21-2)
         b.vy = TUNING.stomp.bounceVelocity;
@@ -444,6 +453,10 @@ export class BaseworldScene extends Phaser.Scene {
       if (id === this.room.sessionId) return;
       const v = this.players.get(id);
       if (!v) return;
+      // 정지 감지 (B): tick이 staleMs 동안 안 오르면 = 탭 백그라운드 → 충돌 통과 대상
+      const nowMs = this.time.now;
+      if (p.tick !== v.lastTick) { v.lastTick = p.tick; v.lastTickAt = nowMs; v.stale = false; }
+      else if (nowMs - v.lastTickAt > TUNING.net.staleMs) v.stale = true;
       ghostServerUpdate(v.ghost, p.x, p.y, p.vx, p.vy);
       ghostStep(v.ghost, delta);
       stepSquash(v.squash);
@@ -451,6 +464,7 @@ export class BaseworldScene extends Phaser.Scene {
       v.rect.setSize(p.w, p.h);
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.setPosition(v.ghost.x, v.ghost.y);
+      v.rect.setAlpha(v.stale ? 0.35 : 1);   // 정지 = 반투명 (통과 중임을 표시)
       v.label.setPosition(v.ghost.x, v.ghost.y - p.h - 4);
     });
     // 몬스터 (dead reckoning)
