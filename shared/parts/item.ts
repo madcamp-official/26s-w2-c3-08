@@ -27,7 +27,8 @@ export function createItem(spec: ItemSpec): ItemInstance {
 
 /** 획득 적용 (서버 중재 승리 후, 자기 클라에서). 0.4초 고정 + 하이라이트(§58) */
 export function applyItem(a: Avatar, spec: ItemSpec, t: Tuning = TUNING): void {
-  a.freezeLeftMs = t.item.pickupFreezeMs;
+  // 0.4초 고정은 크기 전환에만 (그 외 정지 없음 — 2026-07-12)
+  if (spec.kind === "sizeUp" || spec.kind === "sizeDown") a.freezeLeftMs = t.item.pickupFreezeMs;
   a.fx.add("pickup");
   switch (spec.kind) {
     case "speed":

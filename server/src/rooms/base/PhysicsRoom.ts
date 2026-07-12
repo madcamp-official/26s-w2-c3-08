@@ -18,6 +18,7 @@ import {
 import { compileRules, stepRules, type Ctx } from "shared/behavior";
 import {
   GameState, PlayerState, MonsterState, BlockState, ItemState, ProjectileState,
+  CarryableState,
 } from "../schema/GameState.js";
 
 const FIXED_MS = 1000 / TUNING.world.tickRate;
@@ -25,8 +26,11 @@ const FIXED_MS = 1000 / TUNING.world.tickRate;
 /** 경합 중재 (§60): 윈도우 동안 모아 도착 빠를수록 가중치 큰 랜덤 당첨 */
 interface Claim { itemId: string; sessionId: string; at: number }
 
+export interface CarryableDef { id: string; x: number; y: number }
+
 export interface WorldDef {
   terrain: Terrain;
+  carryables?: CarryableDef[];
   blocks: BlockSpec[];
   monsters: MonsterSpec[];
   items: ItemSpec[];
@@ -43,6 +47,8 @@ export abstract class PhysicsRoom extends Room {
   protected itemsRt = new Map<string, ItemInstance>();
   protected projectilesRt = new Map<string, ProjectileInstance>();
   protected claims: Claim[] = [];
+  protected carryDefs = new Map<string, CarryableDef>();
+  protected carryRespawn = new Map<string, number>();
   protected clock_ = 0;
 
   protected abstract worldDef(): WorldDef;
@@ -90,6 +96,40 @@ export abstract class PhysicsRoom extends Room {
     },
     toggleSwitch: (_c: Client) => {
       this.state.switchOn = !this.state.switchOn;   // 상태 = 서버 권위 (§42)
+    },
+    // 잡기: 서버 소유권 확정 (선점 — §30-4 단순형). 실패 시 요청자에게 취소 통지
+    grabObj: (client: Client, m: { objId: string }) => {
+      const cs = this.state.carryables.get(m.objId);
+      if (!cs || !cs.alive || cs.heldBy) {
+        client.send("grabDenied", { objId: m.objId });
+        return;
+      }
+      cs.heldBy = client.sessionId;
+      const p = this.state.players.get(client.sessionId);
+      if (p) p.holding = m.objId;
+    },
+    // 던지기: 소유 해제 → 발사체화 → 원위치 7.5초 재생 예약 (§30·§45)
+    throwObj: (client: Client, m: { objId: string; x: number; y: number; vx: number; vy: number }) => {
+      const cs = this.state.carryables.get(m.objId);
+      if (!cs || cs.heldBy !== client.sessionId) return;
+      cs.heldBy = "";
+      cs.alive = false;
+      this.carryRespawn.set(m.objId, TUNING.rules.respawnMs);
+      const p = this.state.players.get(client.sessionId);
+      if (p) p.holding = "";
+      const spec: ProjectileSpec = {
+        asset: "rock", trajectory: "arc", aim: "fixed",
+        fixedDir: { x: m.vx, y: m.vy }, speed: "normal",
+        pierce: false, onTerrain: "die", stompable: true, grabbable: true, effect: "knockback",
+      };
+      const pr = spawnProjectile(spec, m.x, m.y, m.vx >= 0 ? 1 : -1, undefined, undefined, client.sessionId);
+      pr.body.vx = m.vx; pr.body.vy = m.vy;
+      this.projectilesRt.set(pr.id, pr);
+      const ps = new ProjectileState();
+      ps.asset = "rock"; ps.x = pr.body.x; ps.y = pr.body.y;
+      ps.vx = pr.body.vx; ps.vy = pr.body.vy;
+      ps.stompable = true; ps.effect = "knockback"; ps.ownerId = client.sessionId;
+      this.state.projectiles.set(pr.id, ps);
     },
     claimItem: (client: Client, m: { itemId: string }) => {
       this.claims.push({ itemId: m.itemId, sessionId: client.sessionId, at: this.clock_ });
@@ -140,6 +180,12 @@ export abstract class PhysicsRoom extends Room {
       st.asset = msSpec.asset; st.x = msSpec.x; st.y = msSpec.y;
       st.w = msSpec.w; st.h = msSpec.h; st.hp = msSpec.hp;
       this.state.monsters.set(msSpec.id, st);
+    }
+    for (const cd of def.carryables ?? []) {
+      this.carryDefs.set(cd.id, cd);
+      const st = new CarryableState();
+      st.x = cd.x; st.y = cd.y;
+      this.state.carryables.set(cd.id, st);
     }
     for (const it of def.items) {
       this.itemsRt.set(it.id, createItem(it));
@@ -267,6 +313,29 @@ export abstract class PhysicsRoom extends Room {
       }
     }
 
+    // ── 잡기 파츠: 들려 있으면 소유자 위치 추종, 소멸 시 7.5초 재생 (§45) ──
+    this.state.carryables.forEach((cs, id) => {
+      if (cs.heldBy) {
+        const holder = this.state.players.get(cs.heldBy);
+        if (holder) {
+          cs.x = holder.x + holder.facing * (holder.w / 2 + 20);
+          cs.y = holder.y - holder.h * 0.3;
+        } else {
+          cs.heldBy = "";   // 소유자 이탈 → 그 자리에 낙하 상태로
+        }
+      }
+      if (!cs.alive) {
+        const left = (this.carryRespawn.get(id) ?? 0) - FIXED_MS;
+        this.carryRespawn.set(id, left);
+        if (left <= 0) {
+          const def0 = this.carryDefs.get(id);
+          if (def0) { cs.x = def0.x; cs.y = def0.y; }
+          cs.alive = true;
+          this.carryRespawn.delete(id);
+        }
+      }
+    });
+
     // ── 아이템 재생성 + 경합 중재 (§60) ──
     for (const [id, it] of this.itemsRt) {
       const st = this.state.items.get(id);
@@ -346,6 +415,9 @@ export abstract class PhysicsRoom extends Room {
   }
 
   onLeave(client: Client): void {
+    this.state.carryables.forEach((cs) => {
+      if (cs.heldBy === client.sessionId) cs.heldBy = "";
+    });
     this.state.players.delete(client.sessionId);
     console.log(`[room] leave ${client.sessionId} (${this.state.players.size}명)`);
   }

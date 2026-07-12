@@ -8,6 +8,7 @@ export class BaseworldRoom extends PhysicsRoom {
   protected worldDef(): WorldDef {
     return {
       terrain: TESTMAP.terrain,
+      carryables: TESTMAP.carryables,
       blocks: TESTMAP.blocks,
       monsters: TESTMAP.monsters,
       items: TESTMAP.items,

@@ -43,6 +43,7 @@ export class BaseworldScene extends Phaser.Scene {
   monsters = new Map<string, View>();
   projectiles = new Map<string, Phaser.GameObjects.Rectangle>();
   itemRects = new Map<string, Phaser.GameObjects.Rectangle>();
+  carryRects = new Map<string, Phaser.GameObjects.Rectangle>();
   blockRects = new Map<string, Phaser.GameObjects.Rectangle>();
   myRect!: Phaser.GameObjects.Rectangle;
   handRect!: Phaser.GameObjects.Rectangle;
@@ -63,7 +64,7 @@ export class BaseworldScene extends Phaser.Scene {
   /** 지연 큰 환경: join 직후 첫 상태 도착 전엔 스키마 맵이 undefined (§28 가드) */
   stateReady(): boolean {
     const s = this.room.state;
-    return !!(s && s.players && s.blocks && s.monsters && s.items && s.projectiles);
+    return !!(s && s.players && s.blocks && s.monsters && s.items && s.projectiles && s.carryables);
   }
 
   // ── 지형 (동적 블록 반영) ──
@@ -140,6 +141,14 @@ export class BaseworldScene extends Phaser.Scene {
     // 아이템
     $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
       this.itemRects.set(id, this.add.rectangle(it.x, it.y, 28, 28, 0x66ffcc).setOrigin(0.5, 1).setDepth(3));
+    });
+    // 잡기 파츠 (돌)
+    $(this.room.state).carryables.onAdd((c: CarryNet, id: string) => {
+      this.carryRects.set(id, this.add.rectangle(c.x, c.y, 36, 36, 0xb08850).setOrigin(0.5, 1).setDepth(3));
+    });
+    // 잡기 거부 (서버 소유권 패배 §30-4) — 손에서 사라짐, 이전 행동 원복 없음
+    this.room.onMessage("grabDenied", (m: { objId: string }) => {
+      if (this.carry.heldId === m.objId) this.carry.heldId = null;
     });
     // 블록
     $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
@@ -299,10 +308,23 @@ export class BaseworldScene extends Phaser.Scene {
       }
     });
 
-    // ── 잡기 (§30) — 지금 잡을 수 있는 대상: 없음(껍질·밥옴 파츠 추후) → grabMiss 하이라이트만
+    // ── 잡기 (§30): 로컬 즉시 잡기 + 서버 소유권 통지 ──
     const carryables: Carryable[] = [];
+    this.room.state.carryables.forEach((c: CarryNet, id: string) => {
+      if (!c.alive) return;
+      const cb = { x: c.x, y: c.y, vx: 0, vy: 0, w: 36, h: 36, grounded: true, facing: 1 as const, touchingWall: 0 as const, onSlopeDir: 0 as const, gravity: true, tags: [] };
+      carryables.push({ id, body: cb, grabbable: true, heldBy: c.heldBy || null });
+    });
     const ev = stepCarry(this.carry, this.me, input, carryables);
     if (ev.kind === "grabMiss") this.grabHighlightUntil = now + 800;
+    else if (ev.kind === "grab" && ev.id) this.room.send("grabObj", { objId: ev.id });
+    else if (ev.kind === "throw" && ev.id) {
+      this.room.send("throwObj", {
+        objId: ev.id,
+        x: b.x + b.facing * (b.w / 2 + 20), y: b.y - b.h * 0.5,
+        vx: ev.vx ?? 0, vy: ev.vy ?? 0,
+      });
+    }
 
     // ── 압사 (§35-L) ──
     if (b.crushed && this.me.freezeLeftMs <= 0) this.die();
@@ -386,6 +408,31 @@ export class BaseworldScene extends Phaser.Scene {
         else r.setStrokeStyle();
       }
     });
+    // 잡기 파츠 렌더 (내가 든 것은 로컬 핀 §30-2, 남이 든 것은 서버 추종)
+    this.room.state.carryables.forEach((c: CarryNet, id: string) => {
+      const r = this.carryRects.get(id);
+      if (!r) return;
+      r.setVisible(c.alive);
+      if (!c.alive) return;
+      if (this.carry.heldId === id) {
+        r.setPosition(b.x + b.facing * (b.w / 2 + 20), b.y - b.h * 0.3);
+      } else {
+        r.setPosition(c.x, c.y);
+      }
+      if (this.grabHighlightUntil > this.time.now && !c.heldBy) r.setStrokeStyle(3, 0xffff00);
+      else r.setStrokeStyle();
+    });
+    // 손 연출 (§30-3): 기본 손 + 캐릭터색 틴트 + 스프링(늦게 따라옴)
+    if (this.carry.heldId) {
+      const hx = b.x + b.facing * (b.w / 2 + 20);
+      const hy = b.y - b.h * 0.3;
+      this.handRect.setVisible(true);
+      this.handRect.x += (hx - this.handRect.x) * TUNING.carry.handLerp;
+      this.handRect.y += (hy - this.handRect.y) * TUNING.carry.handLerp;
+      this.handRect.fillColor = 0xcfe0ff;   // 캐릭터(파랑) 기반 밝은 틴트
+    } else {
+      this.handRect.setVisible(false);
+    }
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       const r = this.blockRects.get(id);
       if (!r) return;
@@ -440,4 +487,5 @@ interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h
 interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; windupAnim: string; windupEndsAt: number }
 interface BlockNet { x: number; y: number; active: boolean; emptied: boolean; visibleNow: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
+interface CarryNet { x: number; y: number; alive: boolean; heldBy: string }
 interface ProjNet { asset: string; x: number; y: number; vx: number; vy: number; effect: string; ownerId: string }

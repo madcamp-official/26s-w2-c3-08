@@ -68,12 +68,20 @@ export class ProjectileState extends Schema {
   @type("string") ownerId = "";
 }
 
+export class CarryableState extends Schema {
+  @type("number") x = 0;
+  @type("number") y = 0;
+  @type("boolean") alive = true;
+  @type("string") heldBy = "";
+}
+
 export class GameState extends Schema {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MonsterState }) monsters = new MapSchema<MonsterState>();
   @type({ map: BlockState }) blocks = new MapSchema<BlockState>();
   @type({ map: ItemState }) items = new MapSchema<ItemState>();
   @type({ map: ProjectileState }) projectiles = new MapSchema<ProjectileState>();
+  @type({ map: CarryableState }) carryables = new MapSchema<CarryableState>();
   @type("boolean") switchOn = false;
   @type("number") serverTime = 0;        // 선딜 절대시각 기준 클록
 }

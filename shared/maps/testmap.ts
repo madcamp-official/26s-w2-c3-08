@@ -87,6 +87,12 @@ export const TESTMAP = {
     },
   ] as MonsterSpec[],
 
+  // 잡고 던질 수 있는 일반 파츠 (K로 잡기 §30)
+  carryables: [
+    { id: "rock1", x: 11 * T, y: 13 * T },
+    { id: "rock2", x: 26.5 * T, y: 13 * T },
+  ],
+
   items: [
     { id: "it1", kind: "speed", x: 10 * T, y: 12.5 * T },
     { id: "it2", kind: "sizeUp", x: 19 * T, y: 10 * T },
