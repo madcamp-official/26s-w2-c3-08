@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# Relay Map Maker Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Vite + React + TypeScript + Phaser + Zustand 기반 프론트엔드 MVP입니다.
 
-Currently, two official plugins are available:
+세부 구현 범위와 시연 체크리스트는 [FRONTEND_IMPLEMENTATION.md](FRONTEND_IMPLEMENTATION.md)에 정리했습니다.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 실행
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev --workspace client
+npm run preview --workspace client
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+개발 서버:
+
+- `http://localhost:5174/`
+- `http://192.168.0.200:5174/`
+- `https://mad-mario.madcamp-kaist.org/`
+
+기본은 Mock 모드라 백엔드 없이도 로그인부터 결과 화면까지 시연할 수 있습니다.
+
+## 검증
+
+```bash
+npm run lint --workspace client -- --quiet
+npm run smoke --workspace client
+npm run build --workspace client
+```
+
+## 주요 환경 변수
+
+| 변수 | 설명 |
+|---|---|
+| `VITE_REMOTE_API=true` | 실제 `/api` REST 호출 사용 |
+| `VITE_API_PROXY_TARGET=http://localhost:3000` | 개발 서버 API 프록시 대상 |
+| `VITE_COLYSEUS_URL=wss://example.com` | Colyseus 서버 주소 |
+| `VITE_LOCAL_REALTIME=false` | BroadcastChannel 로컬 실시간 폴백 비활성화 |
+| `VITE_ALLOWED_HOSTS=host1,host2` | 추가 Vite 허용 호스트 |

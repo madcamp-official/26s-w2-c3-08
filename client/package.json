@@ -7,12 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "smoke": "node scripts/frontend-smoke.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.17.43",
     "phaser": "^4.2.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-sketch-canvas": "^8.0.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

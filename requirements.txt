@@ -1,0 +1,38 @@
+# Python modules for the Qwen prompt-refinement service.
+#
+# This file is for the Python Qwen server described in qwen.md:
+#   FastAPI Gateway + local vLLM OpenAI-compatible engine.
+#
+# The backend server is Node.js/TypeScript and uses backend/package.json,
+# not requirements.txt.
+#
+# Recommended install:
+#   python3 -m venv .venv-qwen
+#   source .venv-qwen/bin/activate
+#   python -m pip install --upgrade pip
+#   python -m pip install -r requirements.txt
+
+# Qwen FastAPI Gateway
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+python-multipart>=0.0.20,<1
+pydantic>=2.10,<3
+pydantic-settings>=2.7,<3
+pillow>=11,<12
+httpx>=0.28,<1
+openai>=1.58,<2
+python-dotenv>=1.0,<2
+
+# Local Qwen2-VL inference engine.
+# Install this in a fresh GPU environment. If CUDA/PyTorch wheel resolution
+# fails, follow qwen.md and install vLLM with uv instead.
+vllm>=0.8.5
+
+# Optional Transformers fallback only.
+# Keep these commented out for the default install because CUDA/PyTorch and
+# flash-attn builds are environment-sensitive.
+# torch
+# transformers
+# accelerate
+# qwen-vl-utils
+# flash-attn

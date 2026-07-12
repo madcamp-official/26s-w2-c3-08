@@ -1,0 +1,13 @@
+[Unit]
+Description=Qwen2-VL Prompt Gateway
+After=network.target qwen-vllm.service
+
+[Service]
+WorkingDirectory=/opt/qwen-prompt-server
+EnvironmentFile=/opt/qwen-prompt-server/.env
+ExecStart=/opt/qwen-prompt-server/.venv-gateway/bin/uvicorn app:app --host ${QWEN_SERVER_HOST} --port ${QWEN_SERVER_PORT}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
