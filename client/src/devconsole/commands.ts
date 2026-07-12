@@ -96,6 +96,35 @@ export const COMMANDS: Record<string, Command> = {
       ctx.print(`serverview ${sc.svSubject} [${[...sc.svOpts].join(",")}]`);
     },
   },
+  macro: {
+    usage: "macro record|stop|play reset|play loop|status",
+    desc: "키 입력 녹화·반복 (혼자 2인 테스트용 §11)",
+    run: (args, ctx) => {
+      const sc = getScene();
+      if (!sc) { ctx.print("게임 미실행 — join 먼저"); return; }
+      const sub = args[0];
+      if (sub === "record") {
+        sc.macroBuf = []; sc.macroIdx = 0;
+        sc.macroStart = { x: sc.me.body.x, y: sc.me.body.y };
+        sc.macroState = "recording";
+        ctx.print("녹화 시작 — macro stop으로 종료");
+      } else if (sub === "stop") {
+        if (sc.macroState === "recording") ctx.print(`녹화 종료 (${sc.macroBuf.length}틱 저장)`);
+        else ctx.print("재생 중단");
+        sc.macroState = "idle";
+      } else if (sub === "play") {
+        if (sc.macroBuf.length === 0) { ctx.print("저장된 매크로 없음 — macro record 먼저"); return; }
+        sc.macroMode = args[1] === "reset" ? "reset" : "loop";
+        sc.macroIdx = 0;
+        sc.macroState = "playing";
+        ctx.print(`재생 시작 (${sc.macroMode}) — macro stop으로 중단`);
+      } else {
+        ctx.print(`상태: ${sc.macroState}` + (sc.macroState === "recording" ? ` (${sc.macroBuf.length}틱)` :
+          sc.macroState === "playing" ? ` (${sc.macroMode}, ${sc.macroIdx}/${sc.macroBuf.length})` :
+          ` (버퍼 ${sc.macroBuf.length}틱)`));
+      }
+    },
+  },
   clear: { usage: "clear", desc: "출력 지우기", run: () => {} },
 };
 

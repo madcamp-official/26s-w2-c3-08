@@ -40,21 +40,23 @@ export function checkStompedMe(me: Avatar, ghosts: (Ghost & { vy: number })[], t
   return false;
 }
 
-/** 내가 밟았는가 (공격자 연출·튕김은 즉시, §14-5) */
-export function checkIStomped(me: Avatar, ghosts: Ghost[], t: Tuning = TUNING): boolean {
+/** 내가 밟았는가 (공격자 연출·튕김 즉시, §14-5). 밟은 고스트 index 반환, 없으면 -1 */
+export function checkIStomped(me: Avatar, ghosts: Ghost[], t: Tuning = TUNING): number {
   const b = me.body;
-  if (b.vy < t.stomp.minFallSpeed) return false;
-  for (const g of ghosts) {
+  if (b.vy < t.stomp.minFallSpeed) return -1;
+  for (let i = 0; i < ghosts.length; i++) {
+    const g = ghosts[i];
     const hOv = Math.min(right(b), g.x + g.w / 2) - Math.max(left(b), g.x - g.w / 2);
     if (hOv <= b.w * 0.3) continue;
     const gTop = g.y - g.h;
     if (bottom(b) >= gTop && bottom(b) <= gTop + t.stomp.headBandPx) {
       b.vy = t.stomp.bounceVelocity;
       b.y = gTop;
-      return true;
+      me.stompComboLeftMs = t.stomp.jumpWindowMs;   // 밟기 직후 강화 점프 창
+      return i;
     }
   }
-  return false;
+  return -1;
 }
 
 /** 머리 위 서기: 느리게 내려앉으면 고스트 머리를 바닥처럼 지지 */

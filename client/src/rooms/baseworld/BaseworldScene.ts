@@ -53,6 +53,12 @@ export class BaseworldScene extends Phaser.Scene {
   svOpts = new Set<number>();
   dead = false;
   deadUntil = 0;
+  // 매크로 (§11 스펙): record → stop(확정) → play reset|loop
+  macroState: "idle" | "recording" | "playing" = "idle";
+  macroBuf: AvatarInput[] = [];
+  macroIdx = 0;
+  macroMode: "reset" | "loop" = "loop";
+  macroStart = { x: 0, y: 0 };
   grabHighlightUntil = 0;
   monsterHitSeq = 0;
 
@@ -205,11 +211,24 @@ export class BaseworldScene extends Phaser.Scene {
       if (now >= this.deadUntil) this.respawn();
       return;
     }
-    const input: AvatarInput = {
+    let input: AvatarInput = {
       left: this.held("left"), right: this.held("right"),
       jump: this.held("jump"), down: this.held("down"),
       run: this.held("run"), grab: this.held("grab"), tick: this.tick,
     };
+    // ── 매크로: 녹화 = 실제 입력 기록 / 재생 = 버퍼 입력으로 대체 (§11) ──
+    if (this.macroState === "recording") {
+      this.macroBuf.push({ ...input });
+    } else if (this.macroState === "playing" && this.macroBuf.length > 0) {
+      if (this.macroIdx >= this.macroBuf.length) {
+        this.macroIdx = 0;
+        if (this.macroMode === "reset") {
+          // 위치·능력 전부 초기화 (로컬 권위라 서버 동기화 불필요 — relay가 전파)
+          this.me = createAvatar(this.macroStart.x, this.macroStart.y, 115);
+        }
+      }
+      input = { ...this.macroBuf[this.macroIdx++], tick: this.tick };
+    }
     const terrain = this.currentTerrain();
     const b = this.me.body;
     const prevVy = b.vy;
@@ -218,21 +237,37 @@ export class BaseworldScene extends Phaser.Scene {
     stepAvatar(this.me, input, FIXED_MS, terrain);
 
     // ── PvP: 자기 화면 판정 (§14) ──
-    const ghosts = [...this.players.entries()].map(([, v]) => ({
+    const ghostViews = [...this.players.values()];
+    const ghosts = ghostViews.map((v) => ({
       x: v.ghost.x, y: v.ghost.y, w: v.w, h: v.h, vy: v.ghost.lastVy,
     }));
+    // 매 틱 원인 리셋 → 접촉 시 재설정 (원인 지속=유지, 소멸=원복 §26)
+    for (const v of ghostViews) setSquash(v.squash, "none");
     pushSelfOut(b, ghosts);
-    if (checkIStomped(this.me, ghosts)) this.me.fx.add("stompedOther");
+    const stompedIdx = checkIStomped(this.me, ghosts);
+    if (stompedIdx >= 0) {
+      this.me.fx.add("stompedOther");
+      setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대도 찌부 (내 화면 연출)
+    }
     const stompedMe = checkStompedMe(this.me, ghosts);
     headStand(b, ghosts);
-    // 자기 변형 원인 갱신 (§26 — 원인 지속=유지)
+    // 접촉해 밀리는 상대 찌부 + 내 찌부 (§14-3 양쪽)
+    let pushedGhost = -1;
+    for (let i = 0; i < ghosts.length; i++) {
+      const g = ghosts[i];
+      if (Math.abs(g.x - b.x) < (g.w + b.w) / 2 && g.y > b.y - b.h && g.y - g.h < b.y) {
+        pushedGhost = i;
+        setSquash(ghostViews[i].squash, "pushed", g.x < b.x ? -1 : 1);  // 상대가 밀리는 방향
+      }
+    }
     if (stompedMe) setSquash(this.mySquash, "stomped");
     else if (this.me.fx.has("ceilBonk")) setSquash(this.mySquash, "ceil");
-    else if (ghosts.some((g) => Math.abs(g.x - b.x) < (g.w + b.w) / 2 && Math.abs(g.y - b.y) < b.h))
-      setSquash(this.mySquash, "pushed", b.x < (ghosts[0]?.x ?? 0) ? -1 : 1);
+    else if (pushedGhost >= 0)
+      setSquash(this.mySquash, "pushed", b.x < ghosts[pushedGhost].x ? -1 : 1);
     else setSquash(this.mySquash, "none");
 
     // ── 몬스터: 자기 화면 판정 ──
+    for (const v of this.monsters.values()) setSquash(v.squash, "none");
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       if (!m.alive || m.hidden) return;
       const v = this.monsters.get(id);
@@ -243,10 +278,11 @@ export class BaseworldScene extends Phaser.Scene {
       const falling = prevVy > TUNING.stomp.minFallSpeed || prevPound === 2;
       const onHead = b.y <= my - m.h + TUNING.stomp.headBandPx;
       if (falling && onHead) {
-        // 밟기 성공: 즉시 튕김(손맛) + 서버에 타격 등록 (§21-2)
+        // 밟기 성공: 즉시 튕김(손맛) + 강화점프 창 + 서버 타격 등록 (§21-2)
         b.vy = TUNING.stomp.bounceVelocity;
+        this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
-        v && setSquash(v.squash, "stomped");
+        if (v) setSquash(v.squash, "stomped");
       } else if (this.me.invincibleLeftMs > 0) {
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
       } else {

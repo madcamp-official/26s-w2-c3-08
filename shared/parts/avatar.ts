@@ -33,6 +33,7 @@ export interface Avatar {
   pound: PoundState;
   poundHangLeftMs: number;
   poundLandLeftMs: number;
+  stompComboLeftMs: number;  // 밟기 직후 강화 점프 유예 (마리오식)
   airborneStartY: number;    // 내려찍기 최소높이 판정
   crouch: boolean;
   slide: boolean;
@@ -57,7 +58,7 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
   return {
     body: createBody(x, y, w, hitboxH, ["player"]),
     baseW: w, baseH: hitboxH, sizeStage: 2, hp: 1,
-    pound: 0, poundHangLeftMs: 0, poundLandLeftMs: 0, airborneStartY: y,
+    pound: 0, poundHangLeftMs: 0, poundLandLeftMs: 0, stompComboLeftMs: 0, airborneStartY: y,
     crouch: false, slide: false, spinLeftMs: 0, spinUsed: false,
     wallGrabMs: 0, wallClingGraceMs: 0,
     coyoteLeftMs: 0, jumpBufferLeftMs: 0, prevJumpHeld: false,
@@ -209,9 +210,14 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   }
   a.spinLeftMs = Math.max(0, a.spinLeftMs - dtMs);
 
-  // ── 점프 (내려찍기 점프 배수) ───────────────────────
-  if (a.jumpBufferLeftMs > 0 && (b.grounded || a.coyoteLeftMs > 0)) {
-    const mult = a.poundLandLeftMs > 0 ? t.pound.jumpMult : 1;
+  // ── 점프 (내려찍기 점프 배수 / 밟기 직후 강화 — 선입력 버퍼가 창에 적용돼 씹힘 방지) ──
+  a.stompComboLeftMs = Math.max(0, a.stompComboLeftMs - dtMs);
+  if (a.jumpBufferLeftMs > 0 && (b.grounded || a.coyoteLeftMs > 0 || a.stompComboLeftMs > 0)) {
+    const mult = Math.max(
+      a.poundLandLeftMs > 0 ? t.pound.jumpMult : 1,
+      a.stompComboLeftMs > 0 ? t.stomp.jumpMult : 1,
+    );
+    a.stompComboLeftMs = 0;
     doJump(a, t, mult);
   }
   if (b.grounded) a.poundLandLeftMs = Math.max(0, a.poundLandLeftMs - dtMs);
