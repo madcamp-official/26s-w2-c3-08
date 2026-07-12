@@ -60,9 +60,16 @@ export class BaseworldScene extends Phaser.Scene {
     this.room = room;
   }
 
+  /** 지연 큰 환경: join 직후 첫 상태 도착 전엔 스키마 맵이 undefined (§28 가드) */
+  stateReady(): boolean {
+    const s = this.room.state;
+    return !!(s && s.players && s.blocks && s.monsters && s.items && s.projectiles);
+  }
+
   // ── 지형 (동적 블록 반영) ──
   currentTerrain(): Terrain {
     const solids = [...TESTMAP.terrain.solids];
+    if (!this.room.state?.blocks) return { solids, slopes: TESTMAP.terrain.slopes };
     this.room.state.blocks.forEach((bs: { x: number; y: number; active: boolean; visibleNow: boolean }, id: string) => {
       if (!bs.active || !bs.visibleNow) return;
       const spec = TESTMAP.blocks.find((b) => b.id === id);
@@ -182,6 +189,7 @@ export class BaseworldScene extends Phaser.Scene {
   }
 
   fixedTick(): void {
+    if (!this.stateReady()) return;   // 첫 상태 도착 전 스킵 (§28)
     this.tick++;
     const now = this.time.now;
     if (this.dead) {
@@ -330,6 +338,7 @@ export class BaseworldScene extends Phaser.Scene {
   }
 
   render(delta: number): void {
+    if (!this.stateReady()) return;   // 첫 상태 도착 전 스킵 (§28)
     const b = this.me.body;
     stepSquash(this.mySquash);
     this.myRect.setSize(b.w, b.h);
