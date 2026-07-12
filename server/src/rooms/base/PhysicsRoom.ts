@@ -164,6 +164,7 @@ export abstract class PhysicsRoom extends Room {
   };
 
   onCreate(): void {
+    this.setPatchRate(1000 / TUNING.net.sendRateHz);   // 상태 브로드캐스트 30Hz (기본 20Hz→끊김 완화)
     const def = this.worldDef();
     this.terrainBase = def.terrain;
     this.line = def.line;

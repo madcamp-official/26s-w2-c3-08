@@ -267,6 +267,19 @@ export class BaseworldScene extends Phaser.Scene {
     }
     const stompedMe = checkStompedMe(this.me, ghosts);
     headStand(b, ghosts);
+    // 아래→위 충돌: 상승 중 상대 몸 밑면에 머리 박음 = 천장 판정(마리오식) → 상승 취소 + 천장 연출
+    if (b.vy < 0) {
+      const headY = b.y - b.h;
+      for (const g of ghosts) {
+        const hOv = Math.min(b.x + b.w / 2, g.x + g.w / 2) - Math.max(b.x - b.w / 2, g.x - g.w / 2);
+        if (hOv <= b.w * 0.3) continue;
+        if (headY <= g.y && headY >= g.y - TUNING.stomp.headBandPx) {
+          b.vy = 0; b.y = g.y + b.h;      // 머리를 상대 밑면에 붙이고 상승 정지
+          this.me.fx.add("ceilBonk");
+          break;
+        }
+      }
+    }
     // 밀기 연출 역할 구분 (§26 정정):
     //  - 밀리는 쪽 = squeeze(찌부)
     //  - 미는 쪽 = 찌부 아님, 상대가 찌부된 만큼 미는 방향으로 스프라이트 shift
@@ -286,13 +299,14 @@ export class BaseworldScene extends Phaser.Scene {
         ghostViews[i].fxLeftMs = GRACE;
         this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
       } else if (iPush) {
-        // 내가 밈: 상대=찌부(폭×RATIO), 나=같은 px만큼 파고드는 shift
+        // 내가 밈: 상대=찌부, 나=상대 접촉면이 들어간 만큼 shift.
+        // 찌부는 중심 기준이라 접촉면 후퇴 = 폭×RATIO의 절반 → shift도 ÷2로 일치.
         setSquash(ghostViews[i].squash, "squeeze", dirToGhost, RATIO);
         ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * RATIO, left: GRACE };
+        this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * RATIO / 2, left: GRACE };
       } else if (ghostPush) {
-        // 상대가 나를 밈: 나=찌부, 상대=내 찌부량(px)만큼 shift
-        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * RATIO);
+        // 상대가 나를 밈: 나=찌부, 상대=내 접촉면 후퇴량(폭×RATIO÷2)만큼 shift
+        setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * RATIO / 2);
         ghostViews[i].fxLeftMs = GRACE;
         this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: RATIO, left: GRACE };
       }
@@ -447,7 +461,9 @@ export class BaseworldScene extends Phaser.Scene {
     this.myRect.setSize(b.w, b.h);
     this.myRect.setScale(this.mySquash.sx, this.mySquash.sy);
     this.myRect.setPosition(b.x + this.mySquash.offsetX, b.y + this.mySquash.offsetY);
-    this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55 : this.me.pound !== 0 ? 0xffcc33 : 0x4488ff;
+    // 무적=노랑 / 내려찍기·공중스핀=주황(애니메이션 없어 구별용) / 평상=파랑
+    this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55
+      : (this.me.pound !== 0 || this.me.spinLeftMs > 0) ? 0xffcc33 : 0x4488ff;
     // 고스트 플레이어
     this.room.state.players.forEach((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId) return;
@@ -455,10 +471,11 @@ export class BaseworldScene extends Phaser.Scene {
       if (!v) return;
       // 정지 감지 (B): tick이 staleMs 동안 안 오르면 = 탭 백그라운드 → 충돌 통과 대상
       const nowMs = this.time.now;
-      if (p.tick !== v.lastTick) { v.lastTick = p.tick; v.lastTickAt = nowMs; v.stale = false; }
-      else if (nowMs - v.lastTickAt > TUNING.net.staleMs) v.stale = true;
-      ghostServerUpdate(v.ghost, p.x, p.y, p.vx, p.vy);
-      ghostStep(v.ghost, delta);
+      if (p.tick !== v.lastTick) {
+        v.lastTick = p.tick; v.lastTickAt = nowMs; v.stale = false;
+        ghostServerUpdate(v.ghost, p.x, p.y, p.vx, p.vy);   // 새 패치 도착 시에만 재기준점
+      } else if (nowMs - v.lastTickAt > TUNING.net.staleMs) v.stale = true;
+      ghostStep(v.ghost, delta);   // 매 프레임: 속도로 외삽 + LERP 수렴
       stepSquash(v.squash);
       v.w = p.w; v.h = p.h;
       v.rect.setSize(p.w, p.h);
@@ -471,8 +488,8 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const v = this.monsters.get(id);
       if (!v) return;
-      ghostServerUpdate(v.ghost, m.x, m.y, m.vx, m.vy);
-      ghostStep(v.ghost, delta, TUNING.net.monsterLerp);
+      if (m.x !== v.ghost.srvX || m.y !== v.ghost.srvY) ghostServerUpdate(v.ghost, m.x, m.y, m.vx, m.vy); // 새 패치만
+      ghostStep(v.ghost, delta, TUNING.net.monsterLerp);   // 매 프레임 외삽+수렴
       stepSquash(v.squash);
       const visible = m.alive && !m.hidden;
       v.rect.setVisible(visible); v.label.setVisible(visible);

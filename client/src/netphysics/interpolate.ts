@@ -5,15 +5,17 @@ export interface GhostView {
   x: number; y: number;       // 화면 표시 좌표 (외삽+보간 결과)
   lastX: number; lastY: number;
   lastVx: number; lastVy: number;
+  srvX: number; srvY: number;  // 마지막으로 받은 "서버 원본" 좌표 (새 패치 감지용)
 }
 
 export function createGhostView(x: number, y: number): GhostView {
-  return { x, y, lastX: x, lastY: y, lastVx: 0, lastVy: 0 };
+  return { x, y, lastX: x, lastY: y, lastVx: 0, lastVy: 0, srvX: x, srvY: y };
 }
 
-/** 서버 상태 수신 시 호출 */
+/** 새 서버 패치 도착 시에만 호출 (매 프레임 X). 외삽 누적값을 서버값으로 재기준점 */
 export function ghostServerUpdate(g: GhostView, x: number, y: number, vx: number, vy: number): void {
   g.lastX = x; g.lastY = y; g.lastVx = vx; g.lastVy = vy;
+  g.srvX = x; g.srvY = y;
 }
 
 /** 매 프레임: 외삽된 목표를 향해 LERP */

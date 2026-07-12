@@ -129,7 +129,8 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
       if (b.grounded) {
         a.pound = 0;
         a.poundLandLeftMs = t.pound.jumpWindowMs;
-        if (b.onSlopeDir !== 0) a.slide = true;
+        // 경사면 착지 → 슬라이드: 0이 아닌 일정 시작속도에서 출발해 가속(§내려찍기 슬라이드)
+        if (b.onSlopeDir !== 0) { a.slide = true; b.vx = -b.onSlopeDir * t.slide.slopeStartSpeed; }
         a.fx.add("poundLand");
       }
       return;
