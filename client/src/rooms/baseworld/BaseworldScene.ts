@@ -63,7 +63,7 @@ export class BaseworldScene extends Phaser.Scene {
   grabHighlightUntil = 0;
   monsterHitSeq = 0;
   // 자기 스프라이트 연출 (유예 포함): kind/dir/amount/남은ms
-  selfFx = { kind: "none" as "none" | "stomped" | "shift" | "ceil", dir: 1, amt: 8, left: 0 };
+  selfFx = { kind: "none" as "none" | "stomped" | "shift" | "squeeze" | "ceil", dir: 1, amt: 8, left: 0 };
 
   constructor(room: Room) {
     super("baseworld");
@@ -273,16 +273,21 @@ export class BaseworldScene extends Phaser.Scene {
       // 상대가 나를 향해 이동 중이면 "상대가 미는 중"
       const ghostPush = Math.abs(ghostViews[i].ghost.lastVx) > 40
         && Math.sign(ghostViews[i].ghost.lastVx) === -dirToGhost;
-      if (iPush) {
-        // 상대 찌부 + 나는 상대 찌부량만큼 파고드는 shift
+      if (iPush && ghostPush) {
+        // 맞밀기: 둘 다 찌부 (서로 밀어붙임)
+        setSquash(ghostViews[i].squash, "squeeze", dirToGhost);
+        ghostViews[i].fxLeftMs = GRACE;
+        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: 0, left: GRACE };
+      } else if (iPush) {
+        // 내가 밈: 상대=찌부, 나=상대 찌부량만큼 파고드는 shift
         setSquash(ghostViews[i].squash, "squeeze", dirToGhost);
         ghostViews[i].fxLeftMs = GRACE;
         this.selfFx = { kind: "shift", dir: dirToGhost, amt: g.w * 0.2 * 0.5, left: GRACE };
       } else if (ghostPush) {
-        // 상대가 나를 밈: 상대는 미는 쪽(shift), 나는 밀린 방향으로 살짝 이동
+        // 상대가 나를 밈: 나=찌부(밀리는 쪽), 상대=내 찌부량만큼 파고드는 shift
         setSquash(ghostViews[i].squash, "shift", -dirToGhost, b.w * 0.2 * 0.5);
         ghostViews[i].fxLeftMs = GRACE;
-        this.selfFx = { kind: "shift", dir: -dirToGhost, amt: 8, left: GRACE };
+        this.selfFx = { kind: "squeeze", dir: -dirToGhost, amt: 0, left: GRACE };
       }
     }
     // 자기 스프라이트 연출 (우선순위: 밟힘 > 천장 > shift 유예)
@@ -290,6 +295,7 @@ export class BaseworldScene extends Phaser.Scene {
     else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE }; }
     if (this.selfFx.left > 0) {
       if (this.selfFx.kind === "shift") setSquash(this.mySquash, "shift", this.selfFx.dir, this.selfFx.amt);
+      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir);
       else setSquash(this.mySquash, this.selfFx.kind === "none" ? "none" : this.selfFx.kind);
     } else {
       setSquash(this.mySquash, "none");
