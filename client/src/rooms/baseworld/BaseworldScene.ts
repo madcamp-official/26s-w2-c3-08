@@ -502,7 +502,7 @@ export class BaseworldScene extends Phaser.Scene {
       v.w = p.w; v.h = p.h;
       v.rect.setSize(p.w, p.h);
       v.rect.setScale(v.squash.sx, v.squash.sy);
-      v.rect.setPosition(v.ghost.x, v.ghost.y);
+      v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);   // 찌부/shift 앵커 적용(내 몸과 동일)
       v.rect.setAlpha(v.stale ? 0.35 : 1);   // 정지 = 반투명 (통과 중임을 표시)
       v.label.setPosition(v.ghost.x, v.ghost.y - p.h - 4);
     });
@@ -515,7 +515,7 @@ export class BaseworldScene extends Phaser.Scene {
       stepSquash(v.squash);
       const visible = m.alive && !m.hidden;
       v.rect.setVisible(visible); v.label.setVisible(visible);
-      v.rect.setPosition(v.ghost.x, v.ghost.y);
+      v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.fillColor = m.stunned ? 0x999999 : m.windupAnim ? 0xff8888 : 0xcc66ff;
       v.label.setPosition(v.ghost.x, v.ghost.y - m.h - 4);
