@@ -1,0 +1,434 @@
+// baseworld 씬: 로컬 권위 아바타 + 고스트/몬스터 표현 + 자기화면 판정(§14) + serverview.
+// Phaser는 렌더·입력만 (물리는 shared).
+import Phaser from "phaser";
+import type { Room } from "@colyseus/sdk";
+import { getStateCallbacks } from "@colyseus/sdk";
+import { TUNING, type Terrain } from "shared/physics";
+import "shared/behavior";
+import "shared/properties";
+import {
+  type Avatar, type AvatarInput, createAvatar, stepAvatar, applyItem, clearItemEffects,
+  pushSelfOut, checkIStomped, checkStompedMe, headStand,
+  createCarryState, stepCarry, type CarryState, type Carryable,
+  blockRect, type ItemSpec,
+} from "shared/parts";
+import { getProperty } from "shared/properties";
+import { TESTMAP } from "shared/maps";
+import {
+  createGhostView, ghostServerUpdate, ghostStep, type GhostView,
+} from "../../netphysics/interpolate.js";
+import { sendAvatarState } from "../../netphysics/reconcile.js";
+import { createSquash, setSquash, stepSquash, type SquashState } from "../../netphysics/squash.js";
+
+const FIXED_MS = 1000 / TUNING.world.tickRate;
+
+interface View {
+  rect: Phaser.GameObjects.Rectangle;
+  label: Phaser.GameObjects.Text;
+  ghost: GhostView;
+  squash: SquashState;
+  w: number; h: number;
+}
+
+export class BaseworldScene extends Phaser.Scene {
+  room: Room;
+  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, 115);
+  carry: CarryState = createCarryState();
+  mySquash = createSquash();
+  tick = 0;
+  acc = 0;
+  sendAcc = 0;
+  keys!: Record<"left" | "right" | "jump" | "down" | "run" | "grab", Phaser.Input.Keyboard.Key[]>;
+  players = new Map<string, View>();
+  monsters = new Map<string, View>();
+  projectiles = new Map<string, Phaser.GameObjects.Rectangle>();
+  itemRects = new Map<string, Phaser.GameObjects.Rectangle>();
+  blockRects = new Map<string, Phaser.GameObjects.Rectangle>();
+  myRect!: Phaser.GameObjects.Rectangle;
+  handRect!: Phaser.GameObjects.Rectangle;
+  debugGfx!: Phaser.GameObjects.Graphics;
+  // serverview (§19): 주체 필터 + 옵션 1(스프라이트박스)/2(히트박스)/3(서버상태)
+  svSubject: "all" | "player" | "terrain" | "monster" = "all";
+  svOpts = new Set<number>();
+  dead = false;
+  deadUntil = 0;
+  grabHighlightUntil = 0;
+  monsterHitSeq = 0;
+
+  constructor(room: Room) {
+    super("baseworld");
+    this.room = room;
+  }
+
+  // ── 지형 (동적 블록 반영) ──
+  currentTerrain(): Terrain {
+    const solids = [...TESTMAP.terrain.solids];
+    this.room.state.blocks.forEach((bs: { x: number; y: number; active: boolean; visibleNow: boolean }, id: string) => {
+      if (!bs.active || !bs.visibleNow) return;
+      const spec = TESTMAP.blocks.find((b) => b.id === id);
+      if (spec) solids.push({ x: bs.x, y: bs.y, w: spec.w, h: spec.h, faces: spec.faces });
+    });
+    return { solids, slopes: TESTMAP.terrain.slopes };
+  }
+
+  create(): void {
+    const t = TUNING.world.tileSize;
+    // 격자 + 지형
+    const grid = this.add.graphics().setDepth(-2);
+    grid.lineStyle(1, 0xffffff, 0.06);
+    for (let x = 0; x <= TESTMAP.width; x += t) grid.lineBetween(x, 0, x, TESTMAP.height);
+    for (let y = 0; y <= TESTMAP.height; y += t) grid.lineBetween(0, y, TESTMAP.width, y);
+    for (const s of TESTMAP.terrain.solids) {
+      this.add.rectangle(s.x, s.y, s.w, s.h, 0x555566).setOrigin(0, 0).setDepth(-1);
+    }
+    const slopeG = this.add.graphics().setDepth(-1);
+    slopeG.fillStyle(0x555566, 1);
+    for (const s of TESTMAP.terrain.slopes) {
+      if (s.dir === 1) slopeG.fillTriangle(s.x, s.y + s.h, s.x + s.w, s.y + s.h, s.x + s.w, s.y);
+      else slopeG.fillTriangle(s.x, s.y + s.h, s.x + s.w, s.y + s.h, s.x, s.y);
+    }
+    // 깃발 (라인 경계 시각화)
+    this.add.rectangle(TESTMAP.line.startX + 8, TESTMAP.spawn.y - 96, 8, 96, 0x44ff44).setOrigin(0, 0).setDepth(-1);
+    this.add.rectangle(TESTMAP.line.endX - 16, TESTMAP.spawn.y - 96, 8, 96, 0xffd744).setOrigin(0, 0).setDepth(-1);
+
+    const kb = this.input.keyboard!;
+    const K = Phaser.Input.Keyboard.KeyCodes;
+    this.keys = {
+      left: [kb.addKey(K.LEFT), kb.addKey(K.A)],
+      right: [kb.addKey(K.RIGHT), kb.addKey(K.D)],
+      jump: [kb.addKey(K.SPACE), kb.addKey(K.UP), kb.addKey(K.W)],
+      down: [kb.addKey(K.DOWN), kb.addKey(K.S)],
+      run: [kb.addKey(K.SHIFT)],
+      grab: [kb.addKey(K.K)],
+    };
+    kb.disableGlobalCapture();
+
+    // 내 아바타
+    this.myRect = this.add.rectangle(0, 0, this.me.body.w, this.me.body.h, 0x4488ff).setOrigin(0.5, 1).setDepth(5);
+    this.handRect = this.add.rectangle(0, 0, 14, 14, 0xffffff).setDepth(6).setVisible(false);
+    this.debugGfx = this.add.graphics().setDepth(20);
+
+    const $ = getStateCallbacks(this.room);
+    // 고스트 플레이어
+    $(this.room.state).players.onAdd((p: PlayerNet, id: string) => {
+      if (id === this.room.sessionId) return;
+      const v = this.makeView(p.x, p.y, p.w, p.h, 0xff5555, p.nickname || id.slice(0, 4));
+      this.players.set(id, v);
+    });
+    $(this.room.state).players.onRemove((_p: PlayerNet, id: string) => this.dropView(this.players, id));
+    // 몬스터
+    $(this.room.state).monsters.onAdd((m: MonsterNet, id: string) => {
+      const v = this.makeView(m.x, m.y, m.w, m.h, 0xcc66ff, m.asset);
+      this.monsters.set(id, v);
+    });
+    $(this.room.state).monsters.onRemove((_m: MonsterNet, id: string) => this.dropView(this.monsters, id));
+    // 발사체
+    $(this.room.state).projectiles.onAdd((pr: ProjNet, id: string) => {
+      this.projectiles.set(id, this.add.rectangle(pr.x, pr.y, 24, 24, 0xffaa33).setOrigin(0.5, 1).setDepth(4));
+    });
+    $(this.room.state).projectiles.onRemove((_pr: ProjNet, id: string) => {
+      this.projectiles.get(id)?.destroy();
+      this.projectiles.delete(id);
+    });
+    // 아이템
+    $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
+      this.itemRects.set(id, this.add.rectangle(it.x, it.y, 28, 28, 0x66ffcc).setOrigin(0.5, 1).setDepth(3));
+    });
+    // 블록
+    $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
+      const spec = TESTMAP.blocks.find((b) => b.id === id);
+      if (!spec) return;
+      this.blockRects.set(id, this.add.rectangle(bs.x, bs.y, spec.w, spec.h, 0x8888aa).setOrigin(0, 0).setDepth(2));
+    });
+    // 아이템 획득 중재 결과 (§60)
+    this.room.onMessage("itemClaim", (m: { itemId: string; winner: string | null }) => {
+      if (m.winner === this.room.sessionId) {
+        const spec = TESTMAP.items.find((i) => i.id === m.itemId)
+          ?? ({ id: m.itemId, kind: this.room.state.items.get(m.itemId)?.kind ?? "speed", x: 0, y: 0 } as ItemSpec);
+        applyItem(this.me, spec);
+      }
+    });
+    this.room.onMessage("tp", (m: { sessionId: string; x: number; y: number }) => {
+      if (m.sessionId === this.room.sessionId) { this.me.body.x = m.x; this.me.body.y = m.y; }
+    });
+
+    this.cameras.main.setBounds(0, 0, TESTMAP.width, TESTMAP.height);
+    this.cameras.main.startFollow(this.myRect, true, 0.15, 0.15);
+  }
+
+  makeView(x: number, y: number, w: number, h: number, color: number, name: string): View {
+    return {
+      rect: this.add.rectangle(x, y, w, h, color).setOrigin(0.5, 1).setDepth(4),
+      label: this.add.text(x, y - h - 14, name, { fontSize: "12px", color: "#fff" }).setOrigin(0.5, 1).setDepth(5),
+      ghost: createGhostView(x, y),
+      squash: createSquash(),
+      w, h,
+    };
+  }
+  dropView(map: Map<string, View>, id: string): void {
+    const v = map.get(id);
+    v?.rect.destroy(); v?.label.destroy();
+    map.delete(id);
+  }
+
+  update(_time: number, delta: number): void {
+    this.acc += delta;
+    while (this.acc >= FIXED_MS) { this.acc -= FIXED_MS; this.fixedTick(); }
+    this.render(delta);
+  }
+
+  held(k: keyof BaseworldScene["keys"]): boolean {
+    return this.keys[k].some((key) => key.isDown);
+  }
+
+  fixedTick(): void {
+    this.tick++;
+    const now = this.time.now;
+    if (this.dead) {
+      if (now >= this.deadUntil) this.respawn();
+      return;
+    }
+    const input: AvatarInput = {
+      left: this.held("left"), right: this.held("right"),
+      jump: this.held("jump"), down: this.held("down"),
+      run: this.held("run"), grab: this.held("grab"), tick: this.tick,
+    };
+    const terrain = this.currentTerrain();
+    const b = this.me.body;
+    const prevVy = b.vy;
+    const prevPound = this.me.pound;
+
+    stepAvatar(this.me, input, FIXED_MS, terrain);
+
+    // ── PvP: 자기 화면 판정 (§14) ──
+    const ghosts = [...this.players.entries()].map(([, v]) => ({
+      x: v.ghost.x, y: v.ghost.y, w: v.w, h: v.h, vy: v.ghost.lastVy,
+    }));
+    pushSelfOut(b, ghosts);
+    if (checkIStomped(this.me, ghosts)) this.me.fx.add("stompedOther");
+    const stompedMe = checkStompedMe(this.me, ghosts);
+    headStand(b, ghosts);
+    // 자기 변형 원인 갱신 (§26 — 원인 지속=유지)
+    if (stompedMe) setSquash(this.mySquash, "stomped");
+    else if (this.me.fx.has("ceilBonk")) setSquash(this.mySquash, "ceil");
+    else if (ghosts.some((g) => Math.abs(g.x - b.x) < (g.w + b.w) / 2 && Math.abs(g.y - b.y) < b.h))
+      setSquash(this.mySquash, "pushed", b.x < (ghosts[0]?.x ?? 0) ? -1 : 1);
+    else setSquash(this.mySquash, "none");
+
+    // ── 몬스터: 자기 화면 판정 ──
+    this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
+      if (!m.alive || m.hidden) return;
+      const v = this.monsters.get(id);
+      const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
+      const hOv = Math.min(b.x + b.w / 2, mx + m.w / 2) - Math.max(b.x - b.w / 2, mx - m.w / 2);
+      const vOv = Math.min(b.y, my) - Math.max(b.y - b.h, my - m.h);
+      if (hOv <= 0 || vOv <= 0) return;
+      const falling = prevVy > TUNING.stomp.minFallSpeed || prevPound === 2;
+      const onHead = b.y <= my - m.h + TUNING.stomp.headBandPx;
+      if (falling && onHead) {
+        // 밟기 성공: 즉시 튕김(손맛) + 서버에 타격 등록 (§21-2)
+        b.vy = TUNING.stomp.bounceVelocity;
+        this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
+        v && setSquash(v.squash, "stomped");
+      } else if (this.me.invincibleLeftMs > 0) {
+        this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
+      } else {
+        this.takeHit(); // 접촉 피해 = 자기 클라 확정
+      }
+    });
+
+    // ── 발사체 피격 (자책 방지 §30-1) ──
+    this.room.state.projectiles.forEach((pr: ProjNet, _id: string) => {
+      if (pr.ownerId === this.room.sessionId && this.carry.selfIgnoreLeftMs > 0) return;
+      const hOv = Math.abs(pr.x - b.x) < (24 + b.w) / 2;
+      const vOv = pr.y > b.y - b.h && pr.y - 24 < b.y;
+      if (hOv && vOv && this.me.invincibleLeftMs <= 0) {
+        if (pr.effect === "knockback") { b.vx = Math.sign(b.x - pr.x) * TUNING.item.knockbackVx; b.vy = TUNING.item.knockbackVy; }
+        else this.takeHit();
+      }
+    });
+
+    // ── 블록 상호작용: 머리치기/내려찍기 파괴·물음표·물성 ──
+    this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
+      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      if (!spec || !bs.active || !bs.visibleNow) return;
+      const r = blockRect({ spec, x: bs.x, y: bs.y, state: "active", respawnLeftMs: 0, emptied: bs.emptied, mem: {} });
+      const withinX = Math.abs(b.x - (r.x + r.w / 2)) < (b.w + r.w) / 2;
+      const headAt = b.y - b.h;
+      const bonkHead = withinX && prevVy < 0 && Math.abs(headAt - (r.y + r.h)) < 10;
+      const poundOn = withinX && prevPound === 2 && Math.abs(b.y - r.y) < 12;
+      if (bonkHead) {
+        if (spec.emitsItem && !bs.emptied) this.room.send("hitQBlock", { blockId: id });
+        else if (spec.breakBy?.headbutt) this.room.send("breakBlock", { blockId: id, by: "headbutt" });
+      }
+      if (poundOn && spec.breakBy?.pound) this.room.send("breakBlock", { blockId: id, by: "pound" });
+      // 물성 (당하는 쪽 로컬 적용 §properties)
+      if (spec.properties) {
+        const touching = withinX && b.y >= r.y - 2 && b.y - b.h <= r.y + r.h + 2;
+        const standing = withinX && Math.abs(b.y - r.y) < 4 && b.grounded;
+        for (const propSpec of spec.properties) {
+          const impl = getProperty(propSpec.type);
+          if (!impl) continue;
+          if (standing && impl.onStand) impl.onStand(b, TUNING, propSpec);
+          if (touching && impl.onTouch) {
+            const side = standing ? "top" : bonkHead ? "bottom" : b.x < r.x + r.w / 2 ? "right" : "left";
+            impl.onTouch(b, r, side, TUNING, propSpec);
+          }
+        }
+      }
+    });
+    // 물성 부수효과 플래그 소비
+    const flags = b as unknown as { __takeDamage?: boolean; __die?: boolean; __toggleSwitch?: boolean };
+    if (flags.__toggleSwitch) { this.room.send("toggleSwitch", {}); flags.__toggleSwitch = false; }
+    if (flags.__die) { flags.__die = false; this.die(); }
+    if (flags.__takeDamage) { flags.__takeDamage = false; this.takeHit(); }
+
+    // ── 아이템 접촉 → 서버 경합 (§60) ──
+    this.room.state.items.forEach((it: ItemNet, id: string) => {
+      if (!it.available) return;
+      if (Math.abs(it.x - b.x) < (28 + b.w) / 2 && Math.abs(it.y - b.y) < b.h) {
+        this.room.send("claimItem", { itemId: id });
+      }
+    });
+
+    // ── 잡기 (§30) — 지금 잡을 수 있는 대상: 없음(껍질·밥옴 파츠 추후) → grabMiss 하이라이트만
+    const carryables: Carryable[] = [];
+    const ev = stepCarry(this.carry, this.me, input, carryables);
+    if (ev.kind === "grabMiss") this.grabHighlightUntil = now + 800;
+
+    // ── 압사 (§35-L) ──
+    if (b.crushed && this.me.freezeLeftMs <= 0) this.die();
+
+    // ── 상태 송신 (relay) ──
+    this.sendAcc += FIXED_MS;
+    if (this.sendAcc >= 1000 / TUNING.net.sendRateHz) {
+      this.sendAcc = 0;
+      sendAvatarState(this.room, this.me, this.tick);
+    }
+    this.me.fx.clear();
+  }
+
+  takeHit(): void {
+    if (this.me.invincibleLeftMs > 0 || this.me.freezeLeftMs > 0) return;
+    this.me.hp -= 1;
+    this.me.invincibleLeftMs = 1500; // 피격 무적 (마리오식)
+    if (this.me.hp <= 0) this.die();
+  }
+
+  die(): void {
+    this.dead = true;
+    this.deadUntil = this.time.now + 1200;
+    clearItemEffects(this.me);       // (라인 이탈과 동일하게 정리 — 단일 라인 테스트맵)
+    this.myRect.setVisible(false);
+  }
+
+  respawn(): void {
+    this.dead = false;
+    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, 115);
+    this.me.hp = 1;
+    this.myRect.setVisible(true);
+  }
+
+  render(delta: number): void {
+    const b = this.me.body;
+    stepSquash(this.mySquash);
+    this.myRect.setSize(b.w, b.h);
+    this.myRect.setScale(this.mySquash.sx, this.mySquash.sy);
+    this.myRect.setPosition(b.x + this.mySquash.offsetX, b.y + this.mySquash.offsetY);
+    this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55 : this.me.pound !== 0 ? 0xffcc33 : 0x4488ff;
+    // 고스트 플레이어
+    this.room.state.players.forEach((p: PlayerNet, id: string) => {
+      if (id === this.room.sessionId) return;
+      const v = this.players.get(id);
+      if (!v) return;
+      ghostServerUpdate(v.ghost, p.x, p.y, p.vx, p.vy);
+      ghostStep(v.ghost, delta);
+      stepSquash(v.squash);
+      v.w = p.w; v.h = p.h;
+      v.rect.setSize(p.w, p.h);
+      v.rect.setScale(v.squash.sx, v.squash.sy);
+      v.rect.setPosition(v.ghost.x, v.ghost.y);
+      v.label.setPosition(v.ghost.x, v.ghost.y - p.h - 4);
+    });
+    // 몬스터 (dead reckoning)
+    this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
+      const v = this.monsters.get(id);
+      if (!v) return;
+      ghostServerUpdate(v.ghost, m.x, m.y, m.vx, m.vy);
+      ghostStep(v.ghost, delta, TUNING.net.monsterLerp);
+      stepSquash(v.squash);
+      const visible = m.alive && !m.hidden;
+      v.rect.setVisible(visible); v.label.setVisible(visible);
+      v.rect.setPosition(v.ghost.x, v.ghost.y);
+      v.rect.setScale(v.squash.sx, v.squash.sy);
+      v.rect.fillColor = m.stunned ? 0x999999 : m.windupAnim ? 0xff8888 : 0xcc66ff;
+      v.label.setPosition(v.ghost.x, v.ghost.y - m.h - 4);
+    });
+    // 발사체·아이템·블록
+    this.room.state.projectiles.forEach((pr: ProjNet, id: string) => {
+      this.projectiles.get(id)?.setPosition(pr.x, pr.y);
+    });
+    this.room.state.items.forEach((it: ItemNet, id: string) => {
+      const r = this.itemRects.get(id);
+      if (r) {
+        r.setVisible(it.available);
+        r.setPosition(it.x, it.y);
+        if (this.grabHighlightUntil > this.time.now) r.setStrokeStyle(3, 0xffff00);
+        else r.setStrokeStyle();
+      }
+    });
+    this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
+      const r = this.blockRects.get(id);
+      if (!r) return;
+      r.setVisible(bs.active && bs.visibleNow);
+      r.setPosition(bs.x, bs.y);
+      r.fillColor = bs.emptied ? 0x555555 : 0x8888aa;
+    });
+    this.renderServerview();
+  }
+
+  /** serverview (§19): 옵션1 스프라이트박스 / 2 히트박스 / 3 서버수신 상태 */
+  renderServerview(): void {
+    this.debugGfx.clear();
+    if (this.svOpts.size === 0) return;
+    const showPlayer = this.svSubject === "all" || this.svSubject === "player";
+    const showTerrain = this.svSubject === "all" || this.svSubject === "terrain";
+    const showMonster = this.svSubject === "all" || this.svSubject === "monster";
+    if (this.svOpts.has(2)) {
+      this.debugGfx.lineStyle(2, 0x4488ff, 1);
+      if (showPlayer) {
+        const b = this.me.body;
+        this.debugGfx.strokeRect(b.x - b.w / 2, b.y - b.h, b.w, b.h);
+      }
+      if (showTerrain) {
+        this.debugGfx.lineStyle(1, 0x33ff77, 0.7);
+        for (const s of this.currentTerrain().solids) this.debugGfx.strokeRect(s.x, s.y, s.w, s.h);
+      }
+      if (showMonster) {
+        this.debugGfx.lineStyle(2, 0xcc66ff, 1);
+        this.room.state.monsters.forEach((m: MonsterNet) => {
+          if (m.alive) this.debugGfx.strokeRect(m.x - m.w / 2, m.y - m.h, m.w, m.h);
+        });
+      }
+    }
+    if (this.svOpts.has(1) && showPlayer) {
+      this.debugGfx.fillStyle(0xffffff, 0.12);
+      const r = this.myRect;
+      this.debugGfx.fillRect(r.x - (r.width * r.scaleX) / 2, r.y - r.height * r.scaleY, r.width * r.scaleX, r.height * r.scaleY);
+    }
+    if (this.svOpts.has(3)) {
+      this.room.state.players.forEach((p: PlayerNet, id: string) => {
+        const mine = id === this.room.sessionId;
+        this.debugGfx.lineStyle(2, mine ? 0x00e5e5 : 0x7CFC00, 1);   // 청록=내것, 연두=남 (§19-2)
+        this.debugGfx.strokeRect(p.x - p.w / 2, p.y - p.h, p.w, p.h);
+      });
+    }
+  }
+}
+
+// ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
+interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string }
+interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; windupAnim: string; windupEndsAt: number }
+interface BlockNet { x: number; y: number; active: boolean; emptied: boolean; visibleNow: boolean }
+interface ItemNet { kind: string; x: number; y: number; available: boolean }
+interface ProjNet { asset: string; x: number; y: number; vx: number; vy: number; effect: string; ownerId: string }

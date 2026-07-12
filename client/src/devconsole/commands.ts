@@ -1,12 +1,9 @@
-// 개발자 콘솔 명령 정의. UI(Console.tsx)와 분리해 명령만 추가하기 쉽게 유지.
-import { joinBaseworld, leaveBaseworld, getRoom } from "../net/baseworld.js";
-import { startGame, stopGame, setServerView } from "../game/boot.js";
+// 개발자 콘솔 명령 (DEV 빌드 전용 — §32-3)
+import { joinBaseworld, leaveBaseworld, getRoom } from "../rooms/baseworld/connect.js";
+import { startGame, stopGame, getScene } from "../rooms/baseworld/boot.js";
 import { TUNING } from "shared/physics";
 
-export interface CmdCtx {
-  print: (line: string) => void;
-}
-
+export interface CmdCtx { print: (line: string) => void }
 export interface Command {
   usage: string;
   desc: string;
@@ -16,11 +13,13 @@ export interface Command {
 export const COMMANDS: Record<string, Command> = {
   help: {
     usage: "help",
-    desc: "명령 목록",
-    run: (_args, ctx) => {
-      for (const c of Object.values(COMMANDS)) {
-        ctx.print(`${c.usage.padEnd(24)} ${c.desc}`);
-      }
+    desc: "명령 목록 + serverview 옵션 설명",
+    run: (_a, ctx) => {
+      for (const c of Object.values(COMMANDS)) ctx.print(`${c.usage.padEnd(30)} ${c.desc}`);
+      ctx.print("");
+      ctx.print("serverview 옵션 (§19): 1=스프라이트 박스(보이는 모습, 반투명)");
+      ctx.print("  2=히트박스(실제 판정, 진한 테두리·소속색)  3=서버 수신 상태(청록=나, 연두=남)");
+      ctx.print("  주체: all|player|terrain|monster. 예) serverview player 1 2 / serverview off");
     },
   },
   join: {
@@ -29,29 +28,24 @@ export const COMMANDS: Record<string, Command> = {
     run: async (args, ctx) => {
       const room = await joinBaseworld(args[0]);
       startGame(room);
-      ctx.print(`접속: ${room.roomId} (sessionId ${room.sessionId})`);
-      ctx.print("조작: ←→/AD 이동, Space/W/↑ 점프, ↓/S 내려찍기");
+      ctx.print(`접속: ${room.roomId} (${room.sessionId})`);
+      ctx.print("조작: ←→/AD 이동 · Space 점프 · ↓ 웅크리기/내려찍기 · Shift 달리기 · K 잡기");
     },
   },
   leave: {
     usage: "leave",
-    desc: "baseworld 나가기",
-    run: async (_args, ctx) => {
-      stopGame();
-      await leaveBaseworld();
-      ctx.print("나갔습니다.");
-    },
+    desc: "나가기",
+    run: async (_a, ctx) => { stopGame(); await leaveBaseworld(); ctx.print("나갔습니다."); },
   },
   players: {
     usage: "players",
-    desc: "접속 중인 플레이어 목록",
-    run: (_args, ctx) => {
+    desc: "접속자 목록",
+    run: (_a, ctx) => {
       const room = getRoom();
-      if (!room) { ctx.print("접속 중이 아닙니다."); return; }
+      if (!room) { ctx.print("접속 중 아님"); return; }
       let n = 0;
-      (room.state as any).players.forEach((p: any, id: string) => {
-        const me = id === room.sessionId ? " (나)" : "";
-        ctx.print(`${id}${me} ${p.nickname || "-"} (${Math.round(p.x)}, ${Math.round(p.y)})`);
+      room.state.players.forEach((p: { x: number; y: number; nickname: string }, id: string) => {
+        ctx.print(`${id}${id === room.sessionId ? " (나)" : ""} ${p.nickname || "-"} (${Math.round(p.x)}, ${Math.round(p.y)})`);
         n++;
       });
       ctx.print(`총 ${n}명`);
@@ -59,70 +53,50 @@ export const COMMANDS: Record<string, Command> = {
   },
   tp: {
     usage: "tp <x> <y>",
-    desc: "순간이동 (서버 권위)",
+    desc: "순간이동",
     run: (args, ctx) => {
       const room = getRoom();
-      if (!room) { ctx.print("접속 중이 아닙니다."); return; }
-      const x = Number(args[0]);
-      const y = Number(args[1]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        ctx.print("사용법: tp <x> <y>"); return;
-      }
+      const x = Number(args[0]), y = Number(args[1]);
+      if (!room || !Number.isFinite(x) || !Number.isFinite(y)) { ctx.print("사용법: tp <x> <y>"); return; }
       room.send("tp", { x, y });
-      ctx.print(`tp → (${x}, ${y})`);
     },
   },
   tune: {
     usage: "tune <경로> <값>",
-    desc: "조작감 수치 실시간 변경 (예: tune jump.velocity -900)",
+    desc: "수치 실시간 변경 (예: tune jump.velocity -900)",
     run: (args, ctx) => {
       const room = getRoom();
-      if (!room) { ctx.print("접속 중이 아닙니다."); return; }
-      const path = args[0];
-      const value = Number(args[1]);
-      if (!path || !Number.isFinite(value)) { ctx.print("사용법: tune <경로> <값>"); return; }
+      const path = args[0], value = Number(args[1]);
+      if (!room || !path || !Number.isFinite(value)) { ctx.print("사용법: tune <경로> <값>"); return; }
       room.send("tune", { path, value });
-      ctx.print(`tune 요청: ${path} = ${value} (서버 적용 후 전 클라 동기화. 경로는 tuning 참고)`);
-    },
-  },
-  hitbox: {
-    usage: "hitbox <가로> <세로>",
-    desc: "플레이어 히트박스 크기 변경 (tune 단축)",
-    run: (args, ctx) => {
-      const room = getRoom();
-      if (!room) { ctx.print("접속 중이 아닙니다."); return; }
-      const w = Number(args[0]);
-      const h = Number(args[1]);
-      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
-        ctx.print("사용법: hitbox <가로px> <세로px>"); return;
-      }
-      room.send("tune", { path: "world.playerW", value: w });
-      room.send("tune", { path: "world.playerH", value: h });
-      ctx.print(`히트박스 → ${w}×${h}px (스펙: 키 105~125px 범위)`);
-    },
-  },
-  serverview: {
-    usage: "serverview [on|off]",
-    desc: "서버 원본 좌표·히트박스 오버레이 (연출 없음)",
-    run: (args, ctx) => {
-      const on = args[0] === "on" ? true : args[0] === "off" ? false : undefined;
-      const result = setServerView(on);
-      if (result === null) { ctx.print("게임이 실행 중이 아닙니다. 먼저 join 하십시오."); return; }
-      ctx.print(`서버 뷰: ${result ? "켜짐 (초록 = 서버 상태 그대로)" : "꺼짐"}`);
+      ctx.print(`tune ${path} = ${value}`);
     },
   },
   tuning: {
     usage: "tuning",
-    desc: "현재 조작감 수치(JSON) 출력",
-    run: (_args, ctx) => {
-      for (const line of JSON.stringify(TUNING, null, 2).split("\n")) ctx.print(line);
+    desc: "현재 수치 전체 출력",
+    run: (_a, ctx) => { for (const l of JSON.stringify(TUNING, null, 1).split("\n")) ctx.print(l); },
+  },
+  serverview: {
+    usage: "serverview [주체] [1|2|3...] | off",
+    desc: "디버그 뷰어 (help 참고)",
+    run: (args, ctx) => {
+      const sc = getScene();
+      if (!sc) { ctx.print("게임 미실행 — join 먼저"); return; }
+      if (args[0] === "off" || args.length === 0) { sc.svOpts.clear(); ctx.print("serverview off"); return; }
+      const subjects = ["all", "player", "terrain", "monster"] as const;
+      let i = 0;
+      if ((subjects as readonly string[]).includes(args[0])) { sc.svSubject = args[0] as typeof sc.svSubject; i = 1; }
+      else sc.svSubject = "all";
+      sc.svOpts.clear();
+      for (; i < args.length; i++) {
+        const n = Number(args[i]);
+        if (n >= 1 && n <= 3) sc.svOpts.add(n);
+      }
+      ctx.print(`serverview ${sc.svSubject} [${[...sc.svOpts].join(",")}]`);
     },
   },
-  clear: {
-    usage: "clear",
-    desc: "출력 지우기",
-    run: () => { /* Console.tsx에서 특수 처리 */ },
-  },
+  clear: { usage: "clear", desc: "출력 지우기", run: () => {} },
 };
 
 export async function execute(raw: string, ctx: CmdCtx): Promise<"clear" | void> {
@@ -130,10 +104,7 @@ export async function execute(raw: string, ctx: CmdCtx): Promise<"clear" | void>
   if (!name) return;
   if (name === "clear") return "clear";
   const cmd = COMMANDS[name];
-  if (!cmd) { ctx.print(`알 수 없는 명령: ${name} (help 참고)`); return; }
-  try {
-    await cmd.run(args, ctx);
-  } catch (e) {
-    ctx.print(`오류: ${e instanceof Error ? e.message : String(e)}`);
-  }
+  if (!cmd) { ctx.print(`알 수 없는 명령: ${name} (help)`); return; }
+  try { await cmd.run(args, ctx); }
+  catch (e) { ctx.print(`오류: ${e instanceof Error ? e.message : String(e)}`); }
 }

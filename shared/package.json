@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./constants.ts",
+    ".": "./index.ts",
     "./physics": "./physics/index.ts",
-    "./schemas": "./schemas/index.ts"
+    "./behavior": "./behavior/index.ts",
+    "./properties": "./properties/index.ts",
+    "./effects": "./effects/index.ts",
+    "./parts": "./parts/index.ts",
+    "./maps": "./maps/index.ts"
   }
 }

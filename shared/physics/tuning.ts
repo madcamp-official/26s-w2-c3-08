@@ -1,16 +1,10 @@
-// tuning.json 로더. 조작감 수치의 유일한 원천은 tuning.json이다.
-// (esbuild 계열인 tsx/Vite 모두 JSON import를 지원한다)
-
+// tuning.json 로더. 모든 조작감·게임 수치의 유일한 원천 (코드 하드코딩 금지).
 import raw from "./tuning.json" with { type: "json" };
 
 export type Tuning = typeof raw;
 export const TUNING: Tuning = raw;
 
-/**
- * 개발용 런타임 튜닝. "jump.velocity" 같은 경로의 숫자 값을 덮어쓴다.
- * TUNING 싱글턴을 직접 변형하므로 서버·클라 각자 실행해야 동기화된다
- * (baseworld의 tune 메시지가 그 역할). 성공 여부를 반환.
- */
+/** 개발용 런타임 튜닝: "jump.velocity" 경로의 숫자를 덮어씀. 성공 여부 반환 */
 export function applyTuning(path: string, value: number): boolean {
   if (!Number.isFinite(value)) return false;
   const keys = path.split(".");

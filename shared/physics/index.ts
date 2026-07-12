@@ -1,8 +1,4 @@
-// 클라(예측)·서버(권위)가 공유하는 물리 모듈 진입점.
-// 원칙: Phaser·DOM 등 환경 의존 금지 (Node/브라우저 양쪽에서 동일 실행)
-
-export * from "./types.js";
+// 범용 물리 엔진 진입점. 원칙: 파츠·옵션·Phaser·DOM을 모른다.
 export * from "./tuning.js";
-export * from "./step.js";
-export * from "./pvp.js";
-export * from "./testmap.js";
+export * from "./terrain.js";
+export * from "./body.js";

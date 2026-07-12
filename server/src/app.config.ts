@@ -11,7 +11,7 @@ import {
  * Import your Room files
  */
 import { MyRoom } from "./rooms/MyRoom.js";
-import { TestRoom } from "./rooms/TestRoom.js";
+import { BaseworldRoom } from "./rooms/baseworld/BaseworldRoom.js";
 
 const server = defineServer({
     /**
@@ -19,7 +19,7 @@ const server = defineServer({
      */
     rooms: {
         my_room: defineRoom(MyRoom),
-        baseworld: defineRoom(TestRoom)
+        baseworld: defineRoom(BaseworldRoom)
     },
 
     /**
