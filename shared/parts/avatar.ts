@@ -39,6 +39,8 @@ export interface Avatar {
   slide: boolean;
   wallGrabMs: number;        // 벽 접촉 경과 (2단 상한)
   wallClingGraceMs: number;  // 반대/무입력 유예
+  wallCoyoteLeftMs: number;  // 벽 떠난 직후 벽점프 허용 유예 (슬라이드와 별개)
+  wallCoyoteSide: number;    // 기억한 벽 방향
   coyoteLeftMs: number;
   jumpBufferLeftMs: number;
   prevJumpHeld: boolean;
@@ -59,7 +61,7 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
     baseW: w, baseH: hitboxH, sizeStage: 2, hp: 1,
     pound: 0, poundHangLeftMs: 0, poundLandLeftMs: 0, stompComboLeftMs: 0, airborneStartY: y,
     crouch: false, slide: false,
-    wallGrabMs: 0, wallClingGraceMs: 0,
+    wallGrabMs: 0, wallClingGraceMs: 0, wallCoyoteLeftMs: 0, wallCoyoteSide: 0,
     coyoteLeftMs: 0, jumpBufferLeftMs: 0, prevJumpHeld: false,
     freezeLeftMs: 0, stunLeftMs: 0,
     speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: 0,
@@ -194,12 +196,19 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   const clinging = airborne && b.touchingWall !== 0 && (towardWall || a.wallClingGraceMs > 0);
   if (clinging) a.wallGrabMs += dtMs;
 
-  if (jumpPressed && airborne && b.touchingWall !== 0) {
-    // 벽점프
-    b.vx = -b.touchingWall * t.wallSlide.kickVx;
+  // 벽점프 코요테: 최근 벽 접촉을 기억 → 벽에서 막 떨어졌거나 접촉이 깜빡여도 벽점프 허용.
+  // 슬라이드(clinging) 로직과는 별개 — 벽타기 자체엔 유예 없음.
+  if (b.touchingWall !== 0) { a.wallCoyoteLeftMs = t.wallSlide.jumpCoyoteMs; a.wallCoyoteSide = b.touchingWall; }
+  else a.wallCoyoteLeftMs = Math.max(0, a.wallCoyoteLeftMs - dtMs);
+  const wallForJump = b.touchingWall !== 0 ? b.touchingWall : (a.wallCoyoteLeftMs > 0 ? a.wallCoyoteSide : 0);
+
+  if (jumpPressed && airborne && wallForJump !== 0) {
+    // 벽점프 (기억한 방향으로)
+    b.vx = -wallForJump * t.wallSlide.kickVx;
     b.vy = t.wallSlide.kickVy;
-    b.facing = (-b.touchingWall) as 1 | -1;
+    b.facing = (-wallForJump) as 1 | -1;
     a.jumpBufferLeftMs = 0;
+    a.wallCoyoteLeftMs = 0;   // 소진(연타 방지)
     a.fx.add("wallJump");
   }
 

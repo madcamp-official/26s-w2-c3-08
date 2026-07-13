@@ -3,7 +3,7 @@
   "gravity": { "base": 1500, "riseReleaseMult": 2.2, "fallMult": 1.15, "maxFallSpeed": 1400 },
   "run": { "accel": 2200, "decel": 2800, "walkSpeed": 260, "runSpeed": 420, "airControlFactor": 0.65 },
   "jump": { "velocity": -500, "runBonus": 0, "coyoteMs": 80, "bufferMs": 100 },
-  "wallSlide": { "grabMaxFall": 120, "maxFall": 320, "grabMs": 250, "clingGraceMs": 120, "kickVx": 380, "kickVy": -700 },
+  "wallSlide": { "grabMaxFall": 120, "maxFall": 320, "grabMs": 250, "clingGraceMs": 120, "kickVx": 380, "kickVy": -700, "jumpCoyoteMs": 120 },
   "crouch": { "heightTiles": 0.95, "spriteTiles": 1, "speedMult": 0.4 },
   "slide": { "accel": 3200, "maxSpeed": 520, "flatDecel": 1400, "exitSpeed": 80, "crouchMinSpeed": 240, "slopeStartSpeed": 260 },
   "pound": {
