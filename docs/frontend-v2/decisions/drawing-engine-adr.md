@@ -1,6 +1,6 @@
 # Drawing Engine ADR
 
-Status: ADR-APPROVED technical recommendation for Phase 2C planning. Runtime integration is still PLANNED.
+Status: PROVISIONALLY_ACCEPTED technical recommendation for Phase 2C planning. Browser acceptance must pass in CI before this ADR can be marked ACCEPTED. Runtime integration is still PLANNED.
 
 Related decisions:
 - DECISION-V2-002: avatar visible canvas is 256x512.

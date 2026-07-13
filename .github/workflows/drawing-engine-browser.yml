@@ -1,0 +1,65 @@
+name: Drawing Engine Browser Acceptance
+
+on:
+  push:
+    branches:
+      - feature/frontend-v2
+    paths:
+      - client/src/experiments/drawing-engine/**
+      - client/tests/drawing-engine/**
+      - client/playwright.drawing.config.ts
+      - client/package.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/drawing-engine-browser.yml
+  pull_request:
+    paths:
+      - client/src/experiments/drawing-engine/**
+      - client/tests/drawing-engine/**
+      - client/playwright.drawing.config.ts
+      - client/package.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/drawing-engine-browser.yml
+  workflow_dispatch:
+
+jobs:
+  drawing-engine-browser:
+    name: Drawing Engine Browser Acceptance
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify pinned Playwright version
+        run: |
+          ACTUAL_VERSION="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
+          test "$ACTUAL_VERSION" = "1.61.1"
+
+      - name: Run V2 contract test
+        run: node --experimental-strip-types client/tests/v2-contracts.test.ts
+
+      - name: Run Drawing Engine core test
+        run: node --experimental-strip-types client/tests/drawing-engine/core.test.ts
+
+      - name: Run Drawing Engine browser acceptance test
+        run: npm run test:drawing-browser --workspace client
+
+      - name: Upload Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: drawing-engine-browser-artifacts
+          if-no-files-found: ignore
+          path: |
+            client/test-results/**
+            client/playwright-report/**

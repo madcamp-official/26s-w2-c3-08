@@ -13,7 +13,18 @@ declare global {
   }
 }
 
-test('drawing engine browser adapter validates canvas IO and overlay exclusion', async ({ page }) => {
+test('drawing engine browser adapter validates canvas IO and overlay exclusion', async ({ page }, testInfo) => {
+  const browserErrors: string[] = []
+
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      browserErrors.push(`console.error: ${message.text()}`)
+    }
+  })
+  page.on('pageerror', (error) => {
+    browserErrors.push(`pageerror: ${error.message}`)
+  })
+
   await page.goto('/tests/drawing-engine/browser-harness.html')
   await page.waitForFunction(() => window.__drawingEngineBrowserResults?.done === true)
 
@@ -47,6 +58,9 @@ test('drawing engine browser adapter validates canvas IO and overlay exclusion',
   })
   expect(canvasPixel).toEqual({ r: 240, g: 24, b: 24, a: 255 })
 
-  const screenshot = await page.screenshot()
+  const screenshot = await page.screenshot({
+    path: testInfo.outputPath('drawing-engine-browser-evidence.png'),
+  })
   expect(screenshot.byteLength).toBeGreaterThan(1_000)
+  expect(browserErrors).toEqual([])
 })

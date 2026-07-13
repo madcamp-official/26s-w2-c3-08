@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test'
+import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests/drawing-engine',
@@ -7,10 +7,18 @@ export default defineConfig({
   expect: {
     timeout: 5_000,
   },
-  reporter: [['list']],
+  workers: 1,
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: 'playwright-report/drawing-engine-browser', open: 'never' }],
+  ],
+  outputDir: './test-results/drawing-engine-browser',
   use: {
-    ...devices['Desktop Chrome'],
+    browserName: 'chromium',
     baseURL: 'http://127.0.0.1:4174',
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
+    screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
   webServer: {
