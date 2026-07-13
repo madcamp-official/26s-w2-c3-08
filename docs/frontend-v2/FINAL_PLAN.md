@@ -127,7 +127,7 @@
 - 논리 비율: 1x2 타일.
 - 제출 이미지: 보이는 256x512 영역만 crop.
 - 내부 작업 버퍼: `3x3` 기준으로 768x1536으로 확정한다.
-- `screen-design.md`의 "3x3배, 768x1024"는 계산상 충돌하므로 V2에서는 768x1536으로 맞춘다.
+- `screen-design.md`의 과거 "3x3배, 768x1024" 표기는 계산 오류였으며 768x1536으로 정정했다.
 - 가이드 실루엣은 제거한다.
 - 체커와 격자는 표시 전용 overlay이며 export와 eyedropper 대상에서 제외한다.
 
@@ -137,17 +137,21 @@
 
 - 성공 토스트: "에셋 생성을 요청했어요."
 - 보조 CTA: "창고에서 진행 상황 보기"
-- 현재 캔버스와 속성은 유지한다.
-- 같은 내용을 바로 재제출하지 못하도록 dirty/hash 상태를 둔다.
+- 현재 canvas, form, attrs, source state는 유지한다.
+- 같은 내용을 바로 재제출하지 못하도록 dirty/content hash 상태를 둔다.
 - `[새 에셋 만들기]`를 눌렀을 때만 캔버스와 폼을 초기화한다.
 
 아바타는 문서대로 `[생성하기]` 후 메인으로 돌아간다.
 
 ### 4.4 창고 카테고리
 
-- 창고의 컴포넌트 에셋 필터는 플랫폼, 장애물, 몬스터, 배경만 노출한다.
+- 전역 `AssetCategory`에는 `item`이 존재할 수 있다.
+- 창고의 사용자 제작 컴포넌트 에셋 필터는 플랫폼, 장애물, 몬스터, 배경만 노출한다.
+- 사용자 제작 컴포넌트 카테고리는 `platform`, `obstacle`, `monster`, `background`만 허용한다.
 - 아이템은 시스템 제공 고정 파츠로 보고 일반 유저 제작 대상에서 제외한다.
-- 맵 에디터에서는 시스템 아이템이 필요할 경우 시스템 에셋 목록에서만 노출한다.
+- 맵 에디터에서는 시스템 아이템을 Map Build shelf에서 사용할 수 있다.
+- 사용자 asset creation endpoint에서는 `item`을 허용하지 않는다.
+- 시스템 seed/internal flow의 `item`까지 금지하는 것으로 해석하지 않는다.
 
 ### 4.5 맵 크기와 그리드
 
@@ -158,7 +162,22 @@
 
 ### 4.6 실시간 계층
 
-화면은 Colyseus, Socket.IO, BroadcastChannel 중 특정 구현에 직접 의존하지 않는다.
+remote room/game realtime은 `backend/` Socket.IO 계약을 우선한다. `server/` Colyseus는
+production-ready 여부가 확인되기 전까지 대체 transport 후보로만 문서화한다.
+
+화면과 service 구현의 의존 방향은 다음으로 고정한다.
+
+```text
+Presentational View
+  -> Page Controller / Feature Hook
+  -> Use Case / Domain State
+  -> Port
+  -> Adapter
+```
+
+Presentational View는 Store, API, Realtime, Storage, Phaser를 직접 import하지 않는다.
+Page Controller 또는 Feature Hook이 화면 이벤트를 use case/domain action으로 변환하고,
+Port/Adapter가 실제 REST, Socket.IO, BroadcastChannel, localStorage, Phaser bridge를 소유한다.
 
 V2 화면은 `RealtimeService`가 제공하는 다음 추상 이벤트만 본다.
 
@@ -176,11 +195,21 @@ V2 화면은 `RealtimeService`가 제공하는 다음 추상 이벤트만 본다
 - `assetJobUpdated`
 - `roomsChanged`
 
-현재 구현은 `client/src/net/realtime.ts`를 유지하되, 화면에서는 store action만 호출한다.
+`VITE_REALTIME_MODE=local|remote`를 사용한다. `local`에서만 BroadcastChannel/local
+transport를 허용한다. `remote`에서는 backend Socket.IO를 사용하며, 실패 시
+typed offline/reconnecting/error 상태를 표시하고 BroadcastChannel로 자동 fallback하지 않는다.
+
+Asset job 상태는 push 우선이다. Asset job에 한해서만 bounded polling fallback을 허용하며,
+polling interval, 최대 지속시간, 중단 조건은
+`docs/frontend-v2/contracts/data-mode-policy.md`와
+`docs/frontend-v2/contracts/realtime-contract.md`를 따른다.
 
 ### 4.7 API 계층
 
 화면은 `/api/...` path를 직접 알면 안 된다.
+
+`VITE_DATA_MODE=mock|remote`를 사용한다. `mock`은 명시적인 local/mock data mode이고,
+`remote` 실패는 Mock 자동 fallback이 아니라 typed error/offline/malformed response로 처리한다.
 
 V2 화면이 사용할 API action은 다음으로 고정한다.
 
@@ -504,9 +533,18 @@ DrawingEngine
 
 ### 8.1 드로잉 구현 선택
 
-1차 V2에서는 현재 작동 안정성을 위해 `react-sketch-canvas`를 내부 adapter로 유지할 수 있다. 단, 화면 컴포넌트가 직접 `ReactSketchCanvas`에 의존하지 않게 한다.
+드로잉 엔진은 기술 스파이크 후 결정한다. `react-sketch-canvas` 유지는 기본 결정이 아니라
+검증 후보 중 하나다. 어떤 구현을 선택하더라도 화면 컴포넌트는 엔진 adapter/interface에만
+의존하고, 특정 캔버스 라이브러리를 직접 import하지 않는다.
 
-2차 V2에서는 필요하면 Canvas 2D 기반 자체 엔진으로 전환한다.
+다음 핵심 pixel 기능이 라이브러리 우회 구현에 의존하거나 안정적으로 검증되지 않으면
+Canvas 2D + offscreen buffer를 선택한다.
+
+- 256x512 visible frame과 768x1536 workspace buffer 분리.
+- 중앙 visible frame crop export.
+- checker/grid overlay export 제외.
+- eyedropper source에서 checker/grid overlay 제외.
+- move all, undo/redo, dirty/content hash의 결정적 동작.
 
 ### 8.2 필수 기능
 
@@ -548,7 +586,8 @@ DrawingEngine
 완료 기준:
 
 - localStorage session 복원.
-- remote API가 꺼져도 Mock session 생성.
+- `VITE_DATA_MODE=mock`에서는 Mock session 생성.
+- `VITE_DATA_MODE=remote`에서 API 실패 시 Mock session을 자동 생성하지 않고 typed error를 표시.
 - enter key submit.
 - error message가 layout을 밀지 않음.
 
@@ -787,7 +826,7 @@ DrawingEngine
 
 - merging
 - validated segments present
-- fallback segment
+- mock-mode local segment notice
 - merge error
 
 연결:
@@ -804,7 +843,7 @@ DrawingEngine
 - local freeze penalty
 - overtime
 - player finished
-- no merged map fallback
+- missing merged map error state
 - race position updates
 - finish
 
@@ -845,17 +884,30 @@ DrawingEngine
 - `gameSlice`
 - `settingsSlice`
 
-화면은 API 함수를 직접 호출하지 않고 store action만 호출한다.
+의존 방향은 다음을 따른다.
+
+```text
+Presentational View
+  -> Page Controller / Feature Hook
+  -> Use Case / Domain State
+  -> Port
+  -> Adapter
+```
+
+Presentational View는 Store, API, Realtime, Storage, Phaser를 직접 import하지 않는다.
+Store action은 Domain State/Use Case 계층의 구현 세부이며, 화면 컴포넌트의 직접 의존 대상이
+아니다.
 
 ### 10.2 API adapter 정리
 
 현재 `client/src/net/api.ts`를 유지하면서 다음을 정리한다.
 
 - response unwrap 로직을 하나로 통일한다.
-- `POST /api/assets/avatar/generate` fallback 후보를 명시적으로 정리한다.
+- `POST /api/assets/avatar/generate` avatar-specific endpoint 후보를 명시적으로 정리한다.
 - V2 화면에는 `createAsset`만 노출한다.
 - backend가 `POST /assets`로 바뀔 경우 adapter 내부에서만 path를 교체한다.
-- remote API 실패 시 Mock fallback을 유지한다.
+- `VITE_DATA_MODE=mock|remote`를 사용한다.
+- remote API 실패 시 Mock fallback을 수행하지 않고 typed error/offline/malformed response를 반환한다.
 - `AssetStatus`와 `AssetSprite.status`를 모두 queued/generating/ready/failed로 정규화한다.
 
 ### 10.3 Realtime adapter 정리
@@ -863,8 +915,11 @@ DrawingEngine
 현재 `client/src/net/realtime.ts`를 유지하면서 다음을 정리한다.
 
 - 화면에서 realtime 함수 직접 import 금지.
-- store action만 realtime 함수 호출.
-- Colyseus, Socket.IO, BroadcastChannel 구현은 adapter 내부 세부사항으로 격리.
+- Page Controller / Feature Hook / Use Case가 port를 통해 realtime intent를 호출한다.
+- `VITE_REALTIME_MODE=remote`는 backend Socket.IO adapter를 사용한다.
+- `VITE_REALTIME_MODE=local`에서만 BroadcastChannel/local transport를 사용한다.
+- remote realtime 실패 시 BroadcastChannel 자동 fallback을 수행하지 않는다.
+- Colyseus는 production-ready 확인 전까지 대체 transport 후보로만 유지한다.
 - V2 화면은 `realtimeStatus`를 badge로만 표현.
 
 ### 10.4 shared 패키지 연결
@@ -1018,7 +1073,8 @@ Code Connect가 가능하면 `Button`, `AssetCard`, `StudioPanel`, `RoomCard`, `
 
 - 공개/비공개 방 생성/입장.
 - ready/start.
-- local realtime fallback 유지.
+- `VITE_REALTIME_MODE=local`의 local transport 동작 확인.
+- `VITE_REALTIME_MODE=remote` 실패 시 local transport로 자동 fallback하지 않음.
 
 ### Wave 5. Game HUD
 
@@ -1073,7 +1129,8 @@ Code Connect가 가능하면 `Button`, `AssetCard`, `StudioPanel`, `RoomCard`, `
 - build time vote.
 - build submit lock.
 - validation clear/fail.
-- merge fallback.
+- mock-mode local merge fallback.
+- remote merge failure typed error.
 - race freeze penalty.
 - race overtime.
 - results ranking.
@@ -1130,8 +1187,9 @@ git diff --check
 
 대응:
 
-- UI를 바로 고치지 말고 store action과 view model부터 분리한다.
-- 화면은 store action만 호출하게 만든다.
+- UI를 바로 고치지 말고 Page Controller / Feature Hook, Use Case / Domain State,
+  Port, Adapter 순서로 의존 경계를 먼저 분리한다.
+- Presentational View는 Store, API, Realtime, Storage, Phaser를 직접 import하지 않게 만든다.
 - Phaser 파일은 건드리지 않는다.
 
 ### 15.2 Drawing Engine 리스크
@@ -1142,9 +1200,9 @@ git diff --check
 
 대응:
 
-- 1차는 `react-sketch-canvas` adapter로 안정성을 확보한다.
 - 화면 UI와 DrawingEngine interface를 먼저 분리한다.
-- 자체 canvas 엔진 전환은 2차 작업으로 둔다.
+- 기술 스파이크로 `react-sketch-canvas` adapter와 Canvas 2D + offscreen buffer를 비교한다.
+- 핵심 pixel 기능이 우회 구현에 의존하면 Canvas 2D + offscreen buffer를 선택한다.
 
 ### 15.3 API 계약 충돌
 
@@ -1168,7 +1226,8 @@ git diff --check
 
 - UI는 realtime implementation에 직접 의존하지 않는다.
 - store와 adapter 사이 event contract를 고정한다.
-- 현재 demo 안정성을 위해 BroadcastChannel fallback은 유지한다.
+- BroadcastChannel은 `VITE_REALTIME_MODE=local`에서만 유지한다.
+- `VITE_REALTIME_MODE=remote` 실패는 offline/reconnecting/typed error로 처리하고 자동 fallback하지 않는다.
 
 ### 15.5 디자인 과잉 리스크
 
@@ -1193,7 +1252,8 @@ V2 완료는 다음 상태를 의미한다.
 - 스튜디오 드로잉 UI가 화면과 엔진으로 분리되어 있다.
 - Phaser 캔버스는 새 Game Shell 안에서 정상 표시된다.
 - API/Realtime 구현은 화면과 분리되어 있다.
-- Mock 모드와 remote API 모드가 모두 깨지지 않는다.
+- `VITE_DATA_MODE=mock`과 `VITE_DATA_MODE=remote`가 각각 명시적으로 동작한다.
+- remote 실패가 Mock 자동 fallback으로 숨겨지지 않는다.
 - 문서의 확정 화면 S1~B는 V2 하이파이 기준과 맞고, S3~F는 현재 MVP 동작 기준으로 화면 계약이 정리되어 있다.
 
 ## 17. 바로 다음 작업
