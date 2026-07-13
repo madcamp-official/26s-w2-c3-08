@@ -15,6 +15,7 @@ export class AnchorStage implements Stage {
     if (!boxes) throw new Error("anchor stage requires bbox stage to run first");
 
     const baselineRatio = pipelineConfig.anchor.baselineYRatio;
+    const lerp = pipelineConfig.anchor.lerp;
 
     for (let i = 0; i < ctx.frames.length; i++) {
       const frame = ctx.frames[i];
@@ -23,14 +24,15 @@ export class AnchorStage implements Stage {
       const targetY = Math.round(frame.height * baselineRatio);
       const bottomCenterX = Math.round((box.minX + box.maxX) / 2);
       const bottomY = box.maxY;
-      const dx = targetX - bottomCenterX;
-      const dy = targetY - bottomY;
+      // 완전 스냅이 아니라 lerp 비율만큼만 당긴다 — 자연스러운 미세 흔들림 보존.
+      const dx = Math.round(lerp * (targetX - bottomCenterX));
+      const dy = Math.round(lerp * (targetY - bottomY));
       if (dx !== 0 || dy !== 0) {
         translateInPlace(frame, dx, dy);
         boxes[i] = { minX: box.minX + dx, minY: box.minY + dy, maxX: box.maxX + dx, maxY: box.maxY + dy };
       }
     }
-    ctx.log.info("anchor done", { baselineRatio });
+    ctx.log.info("anchor done", { baselineRatio, lerp });
   }
 }
 

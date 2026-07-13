@@ -17,10 +17,12 @@
     ]
   },
   "anchor": {
-    "baselineYRatio": 0.98
+    "baselineYRatio": 0.98,
+    "lerp": 0.75
   },
   "scaleNormalization": {
-    "perFrameClampRatio": 0.1
+    "perFrameClampRatio": 0.1,
+    "lerp": 0.75
   },
   "generation": {
     "resolution": {
@@ -48,6 +50,10 @@
       "steps": 4,
       "cfg": 1
     }
+  },
+  "prompt": {
+    "stabilizationPositive": "single character centered in frame, full body visible, static locked camera, subject stays in place, plain solid {bg} chroma background, seamless looping animation, clean 2D platformer game sprite",
+    "baseNegative": "photorealistic, 3D render, blurry, low quality, jpeg artifacts, text, watermark, signature, logo, UI, extra limbs, malformed anatomy, gore, background scenery, environment details, shadows on ground, camera motion, panning, zoom, moving background, cropped, cut off"
   },
   "loopSelection": {
     "algorithm": "phash"

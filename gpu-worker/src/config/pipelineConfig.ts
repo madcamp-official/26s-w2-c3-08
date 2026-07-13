@@ -31,10 +31,21 @@ const PipelineConfigSchema = z.object({
   anchor: z.object({
     /** 바닥-중앙 앵커링 시 발이 닿을 세로 위치(캔버스 높이 비율, 0~1) */
     baselineYRatio: z.number().min(0).max(1),
+    /**
+     * 앵커 보정 강도(0~1). 1이면 매 프레임 발 위치를 기준점에 완전 스냅(로봇처럼 뻣뻣),
+     * <1이면 그 비율만큼만 당겨 자연스러운 미세 흔들림을 남긴다(부분보간).
+     * 잠정 0.75 — 5080 실측으로 조정 필요.
+     */
+    lerp: z.number().min(0).max(1),
   }),
   scaleNormalization: z.object({
     /** idle 기준 키 대비 프레임별 허용 편차 — 이 이상만 클램프해서 당김(완전 스냅 아님) */
     perFrameClampRatio: z.number().min(0).max(1),
+    /**
+     * 밴드 밖 프레임을 밴드 경계까지 당기는 강도(0~1). 1이면 경계까지 완전 스냅,
+     * <1이면 그 비율만큼만 당겨 급격한 크기 변화 튐을 완화(부분보간). 잠정 0.75 — 5080 실측.
+     */
+    lerp: z.number().min(0).max(1),
   }),
   generation: z.object({
     resolution: z.object({
@@ -68,6 +79,17 @@ const PipelineConfigSchema = z.object({
       steps: z.number().int().positive(),
       cfg: z.number().positive(),
     }),
+  }),
+  /**
+   * 최종 프롬프트 조립의 고정 부분(액션 무관). 오케스트레이터가
+   * [외형(LLM)] + [motionHint] + [poseHint] + [stabilizationPositive] 로 양성 프롬프트를,
+   * [baseNegative] + [액션 negativeExtra] 로 음성 프롬프트를 만든다.
+   * {bg}는 자동 선택된 크로마키 색 이름으로 치환 — 배경 단색 유지를 프롬프트로도 강화(키잉 안정).
+   * ⚠️ 실제 문구는 5080 실측으로 조정. 특히 "side view" 강제 여부는 시작이미지(정면 그림)와 충돌 가능해 기본은 넣지 않음.
+   */
+  prompt: z.object({
+    stabilizationPositive: z.string().min(1),
+    baseNegative: z.string().min(1),
   }),
   loopSelection: z.object({
     algorithm: z.enum(["phash", "mse"]),

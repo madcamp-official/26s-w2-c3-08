@@ -17,6 +17,7 @@ export class ScaleNormalizeStage implements Stage {
     if (!boxes) throw new Error("scale-normalize requires bbox stage first");
 
     const clamp = pipelineConfig.scaleNormalization.perFrameClampRatio;
+    const lerp = pipelineConfig.scaleNormalization.lerp;
     const heights = boxes.map((b) => b.maxY - b.minY + 1);
     const reference = (ctx.scratch.get(REFERENCE_HEIGHT_SCRATCH_KEY) as number | undefined) ?? median(heights);
 
@@ -26,9 +27,11 @@ export class ScaleNormalizeStage implements Stage {
 
     for (let i = 0; i < ctx.frames.length; i++) {
       const h = heights[i];
-      let k = 1;
-      if (h > hi) k = hi / h;
-      else if (h < lo) k = lo / h;
+      // 밴드 경계까지의 목표 배율을 구한 뒤, lerp 비율만큼만 접근(완전 스냅 아님 — 급격한 크기 튐 완화).
+      let kTarget = 1;
+      if (h > hi) kTarget = hi / h;
+      else if (h < lo) kTarget = lo / h;
+      const k = 1 + lerp * (kTarget - 1);
       if (k === 1) continue;
 
       const frame = ctx.frames[i];
