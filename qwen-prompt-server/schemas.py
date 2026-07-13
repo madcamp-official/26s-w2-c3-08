@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 
 TargetType = Literal["avatar", "asset"]
+
+# 한글 음절/자모 — wan_prompt/negative는 영어 강제(이미지 모델이 한국어를 못 알아들음).
+# 프롬프트 지시만으론 모델이 가끔 한국어를 섞어 내므로, 여기서 결정론적으로 걸러
+# app.py의 repair 경로가 재생성하도록 한다.
+_HANGUL = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏]")
 
 
 class SpriteRequirements(BaseModel):
@@ -34,6 +40,15 @@ class PromptRefineModelOutput(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("wan_prompt", "wan_negative_prompt")
+    @classmethod
+    def must_be_english(cls, value: str) -> str:
+        if _HANGUL.search(value):
+            raise ValueError(
+                "wan_prompt and wan_negative_prompt must be English only (no Korean/Hangul)"
+            )
+        return value
 
     @field_validator("safety_flags")
     @classmethod
