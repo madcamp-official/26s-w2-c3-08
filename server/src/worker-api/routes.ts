@@ -8,10 +8,11 @@
 //
 // 인증: WORKER_TOKEN 환경변수가 있으면 x-worker-token 헤더로 검증(없으면 개발용으로 통과).
 import express, { Router, type Request, type Response, type NextFunction } from "express";
-import { type Category, parseAttrs } from "shared/schemas";
+import { type Category } from "shared/schemas";
 import { deriveActions, ACTIONS, type ActionName } from "shared/actions";
 import { prisma, jsonSafe } from "../prisma.js";
 import { submitAsset } from "../asset/queue.js";
+import { saveSheetPng } from "../asset/storage.js";
 
 /** claim 후 이 시간(ms) 넘게 generating이면 워커가 죽은 것으로 보고 재큐. */
 const STALE_MS = 5 * 60_000;
@@ -39,7 +40,8 @@ async function requeueStale() {
 
 /** 워커에게 넘길 잡 페이로드. 워커는 deriveActions를 모름 — 여기서 전부 계산해 실어준다. */
 function buildJobPayload(sprite: { id: bigint; action: string; prompt: string | null }, asset: {
-  id: bigint; category: string; attrs: unknown; sourceImageUrl: string;
+  id: bigint; name: string; category: string; attrs: unknown; sourceImageUrl: string;
+  widthCells: number | null; heightCells: number | null;
 }) {
   const action = sprite.action as ActionName;
   const spec = ACTIONS[action];
@@ -49,9 +51,13 @@ function buildJobPayload(sprite: { id: bigint; action: string; prompt: string | 
   return jsonSafe({
     jobId: sprite.id,
     assetId: asset.id,
+    name: asset.name,
     action,
     sourceImageUrl: asset.sourceImageUrl,
     category: asset.category,
+    // 생성/다운스케일 해상도 유도용 — 콜라이더 셀 크기(없으면 1타일).
+    tilesW: asset.widthCells ?? 1,
+    tilesH: asset.heightCells ?? 1,
     // prompt는 Qwen 확장(§C) 전까지 NULL — 워커/오케스트레이터가 motionHint+spec로 조립.
     prompt: sprite.prompt,
     motionHint,
@@ -118,38 +124,45 @@ export function aiWorkerRouter(): Router {
     }
   });
 
-  // --- 워커: 결과 업로드 (시트 완성) ---
-  r.post("/api/ai/jobs/:id/result", requireWorker, async (req: Request, res: Response) => {
-    try {
-      const id = BigInt(req.params.id);
-      const b = req.body ?? {};
-      if (!b.sheetUrl) {
-        res.status(400).json({ error: "sheetUrl required" });
-        return;
+  // --- 워커: 결과 업로드 (시트 PNG raw 바디 + 메타는 쿼리) ---
+  r.post(
+    "/api/ai/jobs/:id/result",
+    requireWorker,
+    express.raw({ type: "image/png", limit: "20mb" }),
+    async (req: Request, res: Response) => {
+      try {
+        const id = BigInt(req.params.id);
+        const png = req.body as Buffer;
+        if (!Buffer.isBuffer(png) || png.length === 0) {
+          res.status(400).json({ error: "png body required (Content-Type: image/png)" });
+          return;
+        }
+        const sheetUrl = await saveSheetPng(id.toString(), png);
+        const num = (q: unknown) => (q != null && q !== "" ? Number(q) : null);
+        const updated = await prisma.assetSprite.update({
+          where: { id },
+          data: {
+            status: "ready",
+            sheetUrl,
+            frameCount: num(req.query.frameCount),
+            frameW: num(req.query.frameW),
+            frameH: num(req.query.frameH),
+            errorMsg: null,
+          },
+        });
+        // 이 에셋의 모든 스프라이트가 ready면 에셋도 ready.
+        const remaining = await prisma.assetSprite.count({
+          where: { assetId: updated.assetId, status: { not: "ready" } },
+        });
+        if (remaining === 0) {
+          await prisma.asset.update({ where: { id: updated.assetId }, data: { status: "ready" } });
+        }
+        res.json(jsonSafe({ ok: true, assetReady: remaining === 0 }));
+      } catch (e: any) {
+        res.status(500).json({ error: e?.message ?? "result failed" });
       }
-      const updated = await prisma.assetSprite.update({
-        where: { id },
-        data: {
-          status: "ready",
-          sheetUrl: b.sheetUrl,
-          frameCount: b.frameCount ?? null,
-          frameW: b.frameW ?? null,
-          frameH: b.frameH ?? null,
-          errorMsg: null,
-        },
-      });
-      // 이 에셋의 모든 스프라이트가 ready면 에셋도 ready.
-      const remaining = await prisma.assetSprite.count({
-        where: { assetId: updated.assetId, status: { not: "ready" } },
-      });
-      if (remaining === 0) {
-        await prisma.asset.update({ where: { id: updated.assetId }, data: { status: "ready" } });
-      }
-      res.json(jsonSafe({ ok: true, assetReady: remaining === 0 }));
-    } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? "result failed" });
-    }
-  });
+    },
+  );
 
   // --- 워커: 실패 보고 (재큐 or failed) ---
   r.post("/api/ai/jobs/:id/fail", requireWorker, async (req: Request, res: Response) => {

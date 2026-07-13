@@ -2,6 +2,17 @@
 import { joinBaseworld, leaveBaseworld, getRoom } from "../rooms/baseworld/connect.js";
 import { startGame, stopGame, getScene } from "../rooms/baseworld/boot.js";
 import { TUNING, tuningDiff } from "shared/physics";
+import { CATEGORIES, defaultAttrsByCategory, type Category } from "shared/schemas";
+
+// 백엔드 HTTP 베이스 URL — Colyseus WS와 같은 호스트/포트(2567)에서 API가 돈다.
+// connect.ts의 SERVER_URL(ws://...)을 http로 치환하거나 VITE_SERVER_URL을 직접 사용.
+const HTTP_BASE: string = (() => {
+  const explicit = import.meta.env.VITE_SERVER_HTTP_URL as string | undefined;
+  if (explicit) return explicit.replace(/\/$/, "");
+  const ws = import.meta.env.VITE_SERVER_URL as string | undefined;
+  if (ws) return ws.replace(/^ws/, "http").replace(/\/$/, "");
+  return `${location.protocol}//${location.hostname}:2567`;
+})();
 
 export interface CmdCtx { print: (line: string) => void }
 export interface Command {
@@ -133,6 +144,49 @@ export const COMMANDS: Record<string, Command> = {
         ctx.print(`상태: ${sc.macroState}` + (sc.macroState === "recording" ? ` (${sc.macroBuf.length}틱)` :
           sc.macroState === "playing" ? ` (${sc.macroMode}, ${sc.macroIdx}/${sc.macroBuf.length})` :
           ` (버퍼 ${sc.macroBuf.length}틱)`));
+      }
+    },
+  },
+  genasset: {
+    usage: "genasset <카테고리> <이름> <이미지URL> [attrsJSON]",
+    desc: "에셋 제출 → 생성 큐 적재 (파이프라인 진입점). attrs 생략 시 카테고리 기본값",
+    run: async (args, ctx) => {
+      const [category, name, sourceImageUrl, ...rest] = args;
+      if (!category || !name || !sourceImageUrl) {
+        ctx.print("사용법: genasset <카테고리> <이름> <이미지URL> [attrsJSON]");
+        ctx.print(`카테고리: ${CATEGORIES.join(" | ")}`);
+        return;
+      }
+      if (!(CATEGORIES as readonly string[]).includes(category)) {
+        ctx.print(`알 수 없는 카테고리: ${category} (${CATEGORIES.join(" | ")})`);
+        return;
+      }
+      // defaultAttrsByCategory[cat]는 팩토리 함수 — 호출해서 초기 attrs 객체를 얻는다. item은 기본 없음(시스템 시드).
+      const factory = defaultAttrsByCategory[category as keyof typeof defaultAttrsByCategory];
+      if (!factory) { ctx.print(`${category}는 유저 제작 대상이 아닙니다 (attrs 직접 지정 필요)`); return; }
+      let attrs: unknown = factory();
+      if (rest.length > 0) {
+        try { attrs = JSON.parse(rest.join(" ")); }
+        catch { ctx.print("attrsJSON 파싱 실패 — 유효한 JSON이어야 함"); return; }
+      }
+      ctx.print(`제출 중… (${category} "${name}")`);
+      try {
+        const res = await fetch(`${HTTP_BASE}/api/asset/submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category, name, sourceImageUrl, attrs }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          ctx.print(`실패 (${res.status}): ${body.error ?? "unknown"}`);
+          if (body.issues) for (const iss of body.issues) ctx.print(`  · ${iss.path?.join(".")}: ${iss.message}`);
+          return;
+        }
+        ctx.print(`에셋 생성됨: id=${body.id} status=${body.status}`);
+        ctx.print(`생성 큐(${body.sprites?.length ?? 0}개 액션):`);
+        for (const s of body.sprites ?? []) ctx.print(`  · ${s.action.padEnd(8)} [${s.status}] prio=${s.priority}`);
+      } catch (e) {
+        ctx.print(`네트워크 오류: ${e instanceof Error ? e.message : String(e)} (HTTP_BASE=${HTTP_BASE})`);
       }
     },
   },

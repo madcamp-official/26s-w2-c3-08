@@ -10,9 +10,11 @@ import {
 /**
  * Import your Room files
  */
+import express from "express";
 import { MyRoom } from "./rooms/MyRoom.js";
 import { BaseworldRoom } from "./rooms/baseworld/BaseworldRoom.js";
 import { aiWorkerRouter } from "./worker-api/routes.js";
+import { STORAGE_DIR, STORAGE_URL_PREFIX } from "./asset/storage.js";
 
 const server = defineServer({
     /**
@@ -50,6 +52,9 @@ const server = defineServer({
          * routes: /api/asset/submit, /api/ai/jobs/next, /api/ai/jobs/:id/result|fail
          */
         app.use(aiWorkerRouter());
+
+        // 생성된 스프라이트 시트 정적 서빙 (sheetUrl = STORAGE_URL_PREFIX/{id}.png).
+        app.use(STORAGE_URL_PREFIX, express.static(STORAGE_DIR));
 
         /**
          * Use @colyseus/monitor
