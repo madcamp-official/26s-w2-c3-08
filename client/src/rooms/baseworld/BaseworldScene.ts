@@ -34,7 +34,6 @@ interface View {
   stale: boolean;     // 일정 시간 tick 정지 = 탭 백그라운드 → 충돌 통과(B)
   pound: number;      // 상대 내려찍기 상태 (넉백+스턴 판정용)
   ghostPushLeftMs: number;  // 상대-밀기(노이즈) 스무딩 잔여 — iPush(내 입력)는 즉시라 스무딩 안 함
-  pushSide: number;   // 겹치기 직전 래치한 "상대가 있는 쪽"(밀기 관통 방지)
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -75,7 +74,7 @@ export class BaseworldScene extends Phaser.Scene {
   grabHighlightUntil = 0;
   monsterHitSeq = 0;
   // 자기 스프라이트 연출 (유예 포함): kind/dir/amount/남은ms
-  selfFx = { kind: "none" as "none" | "stomped" | "shift" | "squeeze" | "ceil", dir: 1, amt: 8, left: 0 };
+  selfFx = { kind: "none" as "none" | "stomped" | "shift" | "squeeze" | "ceil", dir: 1, amt: 8, left: 0, centered: false };
 
   constructor(room: Room) {
     super("baseworld");
@@ -206,7 +205,7 @@ export class BaseworldScene extends Phaser.Scene {
       w, h,
       fxLeftMs: 0,
       lastTick: -1, lastTickAt: 0, stale: false,
-      pound: 0, ghostPushLeftMs: 0, pushSide: 0,
+      pound: 0, ghostPushLeftMs: 0,
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -284,7 +283,7 @@ export class BaseworldScene extends Phaser.Scene {
     // 판정은 외삽 위치가 아니라 서버 확정 위치(srv)로 → 오버슈트 관통 방지. 렌더만 g.x 사용
     // side = 밀기 관통 방지용 래치(View에 영속). pushSelfOut이 읽고 갱신 → 되써짐
     const ghosts = ghostViews.map((v) => ({
-      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound, side: v.pushSide,
+      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound,
     }));
     // 유예 감쇠: 접촉이 순간 끊겨도 GRACE 동안 연출 유지 (깜빡임 방지)
     for (const v of ghostViews) {
@@ -306,9 +305,8 @@ export class BaseworldScene extends Phaser.Scene {
       else v.ghostPushLeftMs = Math.max(0, v.ghostPushLeftMs - FIXED_MS);
       return { dirToGhost, contact, iPush, ghostPush: v.ghostPushLeftMs > 0 };
     });
-    // 밀기: 소프트 상한 분리 + 래치 진입쪽 + 중심 클램프(관통 방지). 밀기는 겹침 기반(상대 클라가 처리)
+    // 밀기: 겹친 만큼 내 몸만 소프트 상한으로 빠져나옴(원본). 밀기는 겹침 기반(상대 클라가 처리)
     pushSelfOut(b, ghosts);
-    ghosts.forEach((g, i) => { ghostViews[i].pushSide = g.side ?? 0; });   // 래치 되써짐
     const pounding = this.me.pound !== 0;
     const stompedIdx = checkIStomped(this.me, ghosts, TUNING, pounding, prevBottomY);
     if (stompedIdx >= 0) {
@@ -343,25 +341,26 @@ export class BaseworldScene extends Phaser.Scene {
       const { contact, iPush, ghostPush, dirToGhost: dir } = pushInfo[i];
       if (!contact || (!iPush && !ghostPush)) continue;
       if (iPush && ghostPush) {
-        setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 맞밀기: 둘 다 접촉면 찌부
+        // 맞밀기: 양쪽에서 눌림 → 중앙 대칭 찌부(폭 0 → offset 0). 나·상대 둘 다
+        setSquash(v.squash, "squeeze", dir, RATIO, 0);
         v.fxLeftMs = GRACE;
-        this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE };
+        this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE, centered: true };
       } else if (iPush) {
         setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 상대=접촉면 찌부
         v.fxLeftMs = GRACE;
-        this.selfFx = { kind: "shift", dir, amt: g.w * RATIO, left: GRACE };  // 나=파고드는 shift
+        this.selfFx = { kind: "shift", dir, amt: g.w * RATIO, left: GRACE, centered: false };  // 나=파고드는 shift
       } else {   // ghostPush
         setSquash(v.squash, "shift", -dir, b.w * RATIO);   // 상대=shift
         v.fxLeftMs = GRACE;
-        this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE };  // 나=찌부
+        this.selfFx = { kind: "squeeze", dir: -dir, amt: RATIO, left: GRACE, centered: false };  // 나=접촉면 찌부
       }
     }
     // 자기 스프라이트 연출 (우선순위: 밟힘 > 천장 > shift 유예)
-    if (stompedMe) { this.selfFx = { kind: "stomped", dir: 1, amt: 0, left: GRACE }; }
-    else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE }; }
+    if (stompedMe) { this.selfFx = { kind: "stomped", dir: 1, amt: 0, left: GRACE, centered: false }; }
+    else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE, centered: false }; }
     if (this.selfFx.left > 0) {
       if (this.selfFx.kind === "shift") setSquash(this.mySquash, "shift", this.selfFx.dir, this.selfFx.amt);
-      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir, this.selfFx.amt || TUNING.push.squeezeRatio, b.w);
+      else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir, this.selfFx.amt || TUNING.push.squeezeRatio, this.selfFx.centered ? 0 : b.w);
       else setSquash(this.mySquash, this.selfFx.kind === "none" ? "none" : this.selfFx.kind);
     } else {
       setSquash(this.mySquash, "none");

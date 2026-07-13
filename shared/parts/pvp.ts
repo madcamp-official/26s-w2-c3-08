@@ -5,7 +5,7 @@ import type { Body } from "../physics/body.js";
 import { left, right, top, bottom } from "../physics/body.js";
 import type { Avatar } from "./avatar.js";
 
-export interface Ghost { x: number; y: number; w: number; h: number; side?: number; }
+export interface Ghost { x: number; y: number; w: number; h: number; }
 
 function overlap(b: Body, g: Ghost): { ox: number; oy: number } | null {
   const gl = g.x - g.w / 2, gr = g.x + g.w / 2, gt = g.y - g.h, gb = g.y;
@@ -14,17 +14,14 @@ function overlap(b: Body, g: Ghost): { ox: number; oy: number } | null {
   return ox > 0 && oy > 0 ? { ox, oy } : null;
 }
 
-/** 밀기 (§14-4): 내 몸만 소프트 상한으로 빠져나옴(순간이동 방지). 밀기는 겹침 기반으로 상대 클라가 처리.
- *  g.side = 겹치기 직전 래치한 "상대가 있는 쪽"(속도 무관). 중심 넘기 클램프로 하드 관통 방지. */
+/** 밀기 (§14-4): 겹친 고스트에서 내 몸만 소프트 상한으로 빠져나옴. 밀기는 겹침 기반(상대 클라가 처리). */
 export function pushSelfOut(me: Body, ghosts: Ghost[], t: Tuning = TUNING): void {
   for (const g of ghosts) {
     const o = overlap(me, g);
-    if (!o) { g.side = g.x >= me.x ? 1 : -1; continue; }   // 안 겹칠 때만 진입쪽 래치
+    if (!o) continue;
     if (o.oy <= t.stomp.headBandPx) continue; // 머리 밴드는 밟기/서기 몫
-    const side = g.side || (g.x >= me.x ? 1 : -1);          // 겹치는 동안엔 래치 유지
-    me.x -= side * Math.min(o.ox, t.push.separatePerTick);  // 진입 반대로 소프트 분리
-    if (side > 0) me.x = Math.min(me.x, g.x);               // 내 중심이 상대 중심 못 넘음(하드 관통 방지)
-    else me.x = Math.max(me.x, g.x);
+    const dir = me.x < g.x ? -1 : 1;
+    me.x += dir * Math.min(o.ox, t.push.separatePerTick);
   }
 }
 

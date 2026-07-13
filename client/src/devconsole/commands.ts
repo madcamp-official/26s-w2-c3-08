@@ -1,7 +1,7 @@
 // 개발자 콘솔 명령 (DEV 빌드 전용 — §32-3)
 import { joinBaseworld, leaveBaseworld, getRoom } from "../rooms/baseworld/connect.js";
 import { startGame, stopGame, getScene } from "../rooms/baseworld/boot.js";
-import { TUNING } from "shared/physics";
+import { TUNING, tuningDiff } from "shared/physics";
 
 export interface CmdCtx { print: (line: string) => void }
 export interface Command {
@@ -76,6 +76,17 @@ export const COMMANDS: Record<string, Command> = {
     usage: "tuning",
     desc: "현재 수치 전체 출력",
     run: (_a, ctx) => { for (const l of JSON.stringify(TUNING, null, 1).split("\n")) ctx.print(l); },
+  },
+  tunediff: {
+    usage: "tunediff",
+    desc: "기본값 대비 변경된 수치만 출력 (tuning.json 반영용)",
+    run: (_a, ctx) => {
+      const d = tuningDiff();
+      if (d.length === 0) { ctx.print("변경된 수치 없음"); return; }
+      ctx.print(`변경 ${d.length}개 (기본 → 현재):`);
+      for (const { path, from, to } of d) ctx.print(`  ${path.padEnd(28)} ${from} → ${to}`);
+      ctx.print(`(tileSize=${TUNING.world.tileSize}${TUNING.world.tileSize === 64 ? " — tuning.json 값과 동일" : " — 64 아니라 환산됨"})`);
+    },
   },
   serverview: {
     usage: "serverview [주체] [1|2|3...] | off",

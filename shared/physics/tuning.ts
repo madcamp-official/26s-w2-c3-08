@@ -39,6 +39,23 @@ function scaleLengths(t: Tuning): void {
 export const TUNING: Tuning = raw;
 scaleLengths(TUNING);   // 로드 시 1회: tileSize≠64면 길이 계열 비례
 
+// 스케일 적용 후 기본값 스냅샷 — tune으로 바꾼 변경점 추적용 (tunediff)
+const DEFAULTS = JSON.parse(JSON.stringify(TUNING)) as Record<string, Record<string, number>>;
+
+/** 기본값 대비 tune으로 바뀐 수치만 반환 (tuning.json 반영용) */
+export function tuningDiff(): { path: string; from: number; to: number }[] {
+  const cur = TUNING as unknown as Record<string, Record<string, number>>;
+  const out: { path: string; from: number; to: number }[] = [];
+  for (const g of Object.keys(cur)) {
+    for (const k of Object.keys(cur[g])) {
+      if (typeof cur[g][k] === "number" && cur[g][k] !== DEFAULTS[g]?.[k]) {
+        out.push({ path: `${g}.${k}`, from: DEFAULTS[g][k], to: cur[g][k] });
+      }
+    }
+  }
+  return out;
+}
+
 /** 개발용 런타임 튜닝: "jump.velocity" 경로의 숫자를 덮어씀. 성공 여부 반환 */
 export function applyTuning(path: string, value: number): boolean {
   if (!Number.isFinite(value)) return false;
