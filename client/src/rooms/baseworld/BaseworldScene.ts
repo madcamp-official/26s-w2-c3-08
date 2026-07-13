@@ -8,7 +8,7 @@ import "shared/behavior";
 import "shared/properties";
 import {
   type Avatar, type AvatarInput, createAvatar, stepAvatar, applyItem, clearItemEffects,
-  pushSelfOut, checkIStomped, checkStompedMe, headStand, startSpin,
+  pushSelfOut, checkIStomped, checkStompedMe, headStand,
   createCarryState, stepCarry, type CarryState, type Carryable,
   blockRect, type ItemSpec,
 } from "shared/parts";
@@ -34,6 +34,7 @@ interface View {
   stale: boolean;     // 일정 시간 tick 정지 = 탭 백그라운드 → 충돌 통과(B)
   pound: number;      // 상대 내려찍기 상태 (넉백+스턴 판정용)
   ghostPushLeftMs: number;  // 상대-밀기(노이즈) 스무딩 잔여 — iPush(내 입력)는 즉시라 스무딩 안 함
+  pushSide: number;   // 겹치기 직전 래치한 "상대가 있는 쪽"(밀기 관통 방지)
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -174,11 +175,6 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.onMessage("grabDenied", (m: { objId: string }) => {
       if (this.carry.heldId === m.objId) this.carry.heldId = null;
     });
-    // 밀림(외력) 수신 — 당하는 쪽이 자기 몸에 적용 (§14 재설계)
-    this.room.onMessage("pushForce", (m: { vx: number }) => {
-      this.me.pushedVx = m.vx * TUNING.push.forceMult;
-      this.me.pushedLeftMs = TUNING.push.forceDecayMs;
-    });
     // 블록
     $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
       const spec = TESTMAP.blocks.find((b) => b.id === id);
@@ -210,7 +206,7 @@ export class BaseworldScene extends Phaser.Scene {
       w, h,
       fxLeftMs: 0,
       lastTick: -1, lastTickAt: 0, stale: false,
-      pound: 0, ghostPushLeftMs: 0,
+      pound: 0, ghostPushLeftMs: 0, pushSide: 0,
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -284,12 +280,11 @@ export class BaseworldScene extends Phaser.Scene {
     // ── PvP: 자기 화면 판정 (§14) ──
     const GRACE = TUNING.push.visualGraceMs;
     // 정지(백그라운드) 고스트는 밀기·밟기·서기 판정에서 제외 = 충돌 통과 (B)
-    const ghostEntries = [...this.players.entries()].filter(([, v]) => !v.stale);
-    const ghostIds = ghostEntries.map(([id]) => id);
-    const ghostViews = ghostEntries.map(([, v]) => v);
+    const ghostViews = [...this.players.values()].filter((v) => !v.stale);
     // 판정은 외삽 위치가 아니라 서버 확정 위치(srv)로 → 오버슈트 관통 방지. 렌더만 g.x 사용
+    // side = 밀기 관통 방지용 래치(View에 영속). pushSelfOut이 읽고 갱신 → 되써짐
     const ghosts = ghostViews.map((v) => ({
-      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound,
+      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound, side: v.pushSide,
     }));
     // 유예 감쇠: 접촉이 순간 끊겨도 GRACE 동안 연출 유지 (깜빡임 방지)
     for (const v of ghostViews) {
@@ -311,8 +306,9 @@ export class BaseworldScene extends Phaser.Scene {
       else v.ghostPushLeftMs = Math.max(0, v.ghostPushLeftMs - FIXED_MS);
       return { dirToGhost, contact, iPush, ghostPush: v.ghostPushLeftMs > 0 };
     });
-    // 밀기(재설계): 완전 분리(솔리드 벽). "상대를 미는 힘"은 아래 pushForce로 별도 전달
+    // 밀기: 소프트 상한 분리 + 래치 진입쪽 + 중심 클램프(관통 방지). 밀기는 겹침 기반(상대 클라가 처리)
     pushSelfOut(b, ghosts);
+    ghosts.forEach((g, i) => { ghostViews[i].pushSide = g.side ?? 0; });   // 래치 되써짐
     const pounding = this.me.pound !== 0;
     const stompedIdx = checkIStomped(this.me, ghosts, TUNING, pounding, prevBottomY);
     if (stompedIdx >= 0) {
@@ -320,10 +316,9 @@ export class BaseworldScene extends Phaser.Scene {
       setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
       ghostViews[stompedIdx].fxLeftMs = GRACE;
       if (this.me.pound !== 0) {
-        // B: 내려찍기로 플레이어 밟음 → 큰 바운스 + 스핀 + 내려찍기 종료 (강화점프 창은 checkIStomped가 이미 설정)
+        // B: 내려찍기로 플레이어 밟음 → 큰 바운스 + 내려찍기 종료 (강화점프 창은 checkIStomped가 이미 설정)
         b.vy = TUNING.stomp.poundBounceVelocity;
         this.me.pound = 0;
-        startSpin(this.me, TUNING);
       }
     }
     const stompedMe = checkStompedMe(this.me, ghosts);
@@ -347,8 +342,6 @@ export class BaseworldScene extends Phaser.Scene {
       const v = ghostViews[i];
       const { contact, iPush, ghostPush, dirToGhost: dir } = pushInfo[i];
       if (!contact || (!iPush && !ghostPush)) continue;
-      // 내가 미는 중 → 상대에게 힘 전달(당하는 쪽이 적용). 내 현재 속도를 실어 보냄
-      if (iPush) this.room.send("pushForce", { target: ghostIds[i], vx: b.vx });
       if (iPush && ghostPush) {
         setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 맞밀기: 둘 다 접촉면 찌부
         v.fxLeftMs = GRACE;
@@ -401,18 +394,22 @@ export class BaseworldScene extends Phaser.Scene {
         if (prevPound === 2 && willKill) {
           // 내려찍기로 죽임 → 원작대로 튕김 없이 flatten(pound가 계속 내려감)
         } else if (prevPound === 2) {
-          // B2: 내려찍었는데 안 죽음 → 큰 바운스 + 스핀 + 강화점프 창 + 내려찍기 종료
+          // B2: 내려찍었는데 안 죽음 → 큰 바운스 + 강화점프 창 + 내려찍기 종료 (스핀 없음)
           b.vy = TUNING.stomp.poundBounceVelocity;
           this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
           this.me.pound = 0;
-          startSpin(this.me, TUNING);
         } else {
           // 일반 밟기 → 튕김 + 강화점프 창
           b.vy = TUNING.stomp.bounceVelocity;
           this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
         }
+      } else if (hOvBase > 0 && this.me.slide) {
+        // 경사 슬라이드로 접촉 → 처치(원작 Slide Attack), 접촉 데미지 무적(발사체는 별개)
+        this.localMonHits.set(id, { count: effHits + 1, at: this.time.now });
+        this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
+        if (v) setSquash(v.squash, "stomped");
       } else if (hOvBase > 0 && this.me.invincibleLeftMs > 0) {
-        this.localMonHits.set(id, { count: this.monEffHits(id, m.hitCount) + 1, at: this.time.now });
+        this.localMonHits.set(id, { count: effHits + 1, at: this.time.now });
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
       } else if (hOvBase > 0) {
         // 데미지는 기본 폭 겹침일 때만. 방금 밟은 몬스터면 튕겨 분리되는 짧은 창엔 무시(재접촉 방지)
@@ -538,7 +535,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.myRect.setPosition(b.x + this.mySquash.offsetX, b.y + this.mySquash.offsetY);
     // 무적=노랑 / 내려찍기·공중스핀=주황(애니메이션 없어 구별용) / 평상=파랑
     this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55
-      : (this.me.pound !== 0 || this.me.spinLeftMs > 0) ? 0xffcc33 : 0x4488ff;
+      : this.me.pound !== 0 ? 0xffcc33 : 0x4488ff;
     // 고스트 플레이어
     this.room.state.players.forEach((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId) return;

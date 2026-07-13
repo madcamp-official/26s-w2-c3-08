@@ -13,7 +13,6 @@ export class PlayerState extends Schema {
   @type("uint8") pound: number = 0;      // 0/1/2
   @type("boolean") crouch = false;
   @type("boolean") slide = false;
-  @type("number") spinLeftMs = 0;
   @type("boolean") invincible = false;
   @type("boolean") frozen = false;       // 아이템 획득 0.4초
   @type("uint8") sizeStage: number = 2;

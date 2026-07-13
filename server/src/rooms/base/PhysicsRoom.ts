@@ -161,11 +161,6 @@ export abstract class PhysicsRoom extends Room {
     tp: (client: Client, m: { x: number; y: number }) => {
       this.broadcast("tp", { sessionId: client.sessionId, x: m.x, y: m.y });
     },
-    // 밀기 힘 전달 (§14 재설계): 미는 쪽 → 서버 relay → 당하는 쪽이 자기 몸에 적용
-    pushForce: (client: Client, m: { target: string; vx: number }) => {
-      const tc = this.clients.find((c) => c.sessionId === m.target);
-      if (tc) tc.send("pushForce", { vx: m.vx });
-    },
   };
 
   onCreate(): void {

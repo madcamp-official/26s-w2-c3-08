@@ -7,7 +7,7 @@ export function sendAvatarState(room: Room, a: Avatar, tick: number): void {
   room.send("avatar", {
     x: b.x, y: b.y, vx: b.vx, vy: b.vy, w: b.w, h: b.h,
     facing: b.facing, pound: a.pound, crouch: a.crouch, slide: a.slide,
-    spinLeftMs: a.spinLeftMs, invincible: a.invincibleLeftMs > 0,
+    invincible: a.invincibleLeftMs > 0,
     frozen: a.freezeLeftMs > 0, sizeStage: a.sizeStage, hp: a.hp, tick,
   });
 }

@@ -37,8 +37,6 @@ export interface Avatar {
   airborneStartY: number;    // 내려찍기 최소높이 판정
   crouch: boolean;
   slide: boolean;
-  spinLeftMs: number;
-  spinUsed: boolean;
   wallGrabMs: number;        // 벽 접촉 경과 (2단 상한)
   wallClingGraceMs: number;  // 반대/무입력 유예
   coyoteLeftMs: number;
@@ -46,8 +44,6 @@ export interface Avatar {
   prevJumpHeld: boolean;
   freezeLeftMs: number;      // 아이템 획득 0.4초 고정 (§58)
   stunLeftMs: number;        // 내려찍기에 밟힘 = 기절(조작 무시, 물리는 유지)
-  pushedVx: number;          // 상대가 밀어 넣는 외력 속도 (pushForce 수신, 당하는 쪽 적용)
-  pushedLeftMs: number;      // 외력 잔여(계속 밀리면 갱신, 떼면 감쇠)
   // modifier 스택 (§25): 이름 → 배율/잔여ms
   speedMult: number;
   speedMultLeftMs: number;
@@ -62,10 +58,10 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
     body: createBody(x, y, w, hitboxH, ["player"]),
     baseW: w, baseH: hitboxH, sizeStage: 2, hp: 1,
     pound: 0, poundHangLeftMs: 0, poundLandLeftMs: 0, stompComboLeftMs: 0, airborneStartY: y,
-    crouch: false, slide: false, spinLeftMs: 0, spinUsed: false,
+    crouch: false, slide: false,
     wallGrabMs: 0, wallClingGraceMs: 0,
     coyoteLeftMs: 0, jumpBufferLeftMs: 0, prevJumpHeld: false,
-    freezeLeftMs: 0, stunLeftMs: 0, pushedVx: 0, pushedLeftMs: 0,
+    freezeLeftMs: 0, stunLeftMs: 0,
     speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: 0,
     fx: new Set(),
   };
@@ -104,7 +100,6 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   // modifier 타이머
   if (a.speedMultLeftMs > 0) { a.speedMultLeftMs -= dtMs; if (a.speedMultLeftMs <= 0) a.speedMult = 1; }
   if (a.invincibleLeftMs > 0) a.invincibleLeftMs -= dtMs;
-  if (a.pushedLeftMs > 0) a.pushedLeftMs -= dtMs;   // 외력 감쇠(계속 밀리면 수신부에서 갱신)
 
   const jumpPressed = input.jump && !a.prevJumpHeld;
   a.prevJumpHeld = input.jump;
@@ -116,35 +111,29 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   // ── 내려찍기 상태 머신 ─────────────────────────────
   const highEnough = Math.abs(b.y - a.airborneStartY) >= t.pound.minHeightPx || b.y > a.airborneStartY;
   if (a.pound === 0 && !a.slide && input.down && !b.grounded && highEnough) {
-    if (a.spinLeftMs > 0) { a.pound = 2; a.spinLeftMs = 0; b.vx = 0; } // 스핀파운드
-    else { a.pound = 1; a.poundHangLeftMs = t.pound.hangMs; b.vx = 0; b.vy = 0; }
+    a.pound = 1; a.poundHangLeftMs = t.pound.hangMs; b.vx = 0; b.vy = 0;
   }
   if (a.pound === 1) {
-    if (jumpPressed && !a.spinUsed) { a.pound = 0; startSpin(a, t); b.vy = 0; }
-    else {
-      const elapsed = t.pound.hangMs - a.poundHangLeftMs;
-      b.vx = 0;
-      b.vy = elapsed < t.pound.riseMs ? t.pound.riseVelocity : 0;
-      a.poundHangLeftMs -= dtMs;
-      if (a.poundHangLeftMs <= 0) a.pound = 2;
-      moveAndCollide(b, terrain, dtMs, t);
-      return;
-    }
+    // 내려찍기는 취소 불가(커밋). 점프 입력 무시
+    const elapsed = t.pound.hangMs - a.poundHangLeftMs;
+    b.vx = 0;
+    b.vy = elapsed < t.pound.riseMs ? t.pound.riseVelocity : 0;
+    a.poundHangLeftMs -= dtMs;
+    if (a.poundHangLeftMs <= 0) a.pound = 2;
+    moveAndCollide(b, terrain, dtMs, t);
+    return;
   }
   if (a.pound === 2) {
-    if (jumpPressed && !a.spinUsed) { a.pound = 0; startSpin(a, t); b.vy = 0; }
-    else {
-      b.vx = 0; b.vy = t.pound.fallVelocity;
-      moveAndCollide(b, terrain, dtMs, t);
-      if (b.grounded) {
-        a.pound = 0;
-        a.poundLandLeftMs = t.pound.jumpWindowMs;
-        // 경사면 착지 → 슬라이드: 0이 아닌 일정 시작속도에서 출발해 가속(§내려찍기 슬라이드)
-        if (b.onSlopeDir !== 0) { a.slide = true; b.vx = -b.onSlopeDir * t.slide.slopeStartSpeed; }
-        a.fx.add("poundLand");
-      }
-      return;
+    b.vx = 0; b.vy = t.pound.fallVelocity;
+    moveAndCollide(b, terrain, dtMs, t);
+    if (b.grounded) {
+      a.pound = 0;
+      a.poundLandLeftMs = t.pound.jumpWindowMs;
+      // 경사면 착지 → 슬라이드: 0이 아닌 일정 시작속도에서 출발해 가속(§내려찍기 슬라이드)
+      if (b.onSlopeDir !== 0) { a.slide = true; b.vx = -b.onSlopeDir * t.slide.slopeStartSpeed; }
+      a.fx.add("poundLand");
     }
+    return;
   }
 
   // ── 슬라이딩 (유효 입력 점프뿐) ─────────────────────
@@ -185,9 +174,7 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   const crouchMult = a.crouch ? t.crouch.speedMult : 1;
   const top = (input.run ? t.run.runSpeed : t.run.walkSpeed) * a.speedMult;
   const rate = (dir !== 0 ? t.run.accel : t.run.decel) * control;
-  // 외력(상대 밀기)은 입력 목표에 더해짐 → 반대로 걸으면 부분 상쇄(저항), 무입력이면 그 속도로 밀려남
-  const pushTarget = a.pushedLeftMs > 0 ? a.pushedVx : 0;
-  b.vx = approach(b.vx, dir * top * crouchMult + pushTarget, rate * dt);
+  b.vx = approach(b.vx, dir * top * crouchMult, rate * dt);
 
   // ── 코요테 / 버퍼 ───────────────────────────────────
   a.coyoteLeftMs = b.grounded ? t.jump.coyoteMs : Math.max(0, a.coyoteLeftMs - dtMs);
@@ -205,10 +192,7 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
     a.wallGrabMs = 0;
   }
   const clinging = airborne && b.touchingWall !== 0 && (towardWall || a.wallClingGraceMs > 0);
-  if (clinging) {
-    a.wallGrabMs += dtMs;
-    if (a.spinUsed) a.spinUsed = false; // 벽 슬라이드 = 스핀 리셋 (§16)
-  }
+  if (clinging) a.wallGrabMs += dtMs;
 
   if (jumpPressed && airborne && b.touchingWall !== 0) {
     // 벽점프
@@ -216,12 +200,8 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
     b.vy = t.wallSlide.kickVy;
     b.facing = (-b.touchingWall) as 1 | -1;
     a.jumpBufferLeftMs = 0;
-    a.spinUsed = false; // 벽점프 = 스핀 리셋
     a.fx.add("wallJump");
-  } else if (jumpPressed && airborne && !a.spinUsed) {
-    startSpin(a, t);
   }
-  a.spinLeftMs = Math.max(0, a.spinLeftMs - dtMs);
 
   // ── 점프 (내려찍기 점프 배수 / 밟기 직후 강화 — 선입력 버퍼가 창에 적용돼 씹힘 방지) ──
   a.stompComboLeftMs = Math.max(0, a.stompComboLeftMs - dtMs);
@@ -246,16 +226,10 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   const risingBefore = b.vy < 0;
   collideWithCrouchHeight(a, terrain, dtMs, t);
   if (risingBefore && b.vy === 0 && !b.grounded) a.fx.add("ceilBonk");
-  if (!wasGrounded && b.grounded) { a.fx.add("landed"); a.spinUsed = false; }
+  if (!wasGrounded && b.grounded) a.fx.add("landed");
 }
 
 // ── 내부 헬퍼 ─────────────────────────────────────────
-export function startSpin(a: Avatar, t: Tuning): void {
-  a.spinLeftMs = t.spin.durationMs;
-  a.spinUsed = true;
-  a.fx.add("spin");
-}
-
 function doJump(a: Avatar, t: Tuning, mult: number): void {
   const b = a.body;
   const runFrac = Math.min(1, Math.abs(b.vx) / t.run.runSpeed);
@@ -273,7 +247,6 @@ function applyGravity(a: Avatar, input: AvatarInput, dt: number, t: Tuning): voi
   let g = t.gravity.base;
   if (b.vy < 0 && !input.jump) g *= t.gravity.riseReleaseMult;
   if (b.vy > 0) g *= t.gravity.fallMult;
-  if (a.spinLeftMs > 0 && b.vy > 0) g *= t.spin.gravityMult;
   b.vy = Math.min(b.vy + g * dt, t.gravity.maxFallSpeed);
   clampSpeed(b, t);
 }
