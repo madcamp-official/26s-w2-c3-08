@@ -12,6 +12,7 @@ import {
  */
 import { MyRoom } from "./rooms/MyRoom.js";
 import { BaseworldRoom } from "./rooms/baseworld/BaseworldRoom.js";
+import { aiWorkerRouter } from "./worker-api/routes.js";
 
 const server = defineServer({
     /**
@@ -43,6 +44,12 @@ const server = defineServer({
         app.get("/hi", (req, res) => {
             res.send("It's time to kick ass and chew bubblegum!");
         });
+
+        /**
+         * 에셋 생성 파이프라인 API (제출 큐 + 5080 워커 pull).
+         * routes: /api/asset/submit, /api/ai/jobs/next, /api/ai/jobs/:id/result|fail
+         */
+        app.use(aiWorkerRouter());
 
         /**
          * Use @colyseus/monitor
