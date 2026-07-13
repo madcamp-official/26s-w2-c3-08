@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drawing Engine Browser Harness</title>
+    <style>
+      body {
+        margin: 0;
+        background: #101820;
+      }
+
+      #surface {
+        position: relative;
+        width: 256px;
+        height: 512px;
+      }
+
+      #preview {
+        width: 256px;
+        height: 512px;
+        image-rendering: pixelated;
+      }
+
+      #overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, rgba(255, 0, 255, 0.65) 1px, transparent 1px),
+          linear-gradient(rgba(255, 0, 255, 0.65) 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="surface">
+      <canvas id="preview" width="256" height="512"></canvas>
+      <div id="overlay" aria-hidden="true"></div>
+    </div>
+    <script type="module">
+      import {
+        AVATAR_DRAWING_DIMENSIONS,
+        createDrawingEngineCore,
+        visibleToWorkspacePixel,
+      } from '/src/experiments/drawing-engine/core/index.ts'
+      import {
+        createManagedCanvasAdapter,
+        encodePngDataUrl,
+        readCanvasPixels,
+        writeSnapshotToCanvas,
+      } from '/src/experiments/drawing-engine/canvas-adapter/browserCanvasAdapter.ts'
+
+      const preview = document.querySelector('#preview')
+      const GREEN = { r: 15, g: 210, b: 90, a: 255 }
+      const RED = { r: 240, g: 24, b: 24, a: 255 }
+
+      async function runHarness() {
+        const passed = []
+        const failures = []
+
+        async function check(name, fn) {
+          try {
+            await fn()
+            passed.push(name)
+          } catch (error) {
+            failures.push({
+              name,
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+
+        const engine = createDrawingEngineCore()
+        const visibleOriginPoint = visibleToWorkspacePixel({ x: 0, y: 0 }, AVATAR_DRAWING_DIMENSIONS)
+        const secondVisiblePoint = visibleToWorkspacePixel({ x: 4, y: 4 }, AVATAR_DRAWING_DIMENSIONS)
+        engine.drawPoint({ point: visibleOriginPoint, color: GREEN })
+        engine.drawPoint({ point: secondVisiblePoint, color: RED })
+
+        await check('encodePngDataUrl produces decodable visible crop', async () => {
+          const dataUrl = encodePngDataUrl(engine.exportVisibleImageData(), () =>
+            document.createElement('canvas'),
+          )
+          assert(dataUrl.startsWith('data:image/png;base64,'), 'PNG data URL prefix mismatch')
+          const decoded = await decodePngToCanvas(dataUrl)
+          assertPixel(readCanvasPixel(decoded, { x: 0, y: 0 }), GREEN, 'decoded PNG first pixel')
+        })
+
+        await check('writeSnapshotToCanvas preserves workspace pixels', () => {
+          const workspaceCanvas = document.createElement('canvas')
+          writeSnapshotToCanvas(engine.getSnapshot(), workspaceCanvas)
+          assert(workspaceCanvas.width === 768, 'workspace canvas width mismatch')
+          assert(workspaceCanvas.height === 1536, 'workspace canvas height mismatch')
+          assertPixel(
+            readCanvasPixel(workspaceCanvas, visibleOriginPoint),
+            GREEN,
+            'workspace visible-origin pixel',
+          )
+          const readback = readCanvasPixels(workspaceCanvas)
+          assert(readback.width === 768, 'readback width mismatch')
+          assert(readback.height === 1536, 'readback height mismatch')
+          assert(readback.data.length === 768 * 1536 * 4, 'readback data length mismatch')
+        })
+
+        await check('overlay does not affect source export pixels', async () => {
+          const dataUrl = encodePngDataUrl(engine.exportVisibleImageData(), () =>
+            document.createElement('canvas'),
+          )
+          const decoded = await decodePngToCanvas(dataUrl)
+          const overlay = getComputedStyle(document.querySelector('#overlay')).backgroundImage
+          assert(overlay.includes('255, 0, 255'), 'test overlay was not rendered')
+          assertPixel(readCanvasPixel(decoded, { x: 0, y: 0 }), GREEN, 'overlay-excluded export pixel')
+        })
+
+        await check('managed canvas adapter resize and cleanup', () => {
+          const adapter = createManagedCanvasAdapter(preview)
+          adapter.resizeDisplay(128, 256)
+          assert(preview.style.width === '128px', 'display width was not updated')
+          assert(preview.style.height === '256px', 'display height was not updated')
+          assert(adapter.listenerCount() === 0, 'adapter should not register listeners in this harness')
+          adapter.destroy()
+          adapter.destroy()
+          assertThrows(() => adapter.resizeDisplay(256, 512), 'resize after destroy should throw')
+        })
+
+        await check('preview canvas is nonblank and pixel-readable', () => {
+          preview.width = 256
+          preview.height = 512
+          const context = preview.getContext('2d', { willReadFrequently: true })
+          context.putImageData(
+            new ImageData(engine.exportVisibleImageData().data, 256, 512),
+            0,
+            0,
+          )
+          assertPixel(readCanvasPixel(preview, { x: 0, y: 0 }), GREEN, 'preview first pixel')
+          assertPixel(readCanvasPixel(preview, { x: 4, y: 4 }), RED, 'preview second pixel')
+        })
+
+        window.__drawingEngineBrowserResults = {
+          done: true,
+          passed,
+          failures,
+          previewPixel: readCanvasPixel(preview, { x: 0, y: 0 }),
+        }
+      }
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message)
+        }
+      }
+
+      function assertThrows(fn, message) {
+        let threw = false
+
+        try {
+          fn()
+        } catch {
+          threw = true
+        }
+
+        assert(threw, message)
+      }
+
+      function assertPixel(actual, expected, label) {
+        assert(actual.r === expected.r, `${label}: red expected ${expected.r}, received ${actual.r}`)
+        assert(actual.g === expected.g, `${label}: green expected ${expected.g}, received ${actual.g}`)
+        assert(actual.b === expected.b, `${label}: blue expected ${expected.b}, received ${actual.b}`)
+        assert(actual.a === expected.a, `${label}: alpha expected ${expected.a}, received ${actual.a}`)
+      }
+
+      function readCanvasPixel(canvas, point) {
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+        const pixel = context.getImageData(point.x, point.y, 1, 1).data
+
+        return {
+          r: pixel[0],
+          g: pixel[1],
+          b: pixel[2],
+          a: pixel[3],
+        }
+      }
+
+      async function decodePngToCanvas(dataUrl) {
+        const image = new Image()
+        image.src = dataUrl
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.width
+        canvas.height = image.height
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+        context.drawImage(image, 0, 0)
+
+        return canvas
+      }
+
+      runHarness()
+    </script>
+  </body>
+</html>
