@@ -19,7 +19,7 @@ const LENGTH_PATHS: readonly string[] = [
   "push.separatePerTick", "push.contactPad", "push.velThreshold",
   "corner.footSnapPx", "corner.headSnapPx",
   "sizeStage.smallW", "sizeStage.smallH",
-  "sizes.projectile", "sizes.item", "sizes.carryable", "sizes.handOffset", "sizes.playerHeight",
+  "sizes.projectile", "sizes.item", "sizes.carryable", "sizes.handOffset",
   "carry.throwSpeed", "carry.upThrowSpeed",
   "item.knockbackVx", "item.knockbackVy",
   "projectile.slowSpeed", "projectile.normalSpeed", "projectile.fastSpeed",

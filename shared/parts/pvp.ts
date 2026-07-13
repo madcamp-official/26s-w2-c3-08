@@ -22,6 +22,9 @@ export function pushSelfOut(me: Body, ghosts: Ghost[], t: Tuning = TUNING): void
     if (o.oy <= t.stomp.headBandPx) continue; // 머리 밴드는 밟기/서기 몫
     const dir = me.x < g.x ? -1 : 1;
     me.x += dir * Math.min(o.ox, t.push.separatePerTick);
+    // 중심 넘기 금지: 상대 중심 반대편에 머무름 (원본 느낌 유지, 반대편 관통 완화)
+    if (dir < 0) me.x = Math.min(me.x, g.x);
+    else me.x = Math.max(me.x, g.x);
   }
 }
 

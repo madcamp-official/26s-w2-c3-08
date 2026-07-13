@@ -38,7 +38,7 @@ interface View {
 
 export class BaseworldScene extends Phaser.Scene {
   room: Room;
-  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
+  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeightTiles * TUNING.world.tileSize);
   carry: CarryState = createCarryState();
   mySquash = createSquash();
   tick = 0;
@@ -263,7 +263,7 @@ export class BaseworldScene extends Phaser.Scene {
         this.macroIdx = 0;
         if (this.macroMode === "reset") {
           // 위치·능력 전부 초기화 (로컬 권위라 서버 동기화 불필요 — relay가 전파)
-          this.me = createAvatar(this.macroStart.x, this.macroStart.y, TUNING.sizes.playerHeight);
+          this.me = createAvatar(this.macroStart.x, this.macroStart.y, TUNING.sizes.playerHeightTiles * TUNING.world.tileSize);
         }
       }
       input = { ...this.macroBuf[this.macroIdx++], tick: this.tick };
@@ -520,7 +520,7 @@ export class BaseworldScene extends Phaser.Scene {
 
   respawn(): void {
     this.dead = false;
-    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
+    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeightTiles * TUNING.world.tileSize);
     this.me.hp = 1;
     this.myRect.setVisible(true);
   }
