@@ -38,7 +38,7 @@ interface View {
 
 export class BaseworldScene extends Phaser.Scene {
   room: Room;
-  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeightTiles * TUNING.world.tileSize);
+  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
   carry: CarryState = createCarryState();
   mySquash = createSquash();
   tick = 0;
@@ -263,7 +263,7 @@ export class BaseworldScene extends Phaser.Scene {
         this.macroIdx = 0;
         if (this.macroMode === "reset") {
           // 위치·능력 전부 초기화 (로컬 권위라 서버 동기화 불필요 — relay가 전파)
-          this.me = createAvatar(this.macroStart.x, this.macroStart.y, TUNING.sizes.playerHeightTiles * TUNING.world.tileSize);
+          this.me = createAvatar(this.macroStart.x, this.macroStart.y, TUNING.sizes.playerHeight);
         }
       }
       input = { ...this.macroBuf[this.macroIdx++], tick: this.tick };
@@ -520,7 +520,7 @@ export class BaseworldScene extends Phaser.Scene {
 
   respawn(): void {
     this.dead = false;
-    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeightTiles * TUNING.world.tileSize);
+    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
     this.me.hp = 1;
     this.myRect.setVisible(true);
   }
@@ -668,7 +668,7 @@ export class BaseworldScene extends Phaser.Scene {
 }
 
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
-interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string }
+interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number }
 interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number }
 interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
