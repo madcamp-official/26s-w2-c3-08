@@ -55,8 +55,11 @@ export class PromptGatewayClient {
     if (params.stylePreset) form.set("style_preset", params.stylePreset);
     if (params.outputLanguage) form.set("output_language", params.outputLanguage);
     if (params.assetType) form.set("asset_type", params.assetType);
-    // Buffer는 SharedArrayBuffer 백업 가능성 때문에 BlobPart 타입과 안 맞음 — 순수 Uint8Array로 복사
-    form.set("image", new Blob([new Uint8Array(params.image)]), params.imageFilename ?? "source.png");
+    // Buffer는 SharedArrayBuffer 백업 가능성 때문에 BlobPart 타입과 안 맞음 — 순수 Uint8Array로 복사.
+    // MIME 타입을 반드시 지정 — 없으면 multipart가 application/octet-stream으로 나가 게이트웨이가
+    // INVALID_IMAGE_TYPE로 반려한다(5080 실측으로 확인).
+    const imageMime = mimeFromFilename(params.imageFilename);
+    form.set("image", new Blob([new Uint8Array(params.image)], { type: imageMime }), params.imageFilename ?? "source.png");
 
     const timeoutMs = this.config.timeoutMs ?? 60_000;
     const controller = new AbortController();
@@ -82,4 +85,12 @@ export class PromptGatewayClient {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 파일명 확장자 → 게이트웨이가 허용하는 이미지 MIME. 알 수 없으면 PNG로 간주. */
+function mimeFromFilename(name?: string): string {
+  const ext = (name ?? "").toLowerCase().split(".").pop();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  return "image/png";
 }
