@@ -10,6 +10,15 @@
 //   QWEN_GATEWAY_URL    3090 게이트웨이 (미설정 시 외형 스텁 — 3090 없이 ComfyUI 검증)
 //   QWEN_INTERNAL_TOKEN 게이트웨이 X-Internal-Token
 //   POLL_INTERVAL_MS    큐 빔 시 대기(기본 3000)
+import { fileURLToPath } from "node:url";
+
+// gpu-worker/.env가 있으면 자동 로드 (Node 20.12+ 내장, 무의존). 없으면 셸 env 사용.
+try {
+  process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
+} catch {
+  /* .env 없음 — 셸 환경변수로 진행 */
+}
+
 import { pipelineConfig } from "./config/index.js";
 import { ComfyUIBackend } from "./backends/comfyui/client.js";
 import { PromptGatewayClient } from "./llm/gatewayClient.js";
