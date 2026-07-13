@@ -59,6 +59,22 @@
 | 감사 근거 | [01-five-decision-implementation-audit.md](../reports/01-five-decision-implementation-audit.md#5-remote-realtime은-socketio-우선) |
 | 상태 | MIGRATION GAP |
 
+## C-016
+
+| 필드 | 내용 |
+|---|---|
+| ID | C-016 |
+| 주제 | Data/Realtime mode default와 remote fallback 정책 |
+| 문서 기준 | DECISION-V2-011/012 APPROVED. `VITE_DATA_MODE=mock|remote`, `VITE_REALTIME_MODE=local|remote`. remote 실패 시 Mock 또는 BroadcastChannel/local realtime으로 자동 fallback하지 않는다. Phase 2A acceptance 기준에 따라 development/test missing env는 `mock/local`, production missing env는 startup `ConfigurationError` |
+| 코드 기준 | `client/src/infrastructure/config/modeConfig.ts`는 missing development/test env를 `mock/local`로 해석하고, missing production env와 invalid value를 `ConfigurationError`로 처리한다. legacy `client/src/net/api.ts`는 아직 `VITE_REMOTE_API`, legacy `client/src/net/realtime.ts`는 아직 `VITE_LOCAL_REALTIME`와 Colyseus/local path를 사용한다 |
+| 영향 | 문서의 production default TBD/remote 권장 표현은 해소됨. legacy adapter가 새 mode config를 사용하기 전까지 remote 지원을 완료로 주장할 수 없다 |
+| 계약 결정 | APPROVED: explicit mode only, production missing env is configuration error, remote mode has no Mock/local automatic fallback |
+| 레거시 런타임 불일치 | MIGRATION GAP: existing API/realtime adapters still use legacy env names and fallback semantics |
+| 문서 typo/conflict | RESOLVED: `data-mode-policy.md` production default/TBD 표현을 실제 `modeConfig.ts` 정책으로 정정 |
+| V2 구현 | PLANNED: G1 Data/Realtime Mode Adapter에서 legacy API/realtime adapters를 `modeConfig.ts`와 port/adapter 구조에 연결 |
+| 감사 근거 | [02-phase-2a-shared-contract-foundation.md](../reports/02-phase-2a-shared-contract-foundation.md#added-explicit-mode-config) |
+| 상태 | MIGRATION GAP |
+
 ## C-005
 
 | 필드 | 내용 |
@@ -176,12 +192,14 @@
 | 필드 | 내용 |
 |---|---|
 | ID | C-013 |
-| 주제 | `shared/physics`와 `shared/schemas` source of truth 부재 |
+| 주제 | `shared/physics`와 `shared/schemas` source of truth integration |
 | 문서 기준 | KJH architecture/tech-stack은 shared physics/schemas를 클라/서버 공통 source로 계획 |
-| 코드 기준 | `shared/physics/index.ts`와 `shared/schemas/index.ts`는 TODO stub. 실제 규칙은 `App.tsx`, `assetRules.ts`, `PlaytestCanvas.tsx`, `RaceCanvas.tsx`, backend route local types에 분산 |
-| 영향 | V2 UI form/schema와 backend 저장 검증이 어긋날 위험 |
-| 권장안 | Phase 1 UI form은 current code attrs를 따르되, Phase 1 전에 shared schema task를 별도로 열지 결정 |
-| 상태 | OPEN |
+| 코드 기준 | Phase 2A에서 `shared/schemas/index.ts`는 runtime schema foundation을 갖췄다. `shared/physics/index.ts`와 실제 gameplay 규칙은 여전히 `App.tsx`, `assetRules.ts`, `PlaytestCanvas.tsx`, `RaceCanvas.tsx`, backend route local types에 분산 |
+| 영향 | schema foundation은 생겼지만 V2 adapter/backend가 shared schema를 아직 사용하지 않으므로 저장 검증과 UI form 검증이 어긋날 위험은 남아 있다 |
+| 계약 결정 | APPROVED: Phase 2A shared schema/port foundation은 생성됨 |
+| 레거시 런타임 불일치 | MIGRATION GAP: legacy runtime/backend local types are not yet wired to shared schemas |
+| V2 구현 | PLANNED: adapter/backend integration 단계에서 shared schema를 연결하고 physics source of truth는 별도 gameplay/shared task로 분리 |
+| 상태 | MIGRATION GAP |
 
 ## C-014
 

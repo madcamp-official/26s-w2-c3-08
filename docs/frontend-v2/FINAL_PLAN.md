@@ -65,7 +65,7 @@
 - Vite + React + TypeScript
 - Phaser 캔버스
 - Zustand store
-- Colyseus SDK + BroadcastChannel fallback
+- Colyseus SDK + BroadcastChannel local path가 섞인 legacy realtime adapter
 - Mock API + optional remote REST
 
 주요 파일은 다음이다.
@@ -73,7 +73,7 @@
 | 파일 | 현재 역할 | V2 처리 |
 |---|---|---|
 | `client/src/App.tsx` | 거의 모든 화면, 스튜디오, 창고, 로비, 방 페이즈 UI가 들어 있음 | 최종 삭제. 새 `app/`, `screens/`, `ui/`, `features/` 구조로 대체 |
-| `client/src/App.css` | 전체 화면 스타일이 한 파일에 집중됨 | 최종 삭제. `styles/tokens.css`, 컴포넌트별 CSS module 또는 전역 레이어로 대체 |
+| `client/src/App.css` | 전체 화면 스타일이 한 파일에 집중됨 | 최종 삭제. design token source와 컴포넌트별 CSS module 또는 전역 레이어로 대체 |
 | `client/src/components/AvatarCreator.tsx` | 과거 400x400 `react-sketch-canvas` 아바타 컴포넌트 | 삭제 후보. 현재 V2 사양과 불일치 |
 | `client/src/game/MapEditorCanvas.tsx` | Phaser 맵 에디터 | 보존. React HUD 연결부만 정리 |
 | `client/src/game/PlaytestCanvas.tsx` | 검증/테스트 캔버스 | 보존 |
@@ -90,7 +90,7 @@
 - 로그인, 메인, 창고, 스튜디오, 로비, 방, 제작, 검증, 병합, 레이스, 결과가 하나의 흐름으로 이어진다.
 - Phaser 캔버스 세 개가 MVP 게임 루프를 이미 담당한다.
 - `client/src/net/api.ts`가 remote API와 Mock API를 분리한다.
-- `client/src/net/realtime.ts`가 Colyseus와 BroadcastChannel fallback을 분리한다.
+- `client/src/net/realtime.ts`가 legacy Colyseus/local realtime path를 한 곳에 모아 두고 있다.
 - `client/src/store/appStore.ts`가 UI가 사용할 action을 이미 제공한다.
 
 ### 3.3 현재 구현의 문제
@@ -106,10 +106,11 @@
 - 실시간 문서도 세대가 섞여 있다.
   - KJH: Colyseus/서버 권위 지향
   - LSJ backend: Socket.IO 지향
-  - 현재 frontend: Colyseus SDK + BroadcastChannel fallback
+  - 현재 frontend: Colyseus SDK + BroadcastChannel local path
   - 현재 `backend/`: Socket.IO
   - 현재 `server/`: Colyseus scaffold 수준
-- `shared/schemas`와 `shared/physics`가 아직 TODO 스텁이라 프론트가 많은 규칙을 로컬에 들고 있다.
+- `shared/schemas`는 Phase 2A foundation이 생겼지만 backend/runtime integration은 아직 남아 있고,
+  `shared/physics`와 많은 gameplay 규칙은 여전히 로컬 코드에 분산되어 있다.
 
 ## 4. 제품 결정 사항
 
@@ -305,7 +306,7 @@ API path는 `client/src/net/api.ts` 안에서만 결정한다. 백엔드 최종 
 
 새 파일:
 
-- `client/src/styles/tokens.css`
+- token-generated CSS output
 - `client/src/styles/globals.css`
 - `client/src/styles/reset.css`
 - `client/src/styles/accessibility.css`
@@ -478,7 +479,7 @@ client/src/
     Tooltip/
   styles/
     reset.css
-    tokens.css
+    token-generated css output
     globals.css
     accessibility.css
   game/
@@ -907,7 +908,9 @@ Store action은 Domain State/Use Case 계층의 구현 세부이며, 화면 컴�
 - V2 화면에는 `createAsset`만 노출한다.
 - backend가 `POST /assets`로 바뀔 경우 adapter 내부에서만 path를 교체한다.
 - `VITE_DATA_MODE=mock|remote`를 사용한다.
-- remote API 실패 시 Mock fallback을 수행하지 않고 typed error/offline/malformed response를 반환한다.
+- development/test에서 `VITE_DATA_MODE`가 없으면 `mock`, production에서 없으면
+  `ConfigurationError`로 처리한다.
+- remote API 실패는 typed error/offline/malformed response로 반환하며 Mock adapter를 호출하지 않는다.
 - `AssetStatus`와 `AssetSprite.status`를 모두 queued/generating/ready/failed로 정규화한다.
 
 ### 10.3 Realtime adapter 정리
@@ -918,7 +921,9 @@ Store action은 Domain State/Use Case 계층의 구현 세부이며, 화면 컴�
 - Page Controller / Feature Hook / Use Case가 port를 통해 realtime intent를 호출한다.
 - `VITE_REALTIME_MODE=remote`는 backend Socket.IO adapter를 사용한다.
 - `VITE_REALTIME_MODE=local`에서만 BroadcastChannel/local transport를 사용한다.
-- remote realtime 실패 시 BroadcastChannel 자동 fallback을 수행하지 않는다.
+- development/test에서 `VITE_REALTIME_MODE`가 없으면 `local`, production에서 없으면
+  `ConfigurationError`로 처리한다.
+- remote realtime 실패는 offline/reconnecting/typed error로 반환하며 local realtime adapter를 호출하지 않는다.
 - Colyseus는 production-ready 확인 전까지 대체 transport 후보로만 유지한다.
 - V2 화면은 `realtimeStatus`를 badge로만 표현.
 
@@ -928,10 +933,11 @@ Store action은 Domain State/Use Case 계층의 구현 세부이며, 화면 컴�
 
 우선 작업:
 
-- `shared/constants.ts`의 `AVATAR_CANVAS`를 프론트 상수와 일치시킨다.
-- `shared/constants.ts`에 editor board, placement budget, regen cooldown을 추가한다.
-- `shared/schemas/index.ts`에 asset attrs zod schema를 채운다.
-- `client/src/features/studio/attributes`는 shared schema를 import한다.
+- Phase 2A에서 `shared/constants.ts`는 avatar visible/workspace와 game sprite 규격을 분리했다.
+- Phase 2A에서 editor board/snap과 regen cooldown은 shared constant로 고정했다.
+- placement budget과 endpoint vertical delta는 아직 `TODO-CONTRACT`라 shared constant로 승격하지 않는다.
+- Phase 2A에서 `shared/schemas/index.ts`는 dependency-free runtime schema를 제공한다.
+- 이후 feature code는 shared schema/port를 직접 구현 세부가 아니라 use case/adapter 경계에서 사용한다.
 
 ## 11. 기존 UI 제거 전략
 
@@ -1258,10 +1264,8 @@ V2 완료는 다음 상태를 의미한다.
 
 ## 17. 바로 다음 작업
 
-1. `client/src/styles/tokens.css`와 core UI 컴포넌트를 만든다.
-2. `client/src/app/App.tsx`와 세 shell을 만든다.
-3. LoginScreen, MainScreen, WarehouseScreen, SettingsModal을 먼저 V2로 연결한다.
-4. `client/src/App.tsx`에서 필요한 view model/helper만 새 파일로 옮기고 JSX/CSS는 재사용하지 않는다.
-5. Studio DrawingEngine adapter를 만든다.
-6. Phaser canvas는 보존한 채 Game HUD를 마지막 wave에서 교체한다.
-7. 전체 플로우가 통과하면 legacy UI 파일을 삭제한다.
+1. Phase 2B Drawing Engine 기술 스파이크를 수행한다.
+2. `react-sketch-canvas` adapter 후보와 Canvas 2D + offscreen workspace buffer 후보를 같은 pixel acceptance 기준으로 비교한다.
+3. 256x512 visible frame, 768x1536 workspace, overlay-excluded export/eyedropper, move/undo/dirty/content hash를 검증한다.
+4. 핵심 pixel 기능이 불안정한 우회 구현에 의존하면 Canvas 2D + offscreen workspace buffer를 선택한다.
+5. 기술 스파이크 결론을 문서화한 뒤 design tokens/core UI 구현 wave로 넘어간다.
