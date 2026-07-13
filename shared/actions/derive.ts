@@ -12,7 +12,7 @@
 //  - 플랫폼·장애물: idle만 — 왕복·회전·돌진·점멸은 코드가 스프라이트를 움직여 표현 (에셋 영상 아님)
 //  - 아이템: 시스템 제공이므로 idle만 (시트도 시스템 시드)
 import type { AttrsByCategory, Category, MonsterAttrs } from "../schemas/index.js";
-import { ACTION, MOTION_HINT, type ActionName } from "./catalog.js";
+import { ACTION, ACTIONS, type ActionName } from "./catalog.js";
 
 export interface DerivedAction {
   name: ActionName;
@@ -22,7 +22,9 @@ export interface DerivedAction {
 }
 
 function act(name: ActionName, hintOverride?: string): DerivedAction {
-  return { name, motionHint: hintOverride ?? MOTION_HINT[name], loop: true };
+  // loop는 액션 스펙에서 (이전 버그: true 하드코딩 → onair/attack이 loop 버킷 3s 탔음).
+  // 상세 요구(returnsToStart·poseHint·durationSec)는 ACTIONS[name]에서 조회 — DerivedAction은 최소 유지(하류 무변경).
+  return { name, motionHint: hintOverride ?? ACTIONS[name].motionHint, loop: ACTIONS[name].loop };
 }
 
 export function deriveActions<C extends Category>(category: C, attrs: AttrsByCategory[C]): DerivedAction[] {
