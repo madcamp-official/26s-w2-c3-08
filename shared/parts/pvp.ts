@@ -14,21 +14,15 @@ function overlap(b: Body, g: Ghost): { ox: number; oy: number } | null {
   return ox > 0 && oy > 0 ? { ox, oy } : null;
 }
 
-/** 밀기: 겹친 고스트에서 나만 soft push로 빠져나옴 (§14-4).
- *  intents[i]=true = "내가 이 고스트를 미는 중(상대는 저항 안 함)". 이때는 작은 겹침(contactPad)을
- *  남겨 상대 클라가 상대를 밀어내도록 함 → 걷기 속도로도 밀기 성립. 초과분만 진입 반대로 제거(관통 방지). */
-export function pushSelfOut(me: Body, ghosts: Ghost[], t: Tuning = TUNING, intents?: boolean[]): void {
-  for (let i = 0; i < ghosts.length; i++) {
-    const g = ghosts[i];
+/** 밀기 = 완전 솔리드 벽 (§14-4 재설계): 겹침을 전부 빼내 상대와 안 겹침. 파고듦 없음.
+ *  탈출 방향은 진입 반대로 고정 → 반대편 관통 방지. "상대를 미는 힘"은 pushForce 메시지로 별도 전달. */
+export function pushSelfOut(me: Body, ghosts: Ghost[], t: Tuning = TUNING): void {
+  for (const g of ghosts) {
     const o = overlap(me, g);
     if (!o) continue;
     if (o.oy <= t.stomp.headBandPx) continue; // 머리 밴드는 밟기/서기 몫
-    // 탈출 방향 = 내가 들어온 쪽(이동 방향의 반대)으로 고정 → 반대편으로 뒤집혀 관통하는 것 방지.
     const dir = me.vx > 0 ? -1 : me.vx < 0 ? 1 : (me.x < g.x ? -1 : 1);
-    // 내가 미는 중이면 contactPad만큼 겹침 유지(상대가 밀림), 아니면 전부 빼냄(깔끔한 분리/벽)
-    const keep = intents && intents[i] ? t.push.contactPad : 0;
-    const amount = Math.min(Math.max(0, o.ox - keep), t.push.separatePerTick);
-    me.x += dir * amount;
+    me.x += dir * o.ox;   // 완전 분리(벽)
   }
 }
 
@@ -56,11 +50,12 @@ export function checkStompedMe(me: Avatar, ghosts: (Ghost & { vy: number; pound?
 
 /** 내가 밟았는가 (공격자 연출·튕김 즉시, §14-5). 밟은 고스트 index 반환, 없으면 -1.
  *  reachMult: 내려찍기 시 판정 확대 배율 (아바타 한정 — 지형·블록은 무관) */
-export function checkIStomped(me: Avatar, ghosts: Ghost[], t: Tuning = TUNING, reachMult = 1, prevBottom = -Infinity): number {
+export function checkIStomped(me: Avatar, ghosts: Ghost[], t: Tuning = TUNING, pounding = false, prevBottom = -Infinity): number {
   const b = me.body;
   if (b.vy < t.stomp.minFallSpeed) return -1;
-  const band = t.stomp.headBandPx * reachMult;
-  const minOv = b.w * 0.3 / reachMult;
+  const band = t.stomp.headBandPx * (pounding ? t.stomp.poundReachMult : 1);   // 세로 밴드(기존)
+  const hMult = pounding ? t.stomp.poundReachH : t.stomp.reachH;               // 가로 배율(신규 1.2/1.15)
+  const minOv = b.w * 0.3 / hMult;
   for (let i = 0; i < ghosts.length; i++) {
     const g = ghosts[i];
     const hOv = Math.min(right(b), g.x + g.w / 2) - Math.max(left(b), g.x - g.w / 2);

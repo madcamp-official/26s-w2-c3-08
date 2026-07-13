@@ -55,6 +55,8 @@ export class BaseworldScene extends Phaser.Scene {
   projGhosts = new Map<string, GhostView>();
   carryGhosts = new Map<string, GhostView>();
   blockGhosts = new Map<string, GhostView>();
+  // 몬스터 로컬 타격 확정 (서버 왕복 안 기다림) — id → {예측 타격수, 시각}
+  localMonHits = new Map<string, { count: number; at: number }>();
   myRect!: Phaser.GameObjects.Rectangle;
   handRect!: Phaser.GameObjects.Rectangle;
   debugGfx!: Phaser.GameObjects.Graphics;
@@ -172,6 +174,11 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.onMessage("grabDenied", (m: { objId: string }) => {
       if (this.carry.heldId === m.objId) this.carry.heldId = null;
     });
+    // 밀림(외력) 수신 — 당하는 쪽이 자기 몸에 적용 (§14 재설계)
+    this.room.onMessage("pushForce", (m: { vx: number }) => {
+      this.me.pushedVx = m.vx * TUNING.push.forceMult;
+      this.me.pushedLeftMs = TUNING.push.forceDecayMs;
+    });
     // 블록
     $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
       const spec = TESTMAP.blocks.find((b) => b.id === id);
@@ -220,6 +227,12 @@ export class BaseworldScene extends Phaser.Scene {
 
   held(k: keyof BaseworldScene["keys"]): boolean {
     return this.keys[k].some((key) => key.isDown);
+  }
+
+  /** 몬스터 유효 타격수 = 서버값과 내 로컬 예측(2초 유효) 중 큰 값 (로컬 확정) */
+  monEffHits(id: string, serverHits: number): number {
+    const e = this.localMonHits.get(id);
+    return e && this.time.now - e.at < 2000 ? Math.max(serverHits, e.count) : serverHits;
   }
 
   /** 이동 발판 보간 전진: 충돌(currentTerrain)·렌더가 같은 위치를 쓰도록 fixedTick에서 갱신 */
@@ -271,7 +284,9 @@ export class BaseworldScene extends Phaser.Scene {
     // ── PvP: 자기 화면 판정 (§14) ──
     const GRACE = TUNING.push.visualGraceMs;
     // 정지(백그라운드) 고스트는 밀기·밟기·서기 판정에서 제외 = 충돌 통과 (B)
-    const ghostViews = [...this.players.values()].filter((v) => !v.stale);
+    const ghostEntries = [...this.players.entries()].filter(([, v]) => !v.stale);
+    const ghostIds = ghostEntries.map(([id]) => id);
+    const ghostViews = ghostEntries.map(([, v]) => v);
     // 판정은 외삽 위치가 아니라 서버 확정 위치(srv)로 → 오버슈트 관통 방지. 렌더만 g.x 사용
     const ghosts = ghostViews.map((v) => ({
       x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound,
@@ -296,10 +311,10 @@ export class BaseworldScene extends Phaser.Scene {
       else v.ghostPushLeftMs = Math.max(0, v.ghostPushLeftMs - FIXED_MS);
       return { dirToGhost, contact, iPush, ghostPush: v.ghostPushLeftMs > 0 };
     });
-    // 밀기(3): 내가 미는 중(상대 저항X)이면 겹침 유지 → 상대가 밀림(걷기로도). 방향고정으로 관통 방지(C)
-    pushSelfOut(b, ghosts, TUNING, pushInfo.map((p) => p.iPush && !p.ghostPush));
-    const poundReach = this.me.pound !== 0 ? TUNING.stomp.poundReachMult : 1;
-    const stompedIdx = checkIStomped(this.me, ghosts, TUNING, poundReach, prevBottomY);
+    // 밀기(재설계): 완전 분리(솔리드 벽). "상대를 미는 힘"은 아래 pushForce로 별도 전달
+    pushSelfOut(b, ghosts);
+    const pounding = this.me.pound !== 0;
+    const stompedIdx = checkIStomped(this.me, ghosts, TUNING, pounding, prevBottomY);
     if (stompedIdx >= 0) {
       this.me.fx.add("stompedOther");
       setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
@@ -332,6 +347,8 @@ export class BaseworldScene extends Phaser.Scene {
       const v = ghostViews[i];
       const { contact, iPush, ghostPush, dirToGhost: dir } = pushInfo[i];
       if (!contact || (!iPush && !ghostPush)) continue;
+      // 내가 미는 중 → 상대에게 힘 전달(당하는 쪽이 적용). 내 현재 속도를 실어 보냄
+      if (iPush) this.room.send("pushForce", { target: ghostIds[i], vx: b.vx });
       if (iPush && ghostPush) {
         setSquash(v.squash, "squeeze", dir, RATIO, g.w);   // 맞밀기: 둘 다 접촉면 찌부
         v.fxLeftMs = GRACE;
@@ -360,22 +377,25 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 몬스터: 자기 화면 판정 ──
     for (const v of this.monsters.values()) setSquash(v.squash, "none");
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
-      if (!m.alive || m.hidden) return;
+      const effHits = this.monEffHits(id, m.hitCount);
+      if (!m.alive || m.hidden || effHits >= m.hp) return;   // 로컬 확정 사망도 즉시 제외
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.srvX : m.x, my = v ? v.ghost.srvY : m.y;   // 판정=서버 확정 위치
-      // 내려찍기 시 판정 확대 (몬스터 한정 — 지형·블록은 그대로)
-      const poundMult = prevPound === 2 ? TUNING.stomp.poundReachMult : 1;
-      const halfW = (b.w * poundMult) / 2;
-      const hOv = Math.min(b.x + halfW, mx + m.w / 2) - Math.max(b.x - halfW, mx - m.w / 2);
+      // 밟기 가로 판정만 확대(일반 ×reachH, 내려찍기 ×poundReachH), 데미지 히트박스는 기본 폭. 세로 불변
+      const hMult = prevPound === 2 ? TUNING.stomp.poundReachH : TUNING.stomp.reachH;
+      const halfWs = (b.w * hMult) / 2;
+      const hOvStomp = Math.min(b.x + halfWs, mx + m.w / 2) - Math.max(b.x - halfWs, mx - m.w / 2);
+      const hOvBase = Math.min(b.x + b.w / 2, mx + m.w / 2) - Math.max(b.x - b.w / 2, mx - m.w / 2);
       const vOv = Math.min(b.y, my) - Math.max(b.y - b.h, my - m.h);
-      if (hOv <= 0 || vOv <= 0) return;
+      if (hOvStomp <= 0 || vOv <= 0) return;
       // A: 위에서 내려오면 확실히 밟기(데미지 없음). fromAbove(현재 상반부) OR 스윕(직전엔 머리 위, 지금 통과)
       const descending = prevVy > 0 || prevPound === 2;
       const monsterTop = my - m.h;
       const fromAbove = b.y <= my - m.h * 0.5;
       const crossed = prevBottomY <= monsterTop && b.y >= monsterTop;  // 빠른 낙하 터널링도 잡음
       if (descending && (fromAbove || crossed)) {
-        const willKill = m.hitCount + 1 >= m.hp;   // 이번 타격이 마지막인지 예측(클라)
+        const willKill = effHits + 1 >= m.hp;
+        this.localMonHits.set(id, { count: effHits + 1, at: this.time.now });   // 로컬 즉시 확정
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
         if (v) setSquash(v.squash, "stomped");
         if (prevPound === 2 && willKill) {
@@ -391,9 +411,13 @@ export class BaseworldScene extends Phaser.Scene {
           b.vy = TUNING.stomp.bounceVelocity;
           this.me.stompComboLeftMs = TUNING.stomp.jumpWindowMs;
         }
-      } else if (this.me.invincibleLeftMs > 0) {
+      } else if (hOvBase > 0 && this.me.invincibleLeftMs > 0) {
+        this.localMonHits.set(id, { count: this.monEffHits(id, m.hitCount) + 1, at: this.time.now });
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
-      } else {
+      } else if (hOvBase > 0) {
+        // 데미지는 기본 폭 겹침일 때만. 방금 밟은 몬스터면 튕겨 분리되는 짧은 창엔 무시(재접촉 방지)
+        const e = this.localMonHits.get(id);
+        if (e && this.time.now - e.at < 400) return;
         this.takeHit(); // 접촉 피해 = 자기 클라 확정
       }
     });
@@ -542,7 +566,7 @@ export class BaseworldScene extends Phaser.Scene {
       if (m.x !== v.ghost.srvX || m.y !== v.ghost.srvY) ghostServerUpdate(v.ghost, m.x, m.y, m.vx, m.vy); // 새 패치만
       ghostStep(v.ghost, delta, TUNING.net.monsterLerp);   // 매 프레임 외삽+수렴
       stepSquash(v.squash);
-      const visible = m.alive && !m.hidden;
+      const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;   // 로컬 확정 사망 즉시 숨김
       v.rect.setVisible(visible); v.label.setVisible(visible);
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);
       v.rect.setScale(v.squash.sx, v.squash.sy);

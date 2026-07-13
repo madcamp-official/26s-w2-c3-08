@@ -46,6 +46,8 @@ export interface Avatar {
   prevJumpHeld: boolean;
   freezeLeftMs: number;      // 아이템 획득 0.4초 고정 (§58)
   stunLeftMs: number;        // 내려찍기에 밟힘 = 기절(조작 무시, 물리는 유지)
+  pushedVx: number;          // 상대가 밀어 넣는 외력 속도 (pushForce 수신, 당하는 쪽 적용)
+  pushedLeftMs: number;      // 외력 잔여(계속 밀리면 갱신, 떼면 감쇠)
   // modifier 스택 (§25): 이름 → 배율/잔여ms
   speedMult: number;
   speedMultLeftMs: number;
@@ -63,7 +65,7 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
     crouch: false, slide: false, spinLeftMs: 0, spinUsed: false,
     wallGrabMs: 0, wallClingGraceMs: 0,
     coyoteLeftMs: 0, jumpBufferLeftMs: 0, prevJumpHeld: false,
-    freezeLeftMs: 0, stunLeftMs: 0,
+    freezeLeftMs: 0, stunLeftMs: 0, pushedVx: 0, pushedLeftMs: 0,
     speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: 0,
     fx: new Set(),
   };
@@ -102,6 +104,7 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   // modifier 타이머
   if (a.speedMultLeftMs > 0) { a.speedMultLeftMs -= dtMs; if (a.speedMultLeftMs <= 0) a.speedMult = 1; }
   if (a.invincibleLeftMs > 0) a.invincibleLeftMs -= dtMs;
+  if (a.pushedLeftMs > 0) a.pushedLeftMs -= dtMs;   // 외력 감쇠(계속 밀리면 수신부에서 갱신)
 
   const jumpPressed = input.jump && !a.prevJumpHeld;
   a.prevJumpHeld = input.jump;
@@ -182,7 +185,9 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
   const crouchMult = a.crouch ? t.crouch.speedMult : 1;
   const top = (input.run ? t.run.runSpeed : t.run.walkSpeed) * a.speedMult;
   const rate = (dir !== 0 ? t.run.accel : t.run.decel) * control;
-  b.vx = approach(b.vx, dir * top * crouchMult, rate * dt);
+  // 외력(상대 밀기)은 입력 목표에 더해짐 → 반대로 걸으면 부분 상쇄(저항), 무입력이면 그 속도로 밀려남
+  const pushTarget = a.pushedLeftMs > 0 ? a.pushedVx : 0;
+  b.vx = approach(b.vx, dir * top * crouchMult + pushTarget, rate * dt);
 
   // ── 코요테 / 버퍼 ───────────────────────────────────
   a.coyoteLeftMs = b.grounded ? t.jump.coyoteMs : Math.max(0, a.coyoteLeftMs - dtMs);
