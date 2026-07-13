@@ -20,7 +20,7 @@
   "rules": { "respawnMs": 7500, "fadeMs": 400, "flagPadTiles": 3 },
   "monster": { "iframeMs": 2500, "aggroSwitchMs": 500, "windupShortMs": 250, "windupLongMs": 700 },
   "projectile": { "slowSpeed": 200, "normalSpeed": 380, "fastSpeed": 620, "homingStrength": 0.04, "lifeMs": 6000 },
-  "net": { "ghostLerp": 0.25, "monsterLerp": 0.2, "sendRateHz": 30, "staleMs": 300 },
+  "net": { "ghostLerp": 0.25, "monsterLerp": 0.2, "sendRateHz": 30, "staleMs": 300, "interpDelayMs": 80 },
   "detect": { "nearPx": 128, "normalPx": 256, "farPx": 448 },
   "crush": { "minGapRatio": 0.5 }
 }

@@ -15,7 +15,7 @@ import {
 import { getProperty } from "shared/properties";
 import { TESTMAP } from "shared/maps";
 import {
-  createGhostView, ghostServerUpdate, ghostStep, type GhostView,
+  createGhostView, ghostServerUpdate, ghostStep, ghostSnapshot, ghostRenderAt, type GhostView,
 } from "../../netphysics/interpolate.js";
 import { sendAvatarState } from "../../netphysics/reconcile.js";
 import { createSquash, setSquash, stepSquash, type SquashState } from "../../netphysics/squash.js";
@@ -280,10 +280,9 @@ export class BaseworldScene extends Phaser.Scene {
     const GRACE = TUNING.push.visualGraceMs;
     // 정지(백그라운드) 고스트는 밀기·밟기·서기 판정에서 제외 = 충돌 통과 (B)
     const ghostViews = [...this.players.values()].filter((v) => !v.stale);
-    // 판정은 외삽 위치가 아니라 서버 확정 위치(srv)로 → 오버슈트 관통 방지. 렌더만 g.x 사용
-    // side = 밀기 관통 방지용 래치(View에 영속). pushSelfOut이 읽고 갱신 → 되써짐
+    // 판정 = 화면과 동일한 "지연 보간 위치"(g.x/g.y). 보는 대로 맞음 + 과거 실제 위치라 뚫기 없음
     const ghosts = ghostViews.map((v) => ({
-      x: v.ghost.srvX, y: v.ghost.srvY, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound,
+      x: v.ghost.x, y: v.ghost.y, w: v.w, h: v.h, vy: v.ghost.lastVy, pound: v.pound,
     }));
     // 유예 감쇠: 접촉이 순간 끊겨도 GRACE 동안 연출 유지 (깜빡임 방지)
     for (const v of ghostViews) {
@@ -372,7 +371,7 @@ export class BaseworldScene extends Phaser.Scene {
       const effHits = this.monEffHits(id, m.hitCount);
       if (!m.alive || m.hidden || effHits >= m.hp) return;   // 로컬 확정 사망도 즉시 제외
       const v = this.monsters.get(id);
-      const mx = v ? v.ghost.srvX : m.x, my = v ? v.ghost.srvY : m.y;   // 판정=서버 확정 위치
+      const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;   // 판정=화면과 동일한 지연 보간 위치
       // 밟기 가로 판정만 확대(일반 ×reachH, 내려찍기 ×poundReachH), 데미지 히트박스는 기본 폭. 세로 불변
       const hMult = prevPound === 2 ? TUNING.stomp.poundReachH : TUNING.stomp.reachH;
       const halfWs = (b.w * hMult) / 2;
@@ -544,9 +543,9 @@ export class BaseworldScene extends Phaser.Scene {
       const nowMs = this.time.now;
       if (p.tick !== v.lastTick) {
         v.lastTick = p.tick; v.lastTickAt = nowMs; v.stale = false;
-        ghostServerUpdate(v.ghost, p.x, p.y, p.vx, p.vy);   // 새 패치 도착 시에만 재기준점
+        ghostSnapshot(v.ghost, nowMs, p.x, p.y, p.vx, p.vy);   // 새 패치 = 스냅샷 push
       } else if (nowMs - v.lastTickAt > TUNING.net.staleMs) v.stale = true;
-      ghostStep(v.ghost, delta);   // 매 프레임: 속도로 외삽 + LERP 수렴
+      ghostRenderAt(v.ghost, nowMs - TUNING.net.interpDelayMs);   // 지연 시점 보간(예측 X)
       stepSquash(v.squash);
       v.w = p.w; v.h = p.h; v.pound = p.pound;
       v.rect.setSize(p.w, p.h);
@@ -559,8 +558,8 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const v = this.monsters.get(id);
       if (!v) return;
-      if (m.x !== v.ghost.srvX || m.y !== v.ghost.srvY) ghostServerUpdate(v.ghost, m.x, m.y, m.vx, m.vy); // 새 패치만
-      ghostStep(v.ghost, delta, TUNING.net.monsterLerp);   // 매 프레임 외삽+수렴
+      if (m.x !== v.ghost.srvX || m.y !== v.ghost.srvY) ghostSnapshot(v.ghost, this.time.now, m.x, m.y, m.vx, m.vy); // 새 패치 = 스냅샷
+      ghostRenderAt(v.ghost, this.time.now - TUNING.net.interpDelayMs);   // 지연 시점 보간(예측 X)
       stepSquash(v.squash);
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;   // 로컬 확정 사망 즉시 숨김
       v.rect.setVisible(visible); v.label.setVisible(visible);
