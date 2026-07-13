@@ -1,0 +1,65 @@
+{
+  "bbox": {
+    "alphaThreshold": 16,
+    "noiseCutoffRatio": 0.01
+  },
+  "chromaKey": {
+    "colorDistanceThreshold": 0.12,
+    "borderBandPx": 4,
+    "despill": true,
+    "failVarianceThreshold": 0.06,
+    "failFrameRatio": 0.5,
+    "candidates": [
+      { "name": "green", "hex": "#00FF00" },
+      { "name": "magenta", "hex": "#FF00FF" },
+      { "name": "cyan", "hex": "#00FFFF" },
+      { "name": "blue", "hex": "#0000FF" }
+    ]
+  },
+  "anchor": {
+    "baselineYRatio": 0.98
+  },
+  "scaleNormalization": {
+    "perFrameClampRatio": 0.1
+  },
+  "generation": {
+    "resolution": {
+      "upscaleFactor": 2,
+      "minGenLongPx": 256,
+      "maxGenLongPx": 768,
+      "roundToMultiple": 16,
+      "minSidePx": 128
+    },
+    "duration": {
+      "loop": { "durationSec": 3.0, "fps": 16 },
+      "oneShot": { "durationSec": 1.5, "fps": 16 },
+      "overrides": {
+        "idle": { "durationSec": 2.0, "fps": 16 }
+      }
+    },
+    "model": {
+      "variant": "gguf-q5",
+      "highNoiseCheckpoint": "Wan2.2-I2V-A14B-HighNoise-Q5_K_S.gguf",
+      "lowNoiseCheckpoint": "Wan2.2-I2V-A14B-LowNoise-Q5_K_S.gguf",
+      "lightningLora": {
+        "high": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+        "low": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+      },
+      "steps": 4,
+      "cfg": 1
+    }
+  },
+  "loopSelection": {
+    "algorithm": "phash"
+  },
+  "output": {
+    "frameCount": 8,
+    "tilePx": 64
+  },
+  "llmGateway": {
+    "maxConcurrency": 6,
+    "timeoutMs": 60000,
+    "maxRetries": 2,
+    "retryBaseDelayMs": 500
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "1": {
+    "class_type": "UnetLoaderGGUF",
+    "_meta": { "title": "UNET_HIGH" },
+    "inputs": { "unet_name": "Wan2.2-I2V-A14B-HighNoise-Q5_K_S.gguf" }
+  },
+  "2": {
+    "class_type": "UnetLoaderGGUF",
+    "_meta": { "title": "UNET_LOW" },
+    "inputs": { "unet_name": "Wan2.2-I2V-A14B-LowNoise-Q5_K_S.gguf" }
+  },
+  "3": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "LORA_HIGH" },
+    "inputs": { "model": ["1", 0], "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", "strength_model": 1.0 }
+  },
+  "4": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "LORA_LOW" },
+    "inputs": { "model": ["2", 0], "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors", "strength_model": 1.0 }
+  },
+  "5": {
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "MODELSAMPLING_HIGH" },
+    "inputs": { "model": ["3", 0], "shift": 5.0 }
+  },
+  "6": {
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "MODELSAMPLING_LOW" },
+    "inputs": { "model": ["4", 0], "shift": 5.0 }
+  },
+  "7": {
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "CLIP" },
+    "inputs": { "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "type": "wan" }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "POSITIVE_PROMPT" },
+    "inputs": { "clip": ["7", 0], "text": "placeholder positive prompt" }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "NEGATIVE_PROMPT" },
+    "inputs": { "clip": ["7", 0], "text": "placeholder negative prompt" }
+  },
+  "10": {
+    "class_type": "VAELoader",
+    "_meta": { "title": "VAE" },
+    "inputs": { "vae_name": "wan_2.1_vae.safetensors" }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "INPUT_IMAGE" },
+    "inputs": { "image": "placeholder.png" }
+  },
+  "12": {
+    "class_type": "WanImageToVideo",
+    "_meta": { "title": "VIDEO_SIZE" },
+    "inputs": {
+      "positive": ["8", 0],
+      "negative": ["9", 0],
+      "vae": ["10", 0],
+      "width": 512,
+      "height": 512,
+      "length": 41,
+      "batch_size": 1,
+      "start_image": ["11", 0]
+    }
+  },
+  "13": {
+    "class_type": "KSamplerAdvanced",
+    "_meta": { "title": "SAMPLER_HIGH" },
+    "inputs": {
+      "model": ["5", 0],
+      "add_noise": "enable",
+      "noise_seed": 0,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["12", 0],
+      "negative": ["12", 1],
+      "latent_image": ["12", 2],
+      "start_at_step": 0,
+      "end_at_step": 2,
+      "return_with_leftover_noise": "enable"
+    }
+  },
+  "14": {
+    "class_type": "KSamplerAdvanced",
+    "_meta": { "title": "SAMPLER_LOW" },
+    "inputs": {
+      "model": ["6", 0],
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["12", 0],
+      "negative": ["12", 1],
+      "latent_image": ["13", 0],
+      "start_at_step": 2,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable"
+    }
+  },
+  "15": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "VAE_DECODE" },
+    "inputs": { "samples": ["14", 0], "vae": ["10", 0] }
+  },
+  "16": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "OUTPUT" },
+    "inputs": { "images": ["15", 0], "filename_prefix": "gpuworker/frame" }
+  }
+}

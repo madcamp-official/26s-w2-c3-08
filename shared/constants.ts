@@ -16,4 +16,5 @@ export const CROUCH = { hitboxPx: Math.round(0.95 * TILE_PX), visualPx: TILE_PX 
 /** 스프라이트 재생성 쿨타임 (액션별, ms) */
 export const REGEN_COOLDOWN_MS = 5 * 60 * 1000;
 
-// TODO: 프리셋 → 물리값 매핑 (slow/normal/fast 등) — asset-attributes.md 확정분 반영
+// 프리셋(slow/normal/fast 등) → 물리값 매핑은 physics/tuning.json(TUNING)이 담당,
+// 프리셋 enum 정의 자체는 schemas/presets.ts 참조 — 이 파일에 중복 두지 않음.

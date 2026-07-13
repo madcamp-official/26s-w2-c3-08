@@ -10,6 +10,11 @@
     "./properties": "./properties/index.ts",
     "./effects": "./effects/index.ts",
     "./parts": "./parts/index.ts",
-    "./maps": "./maps/index.ts"
+    "./maps": "./maps/index.ts",
+    "./schemas": "./schemas/index.ts",
+    "./actions": "./actions/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }
