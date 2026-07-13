@@ -90,10 +90,13 @@ model Asset {
 }
 
 // ── AssetSprite ──────────────────────────────────────────
+// AssetSprite = 스프라이트 행 + 생성 잡 큐를 겸함 (한 슬롯 = 한 행 = 한 잡).
 // slot:     생성 슬롯명 — collectSlots(attrs.rules + 카테고리 기본)의 출력 하나당 한 행.
 //           예: idle | move | onair | windup.slam | active.chase | hit | death | stun …
-//           (기존 idle/walk/onair 3종 고정 → behavior 슬롯명 기준으로 일반화)
-// status:   queued → generating → ready | failed
+// status:   queued → generating → ready | failed   (generating = 워커가 claim한 상태)
+// 큐 = pull (§8): 5080 ComfyUI 워커가 queued 잡을 폴링→claim(claimedAt·generating)→시트 업로드→ready.
+//   프롬프트는 백엔드가 적재 시 3090 LLM으로 만들어 prompt에 실어둠(워커는 그림+슬롯+prompt만 사용).
+//   claimedAt 오래된 generating = 스테일 → 재큐잉(워커 죽음 대비).
 // priority: §24 슬롯 우선순위(1 idle/move → 2 generic → 3 전용) + 첫 생성 높음/재생성 낮음.
 // 재생성은 새 행 추가가 아니라 기존 행 갱신 (assetId+slot 유니크)
 model AssetSprite {
@@ -101,16 +104,21 @@ model AssetSprite {
   assetId     BigInt
   asset       Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
   slot        String                                           // = behavior 슬롯명 (collectSlots 출력)
-  sheetUrl    String?                                          // 생성 완료 전 NULL
+  prompt      String?   @db.Text                               // 3090 LLM 생성 슬롯 프롬프트 (백엔드가 적재 시)
+  sheetUrl    String?                                          // 생성 완료(ready) 전 NULL — 워커가 업로드
   frameCount  Int?      @db.SmallInt
   frameW      Int?      @db.SmallInt
   frameH      Int?      @db.SmallInt
   status      String    @default("queued")
+  claimedAt   DateTime?                                        // 5080 워커가 집어간 시각 (스테일 잡 회수)
+  attempts    Int       @default(0) @db.SmallInt               // 재시도 횟수 (실패 상한용)
+  errorMsg    String?                                          // 실패 사유 (디버깅)
   lastRegenAt DateTime?                                        // 재생성 쿨타임(슬롯별 5분) 계산용
   priority    Int       @default(0) @db.SmallInt
   createdAt   DateTime  @default(now())
 
   @@unique([assetId, slot])
+  @@index([status, priority])                                  // 워커 폴링: queued를 우선순위순으로
 }
 
 // =============================================================================
