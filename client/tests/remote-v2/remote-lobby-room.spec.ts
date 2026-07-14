@@ -43,11 +43,16 @@ test('remote V2 browser flow reaches results through REST and Socket.IO phases',
   await expect(pageA.locator('[data-v2-component="game-phase-controller"]')).toBeVisible()
   await expect(pageA.locator('[data-v2-screen="s4-map-build"]')).toBeVisible()
   await expect(pageB.locator('[data-v2-screen="s4-map-build"]')).toBeVisible()
+  await expectMountedPhaserBridge(pageA, 'map-editor')
+  await assertBridgeSurvivesResize(pageA, 'map-editor', { width: 1440, height: 900 })
+  await assertGameRouteLeaveReturn(pageA, roomId, 'map-editor')
 
   await submitMapBuild(pageA, roomId)
   await submitMapBuild(pageB, roomId)
   await expect(pageA.locator('[data-v2-screen="d-validation"]')).toBeVisible()
   await expect(pageB.locator('[data-v2-screen="d-validation"]')).toBeVisible()
+  await expectMountedPhaserBridge(pageA, 'playtest')
+  await assertBridgeSurvivesResize(pageA, 'playtest', { width: 1920, height: 1080 })
 
   const mergeResponsePromise = pageA.waitForResponse((response) =>
     response.request().method() === 'POST' &&
@@ -63,6 +68,8 @@ test('remote V2 browser flow reaches results through REST and Socket.IO phases',
   expect(mergeBody.room?.phase).toBe('racing')
   await expect(pageA.locator('[data-v2-screen="e-race"]')).toBeVisible()
   await expect(pageB.locator('[data-v2-screen="e-race"]')).toBeVisible()
+  await expectMountedPhaserBridge(pageA, 'race')
+  await assertBridgeSurvivesResize(pageA, 'race', { width: 1280, height: 720 })
 
   await finishRace(pageA, roomId)
   await finishRace(pageB, roomId)
@@ -82,6 +89,53 @@ async function login(page: Page, nickname: string) {
   await page.getByRole('button', { name: '시작하기' }).click()
   await expect(page.locator('[data-v2-component="main-screen"]')).toBeVisible()
   await expect(page.locator('[data-v2-component="main-controller"]')).toHaveAttribute('data-v2-data-mode', 'remote')
+}
+
+async function expectMountedPhaserBridge(
+  page: Page,
+  kind: 'map-editor' | 'playtest' | 'race',
+) {
+  const bridge = page.locator(
+    `[data-v2-component="phaser-bridge"][data-v2-phaser-kind="${kind}"]`,
+  )
+
+  await expect(bridge).toHaveCount(1)
+  await expect(bridge).toHaveAttribute('data-v2-state', 'mounted')
+  await expect(bridge.locator('[data-v2-component="phaser-canvas-frame"]')).toBeVisible()
+  await expect(bridge).not.toHaveAttribute('data-v2-state', 'duplicate-prevented')
+}
+
+async function assertBridgeSurvivesResize(
+  page: Page,
+  kind: 'map-editor' | 'playtest' | 'race',
+  viewport: { width: number; height: number },
+) {
+  await page.setViewportSize(viewport)
+  await expectMountedPhaserBridge(page, kind)
+
+  const frame = page
+    .locator(`[data-v2-component="phaser-bridge"][data-v2-phaser-kind="${kind}"]`)
+    .locator('[data-v2-component="phaser-canvas-frame"]')
+  const box = await frame.boundingBox()
+
+  expect(box?.width ?? 0).toBeGreaterThan(320)
+  expect(box?.height ?? 0).toBeGreaterThan(240)
+}
+
+async function assertGameRouteLeaveReturn(
+  page: Page,
+  roomId: string,
+  kind: 'map-editor' | 'playtest' | 'race',
+) {
+  await page.getByRole('button', { name: '방 대기실' }).click()
+  await expect(page).toHaveURL(new RegExp(`#\\/room\\?roomId=${escapeRegExp(roomId)}`))
+  await expect(page.locator('[data-v2-component="room-screen"]')).toBeVisible()
+  await expect(page.locator('[data-v2-component="phaser-bridge"]')).toHaveCount(0)
+
+  await page.goBack()
+  await expect(page).toHaveURL(new RegExp(`#\\/map-build\\?roomId=${escapeRegExp(roomId)}`))
+  await expect(page.locator('[data-v2-screen="s4-map-build"]')).toBeVisible()
+  await expectMountedPhaserBridge(page, kind)
 }
 
 function playerSlot(page: Page, nickname: string) {

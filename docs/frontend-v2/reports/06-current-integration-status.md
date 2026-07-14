@@ -23,7 +23,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 
 | Command | Result |
 | --- | --- |
-| `npm run test:remote-v2-browser --workspace client` | PASS |
+| `npm run test:remote-v2-browser --workspace client` | PASS, includes route leave/return and Phaser bridge resize/remount proof |
 | `npm run realtime:check --workspace client` | PASS |
 | `npm run lobby-room:check --workspace client` | PASS |
 | `npm run game:check --workspace client` | PASS |
@@ -44,6 +44,7 @@ Notes:
 - Vite still reports the known `assetRules` chunk-size warning; it does not fail the build.
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
+- Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
 - Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and a shared-directory image materialization path covered by contract self-tests. The final production credentials and storage values are still deferred.
 - Production env readiness now fails closed on missing/placeholder credentials, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
 
@@ -54,7 +55,7 @@ Notes:
 | BLK-001 `main:check` stale Lobby placeholder assertion | Resolved in current worktree | `npm run main:check --workspace client` via `npm run check:v2` |
 | BLK-002 `shells:check` contract mismatch | Resolved in current worktree | `npm run shells:check --workspace client` via `npm run check:v2` |
 | BLK-005 Game production phase path | Substantially remediated | `game:check`, `flow:check`, remote browser Login to Results |
-| BLK-006 Game lifecycle/phase E2E | Partially remediated | remote browser Login to Results passes; route leave/return and resize-specific proof still need targeted coverage |
+| BLK-006 Game lifecycle/phase E2E | Resolved for current remote browser gate | `test:remote-v2-browser` covers Login to Results, Game route leave/return, and Phaser bridge resize/remount evidence |
 | BLK-007 Socket.IO remote runtime | Resolved for current backend/client path | `socket.io-client@4.8.3`, `realtime:check`, remote browser Login to Results |
 | BLK-008 Playwright environment | Resolved in this local environment for launcher/lobby/remote/drawing suites | launcher, lobby-room, remote-v2, and drawing browser Playwright PASS |
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
