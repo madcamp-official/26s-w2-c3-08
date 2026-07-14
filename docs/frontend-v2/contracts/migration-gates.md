@@ -26,8 +26,8 @@
 | `npm run smoke --workspace client` | every implementation wave | existing smoke 16/16 baseline |
 | `npm run build --workspace client` | every implementation wave | Vite large chunk warning is known baseline |
 | `git diff --check` | every documentation/implementation wave | whitespace gate |
-| Playwright E2E | V2 completion gate | missing today; must be added |
-| Playwright screenshots | V2 completion gate | viewports: 1280x720, 1440x900, 1920x1080 minimum |
+| Playwright E2E | V2 completion gate | local suites exist: `test:remote-v2-browser`, `test:lobby-room`, `test:accessibility`, `test:drawing-browser`; hosted CI run must pass before default switch |
+| Playwright screenshots | V2 completion gate | local evidence suites exist: `test:launcher-screenshots`, `test:studio-game-screenshots`; viewports: 1280x720, 1440x900, 1920x1080 minimum; golden approval remains product gate |
 
 ## 3. E2E Flow Gates
 
@@ -61,14 +61,15 @@
 | E | normal, freeze, overtime |
 | F | winner, unfinished players, local highlight |
 
-## 5. Blockers Before Phase 2 Implementation
+## 5. Blockers Before Default Switch
 
 | ID | Blocker | Why it blocks |
 |---|---|---|
-| BLOCKER-001 | API remote fallback policy must be implemented before claiming remote support. | Current adapter silently falls back to mock. |
-| BLOCKER-002 | Realtime remote transport must be chosen in implementation. | Product decision says Socket.IO backend; current frontend uses Colyseus SDK. |
-| BLOCKER-003 | Asset Studio success behavior must change to stay + toast. | Current store navigates to warehouse. |
-| BLOCKER-004 | Playwright/screenshot infra must exist before V2 complete. | DECISION-V2-015 makes it a completion gate. |
+| BLOCKER-001 | RESOLVED for V2 entry: API remote fallback policy implemented. | V2 remote ports surface typed errors and do not select mock ports on remote failure; legacy fallback remains only in legacy root until removal. |
+| BLOCKER-002 | RESOLVED for V2 entry: realtime remote transport is Socket.IO backend. | `socket.io-client@4.8.3` is installed; V2 remote realtime uses `backend/` Socket.IO. Colyseus remains legacy/experiment only. |
+| BLOCKER-003 | RESOLVED for V2 entry: Asset Studio success stays in Studio with toast/warehouse CTA. | `asset-studio:check`, flow checks, and State Gallery coverage verify V2 behavior. |
+| BLOCKER-004 | PARTIAL: Playwright/screenshot infra exists and passes locally. | Hosted CI run and product approval of visual evidence/golden baselines are still required before default switch. |
+| BLOCKER-005 | OPEN: production deployment values are not available in repo. | Final Qwen/WAN credentials, worker token, storage URL/credentials, public origins, and env files must be supplied and checked before default switch. |
 
 ## 6. Non-Blockers
 
@@ -76,5 +77,5 @@
 |---|---|
 | Colyseus `server/` scaffold not production-ready | Documented as alternative transport only. |
 | `shared/physics` and `shared/schemas` stubs | UI can begin against current code contract, but shared hardening remains follow-up. |
-| Qwen/WAN full pipeline incomplete | UI can display generic asset job states and failure. |
+| Qwen/WAN production credentials absent | The pipeline and readiness checks exist, but final secrets/storage/deployment values are external inputs. |
 | Figma frames absent | Contract-first screens S3-F are allowed before design generation. |
