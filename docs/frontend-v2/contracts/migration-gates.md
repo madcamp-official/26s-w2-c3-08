@@ -26,8 +26,8 @@
 | `npm run smoke --workspace client` | every implementation wave | existing smoke 16/16 baseline |
 | `npm run build --workspace client` | every implementation wave | Vite large chunk warning is known baseline |
 | `git diff --check` | every documentation/implementation wave | whitespace gate |
-| Playwright E2E | V2 completion gate | local suites exist: `test:remote-v2-browser`, `test:lobby-room`, `test:accessibility`, `test:drawing-browser`; hosted CI run must pass before default switch |
-| Playwright screenshots | V2 completion gate | local evidence suites exist: `test:launcher-screenshots`, `test:studio-game-screenshots`; viewports: 1280x720, 1440x900, 1920x1080 minimum; golden approval remains product gate |
+| Playwright E2E | V2 completion gate | local suites pass: `test:remote-v2-browser`, `test:lobby-room`, `test:accessibility`, `test:drawing-browser`; hosted `Frontend V2 Browser Gates` and `Drawing Engine Browser Acceptance` pass |
+| Playwright screenshots | V2 completion gate | local evidence suites pass: `test:launcher-screenshots`, `test:studio-game-screenshots`; viewports: 1280x720, 1440x900, 1920x1080 minimum; hosted `Frontend V2 Browser Gates` passes; golden approval remains product gate |
 
 ## 3. E2E Flow Gates
 
@@ -68,7 +68,7 @@
 | BLOCKER-001 | RESOLVED for V2 entry: API remote fallback policy implemented. | V2 remote ports surface typed errors and do not select mock ports on remote failure; legacy fallback remains only in legacy root until removal. |
 | BLOCKER-002 | RESOLVED for V2 entry: realtime remote transport is Socket.IO backend. | `socket.io-client@4.8.3` is installed; V2 remote realtime uses `backend/` Socket.IO. Colyseus remains legacy/experiment only. |
 | BLOCKER-003 | RESOLVED for V2 entry: Asset Studio success stays in Studio with toast/warehouse CTA. | `asset-studio:check`, flow checks, and State Gallery coverage verify V2 behavior. |
-| BLOCKER-004 | PARTIAL: Playwright/screenshot infra exists and passes locally. | Hosted CI run and product approval of visual evidence/golden baselines are still required before default switch. |
+| BLOCKER-004 | PARTIAL: Playwright/screenshot infra passes locally and in hosted CI. | Product approval of visual evidence/golden baselines is still required before default switch. |
 | BLOCKER-005 | OPEN: production deployment values are not available in repo. | Final Qwen/WAN credentials, worker token, storage URL/credentials, public origins, and env files must be supplied and checked before default switch. |
 
 ## 6. Non-Blockers

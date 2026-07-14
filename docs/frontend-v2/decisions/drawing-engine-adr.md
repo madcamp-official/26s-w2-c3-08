@@ -1,11 +1,11 @@
 # Drawing Engine ADR
 
-Status: PROVISIONALLY_ACCEPTED technical recommendation for Phase 2C planning. Browser acceptance must pass in CI before this ADR can be marked ACCEPTED. Runtime integration is still PLANNED.
+Status: ACCEPTED. Browser acceptance passed locally and in the pinned GitHub Actions environment. V2 Avatar Studio and Asset Studio use the Canvas 2D + offscreen workspace buffer drawing port.
 
 Latest browser evidence:
 - 2026-07-14 local Playwright Chromium run: `npm run test:drawing-browser --workspace client` PASS.
 - The Playwright web server runs Vite with `CHOKIDAR_USEPOLLING=1` so the browser harness can execute in watcher-limited environments without weakening the acceptance assertions.
-- CI/pinned-environment PASS is still pending before this ADR status can move to ACCEPTED.
+- 2026-07-14 GitHub Actions `Drawing Engine Browser Acceptance` PASS: `https://github.com/madcamp-official/26s-w2-c3-08/actions/runs/29349726560`.
 
 Related decisions:
 - DECISION-V2-002: avatar visible canvas is 256x512.
