@@ -1,7 +1,7 @@
 # Frontend V2 Route Model
 
 작성일: 2026-07-13  
-목적: 문자열 `navigate('...')` 대신 discriminated union 형태의 목표 route model을 정의한다. 실제 코드는 만들지 않는다.
+목적: 문자열 `navigate('...')` 대신 discriminated union 형태의 V2 route model과 hash URL 정책을 정의한다.
 
 ## 1. Current Model
 
@@ -27,7 +27,7 @@ type V2Route =
   | { kind: 'avatarStudio'; screenId: 'A_AVATAR_STUDIO'; sourceAssetId?: string; mode: 'new' | 'edit' | 'remix' }
   | { kind: 'assetStudio'; screenId: 'B_ASSET_STUDIO'; sourceAssetId?: string; mode: 'new' | 'edit' | 'remix' }
   | { kind: 'lobby'; screenId: 'S3_LOBBY' }
-  | { kind: 'roomLobby'; screenId: 'C_ROOM_LOBBY'; roomId: string }
+  | { kind: 'room'; screenId: 'C_ROOM_LOBBY'; roomId: string }
   | { kind: 'mapBuild'; screenId: 'S4_MAP_BUILD'; roomId: string }
   | { kind: 'validation'; screenId: 'D_VALIDATION'; roomId: string; segmentId?: string }
   | { kind: 'merging'; screenId: 'M_MERGING'; roomId: string }
@@ -66,7 +66,7 @@ interface V2NavigationState {
 | `view === 'avatar'` | `{ kind:'avatarStudio', sourceAssetId: studioSourceAssetId ?? undefined }` |
 | `view === 'studio'` | `{ kind:'assetStudio', sourceAssetId: studioSourceAssetId ?? undefined }` |
 | `view === 'lobby'` | `{ kind:'lobby' }` |
-| `view === 'room'` and `phase === 'lobby'` | `{ kind:'roomLobby', roomId }` |
+| `view === 'room'` and `phase === 'lobby'` | `{ kind:'room', roomId }` |
 | `view === 'room'` and `phase === 'building'` | `{ kind:'mapBuild', roomId }` |
 | `view === 'room'` and `phase === 'validating'` | `{ kind:'validation', roomId }` |
 | `view === 'room'` and `phase === 'merging'` | `{ kind:'merging', roomId }` |
@@ -79,7 +79,7 @@ interface V2NavigationState {
 | Route | Guard | Failure route/error |
 |---|---|---|
 | `main`, `warehouse`, `avatarStudio`, `assetStudio`, `lobby` | session exists | `S1_LOGIN` |
-| `roomLobby` | currentRoom id matches and phase lobby | `S3_LOBBY` with room not found/stale error |
+| `room` | currentRoom id matches and phase lobby | `S3_LOBBY` with room not found/stale error |
 | `mapBuild` | currentRoom phase building | derive current phase route |
 | `validation` | currentRoom phase validating and currentSegment exists | empty/error state inside D |
 | `merging` | currentRoom phase merging | derive current phase route |
@@ -103,11 +103,33 @@ interface V2NavigationState {
 | `openSettings()` | push settings overlay |
 | `closeOverlay(kind)` | remove matching overlay |
 
-## 7. Migration Gaps
+## 7. Browser URL Policy
+
+V2 prototype routing uses the dedicated `client/ui-v2.html` entry and hash URLs:
+
+- `/ui-v2.html#/ui-lab`
+- `/ui-v2.html#/state-gallery?case=<fixture-id>`
+- `/ui-v2.html#/shells`
+- `/ui-v2.html#/login`
+- `/ui-v2.html#/main`
+- `/ui-v2.html#/lobby`
+- `/ui-v2.html#/room?roomId=<room-id>`
+- `/ui-v2.html#/map-build?roomId=<room-id>`
+- `/ui-v2.html#/validation?roomId=<room-id>`
+- `/ui-v2.html#/merging?roomId=<room-id>`
+- `/ui-v2.html#/race?roomId=<room-id>`
+- `/ui-v2.html#/results?roomId=<room-id>`
+- `/ui-v2.html#/avatar-studio?sourceAssetId=<asset-id>`
+- `/ui-v2.html#/asset-studio?sourceAssetId=<asset-id>`
+- `/ui-v2.html#/warehouse?tab=avatar|component&filter=all|platform|obstacle|monster|background`
+
+`client/src/app/navigation/prototypeRouter.ts` is the current code authority for parsing and generating these URLs. Browser back/forward is handled by `hashchange`/`popstate` in `AppV2`, and invalid paths render the V2 NotFound state instead of falling back to a legacy route.
+
+## 8. Migration Gaps
 
 | ID | Gap |
 |---|---|
-| ROUTE-GAP-001 | Current `AppView` is too coarse for room phases. |
-| ROUTE-GAP-002 | Current navigation is string-based store action. |
-| ROUTE-GAP-003 | Current modals are local booleans/local selected ids, not overlay route state. |
-| ROUTE-GAP-004 | Browser URL route policy is not defined. `TBD-CONTRACT` whether V2 uses URL paths or in-memory route only. |
+| ROUTE-GAP-001 | RESOLVED for V2 entry: room phases S4/D/M/E/F use separate route kinds. Legacy `AppView` remains only in legacy root until removal. |
+| ROUTE-GAP-002 | RESOLVED for V2 entry: `prototypeRouter.ts` owns typed route parsing/generation and flow callbacks use route helpers. |
+| ROUTE-GAP-003 | OPEN: modal/overlay state is still mostly controller-local rather than a fully URL-addressable overlay route model. |
+| ROUTE-GAP-004 | RESOLVED: V2 uses `ui-v2.html` hash URLs and renders V2 NotFound for invalid paths. |
