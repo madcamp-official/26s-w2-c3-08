@@ -94,7 +94,7 @@ npm run check:production-env -- \
 | `WAN_TIMEOUT_MS` | `90000` | WAN generation 요청 timeout입니다. |
 | `GENERATION_GATEWAY_URL` | unset | `GPU_WORKER_GENERATION_MODE=gateway`일 때 사용하는 단일 generation gateway URL입니다. |
 | `GENERATION_GATEWAY_PATH` | `/v2/sprite-jobs/generate` | gateway mode generation path입니다. |
-| `IMAGE_STORAGE_MODE` | inferred | `local`, `http-put`, `inline` 중 하나입니다. production worker는 `local` 또는 `http-put`만 통과합니다. |
+| `IMAGE_STORAGE_MODE` | inferred | `local`, `http-put`, `inline` 중 하나입니다. production readiness는 backend/gpu-worker 모두 `local` 또는 `http-put`만 통과합니다. |
 | `IMAGE_STORAGE_DIR` | unset | backend가 serve하고 gpu-worker가 쓸 shared generated image directory입니다. 설정하지 않으면 data URL을 그대로 반환합니다. |
 | `IMAGE_PUBLIC_PATH` | `/generated-assets` | backend static serving path입니다. |
 | `IMAGE_STORAGE_UPLOAD_URL` | unset | `IMAGE_STORAGE_MODE=http-put`일 때 worker가 PNG를 PUT 업로드할 internal object-storage gateway base URL입니다. |

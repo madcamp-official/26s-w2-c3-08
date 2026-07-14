@@ -52,7 +52,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run test:drawing-browser --workspace client` | PASS |
 | `npm run check:production-env:self-test` | PASS |
 | `.github/workflows/drawing-engine-browser.yml` | PASS on GitHub Actions run `29349726560` |
-| `.github/workflows/frontend-v2-browser-gates.yml` | PASS on GitHub Actions latest workflow-covered run `29353212273` for commit `1dd8ef3`, including `V2 Aggregate Check` and `V2 Browser Evidence` |
+| `.github/workflows/frontend-v2-browser-gates.yml` | PASS on GitHub Actions latest workflow-covered run `29355019253` for commit `6ab45a7`, including `V2 Aggregate Check` and `V2 Browser Evidence` |
 
 Notes:
 
