@@ -341,6 +341,25 @@ export function applyApiLastDance(roomId: string, nowMs = Date.now()) {
   return toRoomSummary(room);
 }
 
+export function setApiRoomRaceProgressFromRealtime(
+  roomId: string,
+  userId: string,
+  progress: number,
+  raceDistanceToGoal: number
+) {
+  const room = rooms.get(roomId);
+
+  if (room === undefined || !isRoomPlayer(roomId, userId)) {
+    return null;
+  }
+
+  setPlayerRaceState(roomId, userId, {
+    raceProgress: progress,
+    raceDistanceToGoal
+  });
+  return toRaceResult(roomId);
+}
+
 export function getApiRoomPhase(roomId: string): RoomPhase {
   return rooms.get(roomId)?.phase ?? "lobby";
 }

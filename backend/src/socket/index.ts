@@ -13,6 +13,7 @@ import {
   leaveApiRoomFromRealtime,
   mergeApiRoomMap,
   onApiAssetJobUpdated,
+  setApiRoomRaceProgressFromRealtime,
   setApiRoomReadyFromRealtime,
   setApiRoomPhase
 } from "../http/routes/apiRoutes.js";
@@ -362,7 +363,19 @@ export function attachSocketServer(httpServer: HttpServer) {
       const progress = clampProgress(payload.progress);
 
       if (player !== undefined && progress !== null) {
-        player.raceProgress = Math.max(player.raceProgress, progress);
+        const nextProgress = Math.max(player.raceProgress, progress);
+        const nextDistanceToGoal = getRaceDistanceToGoal({
+          ...player,
+          raceProgress: nextProgress
+        });
+        const apiResult = setApiRoomRaceProgressFromRealtime(room.id, userId, nextProgress, nextDistanceToGoal);
+
+        if (apiResult === null) {
+          emitSocketError(socket, "ROOM_PLAYER_NOT_FOUND", "room player not found");
+          return;
+        }
+
+        player.raceProgress = nextProgress;
       }
 
       socket.to(room.id).emit("race:position", {

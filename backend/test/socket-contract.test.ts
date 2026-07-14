@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   adjustApiRoomPhaseEndsAtFromRealtime,
   joinApiRoomFromRealtime,
+  setApiRoomRaceProgressFromRealtime,
   setApiRoomPhase,
   setApiRoomReadyFromRealtime,
 } from "../src/http/routes/apiRoutes.js";
@@ -111,6 +112,27 @@ describe("Socket.IO realtime contract", () => {
 
     expect(reducedRoom?.phaseEndsAt).toBe("2026-07-14T02:03:00.000Z");
     expect(adjustApiRoomPhaseEndsAtFromRealtime(roomId, "validating", 15)).toBeNull();
+  });
+
+  it("persists realtime race progress into API race snapshots", () => {
+    const roomId = `socket-race-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    joinApiRoomFromRealtime(roomId, `${roomId}-host`, "Host");
+    joinApiRoomFromRealtime(roomId, `${roomId}-guest`, "Guest");
+
+    const progressSnapshot = setApiRoomRaceProgressFromRealtime(roomId, `${roomId}-guest`, 64, 36);
+
+    expect(progressSnapshot?.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: `${roomId}-guest`,
+          race_progress: 64,
+          race_distance_to_goal: 36,
+        }),
+      ]),
+    );
+    expect(setApiRoomRaceProgressFromRealtime(roomId, `${roomId}-missing`, 64, 36)).toBeNull();
+    expect(source).toMatch(/socket\.on\("race:position"/);
+    expect(source).toMatch(/setApiRoomRaceProgressFromRealtime\(room\.id, userId, nextProgress, nextDistanceToGoal\);/);
   });
 
   it("does not bypass REST late-join policy from realtime joins", () => {
