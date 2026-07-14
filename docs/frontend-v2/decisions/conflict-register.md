@@ -15,10 +15,10 @@
 | ID | C-001 |
 | 주제 | 루트 `AGENTS.md` 부재 |
 | 문서 기준 | Phase 0 목표는 `AGENTS.md`를 반드시 먼저 읽으라고 지시 |
-| 코드 기준 | 저장소 루트 `AGENTS.md`는 없고 `client/src/game/AGENTS.md`만 존재 |
-| 영향 | 전체 저장소 공통 작업 규칙은 없음. Phaser 보호 규칙은 하위 디렉터리 기준으로만 적용 가능 |
-| 권장안 | Phase 1 전 루트 `AGENTS.md`를 만들지 여부를 결정. 현재 감사 문서는 하위 Phaser 규칙만 적용 |
-| 상태 | OPEN |
+| 코드 기준 | 저장소 루트 `AGENTS.md`가 존재하고, `client/src/game/AGENTS.md`는 Phaser gameplay 하위 경계를 계속 보호 |
+| 영향 | 공통 Frontend V2 migration 규칙과 Phaser 보호 규칙을 모두 파일로 확인할 수 있음 |
+| 권장안 | RESOLVED: 루트 `AGENTS.md`를 기준으로 공통 작업 규칙을 적용하고, 하위 AGENTS가 있는 경로에서는 더 구체적인 규칙도 함께 적용 |
+| 상태 | RESOLVED |
 
 ## C-002
 
