@@ -1,0 +1,26 @@
+.state {
+  width: min(calc(var(--spacing-16) * 8), 100%);
+  display: grid;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  border: 1px solid var(--semantic-color-status-error);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+}
+
+.copy {
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+.copy strong {
+  color: var(--semantic-color-text-danger);
+  overflow-wrap: anywhere;
+}
+
+.copy p {
+  margin: 0;
+  color: var(--semantic-color-text-secondary);
+  overflow-wrap: anywhere;
+}

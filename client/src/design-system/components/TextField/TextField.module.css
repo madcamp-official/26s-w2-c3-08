@@ -1,0 +1,101 @@
+.field {
+  display: grid;
+  gap: var(--spacing-2);
+  color: var(--semantic-color-text-primary);
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font-size: var(--typography-size-body);
+  font-weight: var(--typography-weight-semibold);
+  line-height: var(--typography-line-height-tight);
+}
+
+.requiredMark {
+  color: var(--semantic-color-status-error);
+}
+
+.controlWrap {
+  position: relative;
+  display: grid;
+}
+
+.control {
+  min-height: calc(var(--spacing-8) + var(--spacing-4));
+  width: 100%;
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--component-color-field-border);
+  border-radius: var(--radius-md);
+  color: var(--component-color-field-text);
+  background: var(--component-color-field-background);
+  font-family: var(--font-ui);
+  font-size: var(--typography-size-body);
+  line-height: var(--typography-line-height-normal);
+}
+
+.control::placeholder {
+  color: var(--component-color-field-placeholder);
+}
+
+.control:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+  border-color: var(--component-color-field-border-focus);
+}
+
+.control:disabled {
+  cursor: not-allowed;
+  color: var(--semantic-color-text-secondary);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.controlWrap[data-state='loading'] .control {
+  padding-right: var(--spacing-10);
+}
+
+.controlWrap[data-state='error'] .control {
+  border-color: var(--semantic-color-status-error);
+}
+
+.helper,
+.error {
+  margin: 0;
+  font-size: var(--typography-size-caption);
+  line-height: var(--typography-line-height-normal);
+}
+
+.helper {
+  color: var(--semantic-color-text-secondary);
+}
+
+.error {
+  color: var(--semantic-color-text-danger);
+  font-weight: var(--typography-weight-semibold);
+}
+
+.spinner {
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-3);
+  width: var(--spacing-4);
+  height: var(--spacing-4);
+  border: 2px solid var(--semantic-color-status-generating);
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  transform: translateY(-50%);
+  animation: field-spin var(--motion-duration-slow) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: var(--motion-duration-instant);
+  }
+}
+
+@keyframes field-spin {
+  to {
+    transform: translateY(-50%) rotate(1turn);
+  }
+}

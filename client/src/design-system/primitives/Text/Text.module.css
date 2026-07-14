@@ -1,0 +1,74 @@
+.text {
+  margin: 0;
+  color: var(--text-color);
+  font-family: var(--font-ui);
+  font-size: var(--text-size);
+  font-weight: var(--text-weight);
+  line-height: var(--text-line-height);
+  text-align: var(--text-align);
+}
+
+.text[data-variant='body'] {
+  --text-size: var(--typography-size-body);
+  --text-line-height: var(--typography-line-height-normal);
+}
+
+.text[data-variant='caption'] {
+  --text-size: var(--typography-size-caption);
+  --text-line-height: var(--typography-line-height-tight);
+}
+
+.text[data-variant='title'] {
+  --text-size: var(--typography-size-title-sm);
+  --text-line-height: var(--typography-line-height-tight);
+}
+
+.text[data-variant='display'] {
+  --text-size: var(--typography-size-title-md);
+  --text-line-height: var(--typography-line-height-tight);
+  font-family: var(--font-display);
+}
+
+.text[data-tone='primary'] {
+  --text-color: var(--semantic-color-text-primary);
+}
+
+.text[data-tone='secondary'] {
+  --text-color: var(--semantic-color-text-secondary);
+}
+
+.text[data-tone='danger'] {
+  --text-color: var(--semantic-color-text-danger);
+}
+
+.text[data-tone='inverse'] {
+  --text-color: var(--semantic-color-text-inverse);
+}
+
+.text[data-weight='regular'] {
+  --text-weight: var(--typography-weight-regular);
+}
+
+.text[data-weight='medium'] {
+  --text-weight: var(--typography-weight-medium);
+}
+
+.text[data-weight='semibold'] {
+  --text-weight: var(--typography-weight-semibold);
+}
+
+.text[data-weight='bold'] {
+  --text-weight: var(--typography-weight-bold);
+}
+
+.text[data-align='start'] {
+  --text-align: start;
+}
+
+.text[data-align='center'] {
+  --text-align: center;
+}
+
+.text[data-align='end'] {
+  --text-align: end;
+}

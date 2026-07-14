@@ -1,0 +1,74 @@
+.field {
+  display: grid;
+  gap: var(--spacing-2);
+  color: var(--semantic-color-text-primary);
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font-size: var(--typography-size-body);
+  font-weight: var(--typography-weight-semibold);
+  line-height: var(--typography-line-height-tight);
+}
+
+.requiredMark {
+  color: var(--semantic-color-status-error);
+}
+
+.control {
+  min-height: calc(var(--spacing-16) + var(--spacing-8));
+  width: 100%;
+  resize: vertical;
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--component-color-field-border);
+  border-radius: var(--radius-md);
+  color: var(--component-color-field-text);
+  background: var(--component-color-field-background);
+  font-family: var(--font-ui);
+  font-size: var(--typography-size-body);
+  line-height: var(--typography-line-height-normal);
+}
+
+.control::placeholder {
+  color: var(--component-color-field-placeholder);
+}
+
+.control:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+  border-color: var(--component-color-field-border-focus);
+}
+
+.control:disabled {
+  cursor: not-allowed;
+  color: var(--semantic-color-text-secondary);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.field[data-state='error'] .control {
+  border-color: var(--semantic-color-status-error);
+}
+
+.helper,
+.error,
+.count {
+  margin: 0;
+  font-size: var(--typography-size-caption);
+  line-height: var(--typography-line-height-normal);
+}
+
+.helper,
+.count {
+  color: var(--semantic-color-text-secondary);
+}
+
+.error {
+  color: var(--semantic-color-text-danger);
+  font-weight: var(--typography-weight-semibold);
+}
+
+.count {
+  justify-self: end;
+}

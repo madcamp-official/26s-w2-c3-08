@@ -1,0 +1,20 @@
+.state {
+  width: min(calc(var(--spacing-16) * 8), 100%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+}
+
+.state p {
+  min-width: min(calc(var(--spacing-16) * 4), 100%);
+  flex: 1;
+  margin: 0;
+  color: var(--semantic-color-text-secondary);
+  overflow-wrap: anywhere;
+}

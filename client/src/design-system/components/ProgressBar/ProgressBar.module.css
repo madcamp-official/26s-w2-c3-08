@@ -1,0 +1,54 @@
+.progress {
+  display: grid;
+  gap: var(--spacing-2);
+  color: var(--semantic-color-text-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.track {
+  width: 100%;
+  height: var(--spacing-3);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.fill {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--semantic-color-status-generating);
+  inline-size: var(--progress-value);
+  transition: inline-size var(--motion-duration-normal) var(--motion-easing-standard);
+}
+
+.progress[data-state='indeterminate'] .fill {
+  inline-size: 40%;
+  animation: progress-indeterminate var(--motion-duration-slow) var(--motion-easing-standard) infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill,
+  .progress[data-state='indeterminate'] .fill {
+    transition-duration: var(--motion-duration-instant);
+    animation-duration: var(--motion-duration-instant);
+  }
+}
+
+@keyframes progress-indeterminate {
+  from {
+    transform: translateX(calc(var(--spacing-16) * -1));
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}

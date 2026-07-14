@@ -1,0 +1,80 @@
+.surface {
+  color: var(--surface-text);
+  background: var(--surface-background);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--surface-radius);
+  box-shadow: var(--surface-shadow);
+  padding: var(--surface-padding);
+}
+
+.surface[data-variant='panel'] {
+  --surface-background: var(--semantic-color-surface-panel);
+  --surface-border: var(--semantic-color-border-default);
+  --surface-text: var(--semantic-color-text-primary);
+}
+
+.surface[data-variant='muted'] {
+  --surface-background: var(--semantic-color-surface-panel-muted);
+  --surface-border: var(--semantic-color-border-default);
+  --surface-text: var(--semantic-color-text-primary);
+}
+
+.surface[data-variant='canvas'] {
+  --surface-background: var(--semantic-color-surface-canvas);
+  --surface-border: var(--semantic-color-border-strong);
+  --surface-text: var(--semantic-color-text-primary);
+}
+
+.surface[data-variant='inverse'] {
+  --surface-background: var(--semantic-color-game-background);
+  --surface-border: var(--semantic-color-game-hud-surface);
+  --surface-text: var(--semantic-color-game-hud-text);
+}
+
+.surface[data-padding='none'] {
+  --surface-padding: var(--spacing-0);
+}
+
+.surface[data-padding='small'] {
+  --surface-padding: var(--spacing-2);
+}
+
+.surface[data-padding='medium'] {
+  --surface-padding: var(--spacing-4);
+}
+
+.surface[data-padding='large'] {
+  --surface-padding: var(--spacing-6);
+}
+
+.surface[data-radius='none'] {
+  --surface-radius: var(--radius-none);
+}
+
+.surface[data-radius='small'] {
+  --surface-radius: var(--radius-sm);
+}
+
+.surface[data-radius='medium'] {
+  --surface-radius: var(--radius-md);
+}
+
+.surface[data-radius='large'] {
+  --surface-radius: var(--radius-lg);
+}
+
+.surface[data-shadow='none'] {
+  --surface-shadow: none;
+}
+
+.surface[data-shadow='panel'] {
+  --surface-shadow: var(--effects-shadow-panel);
+}
+
+.surface[data-shadow='modal'] {
+  --surface-shadow: var(--effects-shadow-modal);
+}
+
+.surface[data-shadow='hud'] {
+  --surface-shadow: var(--effects-shadow-hud);
+}

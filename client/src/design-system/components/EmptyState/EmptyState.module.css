@@ -1,0 +1,41 @@
+.state {
+  width: min(calc(var(--spacing-16) * 8), 100%);
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-6);
+  border: 1px dashed var(--semantic-color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel-muted);
+  text-align: center;
+}
+
+.icon {
+  width: var(--spacing-12);
+  height: var(--spacing-12);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  color: var(--semantic-color-status-generating);
+  background: var(--semantic-color-surface-panel);
+}
+
+.copy {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.copy h3,
+.copy p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.copy h3 {
+  font-size: var(--typography-size-title-sm);
+}
+
+.copy p {
+  color: var(--semantic-color-text-secondary);
+}

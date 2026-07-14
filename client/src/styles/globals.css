@@ -1,0 +1,30 @@
+@import './tokens.generated.css';
+@import './reset.css';
+@import './accessibility.css';
+
+:root {
+  font-family: var(--font-ui);
+  font-size: var(--typography-size-body);
+  line-height: var(--typography-line-height-normal);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-app);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-width: 320px;
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-app);
+}
+
+::selection {
+  color: var(--semantic-color-text-on-yellow);
+  background: var(--semantic-color-launcher-title-surface);
+}
+
+#root {
+  min-height: 100svh;
+}

@@ -1,0 +1,101 @@
+.iconButton {
+  position: relative;
+  min-width: var(--icon-button-size);
+  min-height: var(--icon-button-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--icon-button-border);
+  border-radius: var(--radius-md);
+  color: var(--icon-button-text);
+  background: var(--icon-button-background);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    border-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--semantic-color-surface-panel);
+}
+
+.iconButton:disabled {
+  cursor: not-allowed;
+}
+
+.iconButton:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+}
+
+.iconButton[data-size='small'] {
+  --icon-button-size: var(--spacing-10);
+}
+
+.iconButton[data-size='medium'] {
+  --icon-button-size: calc(var(--spacing-8) + var(--spacing-4));
+}
+
+.iconButton[data-size='large'] {
+  --icon-button-size: var(--spacing-16);
+}
+
+.iconButton[data-state='idle'] {
+  --icon-button-background: var(--semantic-color-surface-panel-muted);
+  --icon-button-border: var(--semantic-color-border-default);
+  --icon-button-text: var(--semantic-color-text-primary);
+}
+
+.iconButton[data-state='pressed'] {
+  --icon-button-background: var(--semantic-color-action-primary-background);
+  --icon-button-border: var(--semantic-color-action-primary-border);
+  --icon-button-text: var(--semantic-color-action-primary-text);
+}
+
+.iconButton[data-state='disabled'],
+.iconButton[data-state='loading'] {
+  --icon-button-background: var(--semantic-color-surface-panel-muted);
+  --icon-button-border: var(--semantic-color-border-default);
+  --icon-button-text: var(--semantic-color-text-secondary);
+}
+
+.iconSlot,
+.spinner {
+  width: 1.25em;
+  height: 1.25em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconSlot svg {
+  width: 1.25em;
+  height: 1.25em;
+}
+
+.spinner {
+  position: absolute;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: icon-button-spin var(--motion-duration-slow) linear infinite;
+}
+
+.iconButton[data-state='loading'] .iconSlot {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconButton {
+    transition-duration: var(--motion-duration-instant);
+  }
+
+  .spinner {
+    animation-duration: var(--motion-duration-instant);
+  }
+}
+
+@keyframes icon-button-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

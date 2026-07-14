@@ -1,0 +1,610 @@
+.studioPanel,
+.brushControl,
+.paletteGrid,
+.attributeField,
+.assetLoadModal,
+.dirtyNotice,
+.drawingViewport {
+  min-width: 0;
+  color: var(--semantic-color-text-primary);
+}
+
+.studioPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-studio-panel);
+}
+
+.studioPanel[data-state='collapsed'] {
+  grid-template-rows: minmax(var(--spacing-16), 1fr);
+}
+
+.studioPanel[data-state='resizing'] {
+  border-color: var(--semantic-color-border-focus);
+  box-shadow: inset 0 0 0 var(--effects-focus-outline-width) var(--semantic-color-border-focus);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border-bottom: 1px solid var(--semantic-color-border-default);
+  background: var(--semantic-color-studio-tool-surface);
+}
+
+.panelHeader h3,
+.panelHeader p,
+.dirtyNotice p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.panelActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
+}
+
+.panelToggle,
+.toolButton,
+.presetRow button,
+.swatch,
+.assetLoadItem {
+  font-family: var(--font-ui);
+}
+
+.panelToggle {
+  min-width: var(--spacing-10);
+  min-height: var(--spacing-10);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+  font-weight: var(--typography-weight-bold);
+}
+
+.panelBody {
+  min-height: 0;
+  display: grid;
+  gap: var(--spacing-4);
+  overflow: auto;
+  padding: var(--spacing-3);
+}
+
+.studioPanel[data-state='collapsed'] .panelHeader,
+.studioPanel[data-state='collapsed'] .panelBody {
+  display: none;
+}
+
+.collapsedRail {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-3);
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+  writing-mode: vertical-rl;
+}
+
+.resizeHandle {
+  min-width: var(--spacing-10);
+  min-height: var(--spacing-10);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(to right, transparent, var(--semantic-color-border-focus), transparent),
+    var(--semantic-color-studio-tool-surface);
+}
+
+.resizeHandle[data-axis='vertical'] {
+  background:
+    linear-gradient(to bottom, transparent, var(--semantic-color-border-focus), transparent),
+    var(--semantic-color-studio-tool-surface);
+}
+
+.resizeHandle[data-state='dragging'] {
+  border-color: var(--semantic-color-border-focus);
+  background:
+    linear-gradient(to right, transparent, var(--semantic-color-action-primary-background), transparent),
+    var(--semantic-color-studio-tool-surface);
+}
+
+.resizeHandle[data-state='disabled'] {
+  opacity: var(--opacity-disabled);
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--spacing-16), 1fr));
+  gap: var(--spacing-2);
+}
+
+.toolButton {
+  min-height: var(--spacing-16);
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-studio-tool-surface);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+  line-height: var(--typography-line-height-tight);
+}
+
+.toolButton[data-state='active'] {
+  border-color: var(--semantic-color-action-primary-border);
+  background: var(--semantic-color-action-primary-background);
+}
+
+.toolButton[data-state='disabled'] {
+  color: var(--semantic-color-text-secondary);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.toolIcon {
+  width: var(--spacing-6);
+  height: var(--spacing-6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.toolButton kbd {
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-text-secondary);
+  background: var(--semantic-color-surface-panel);
+  font-family: var(--font-timer);
+  font-size: var(--typography-size-caption);
+}
+
+.brushControl,
+.paletteGrid,
+.attributeField {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-studio-tool-surface);
+}
+
+.controlHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.controlHeader h3 {
+  margin: 0;
+}
+
+.controlHeader output {
+  color: var(--semantic-color-text-secondary);
+  font-family: var(--font-timer);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.brushControl input[type='range'] {
+  width: 100%;
+  accent-color: var(--semantic-color-action-primary-background);
+}
+
+.presetRow,
+.swatchGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.presetRow button {
+  min-width: var(--spacing-10);
+  min-height: var(--spacing-10);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+  font-weight: var(--typography-weight-bold);
+}
+
+.presetRow button[aria-pressed='true'] {
+  border-color: var(--semantic-color-action-primary-border);
+  background: var(--semantic-color-action-primary-background);
+}
+
+.swatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--spacing-10), 1fr));
+}
+
+.swatch {
+  position: relative;
+  min-width: var(--spacing-10);
+  min-height: var(--spacing-10);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-text-primary);
+  background:
+    linear-gradient(to right, var(--semantic-color-border-default) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--semantic-color-border-default) 1px, transparent 1px),
+    var(--semantic-color-surface-panel);
+  background-size: var(--spacing-3) var(--spacing-3);
+}
+
+.swatch span {
+  position: absolute;
+  inset: var(--spacing-1);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--swatch-color);
+}
+
+.swatch[data-transparent='true'] span {
+  background:
+    linear-gradient(to bottom right, transparent 45%, var(--semantic-color-status-error) 45%, var(--semantic-color-status-error) 55%, transparent 55%),
+    var(--semantic-color-surface-panel);
+}
+
+.swatch[data-state='selected'] {
+  border-color: var(--semantic-color-action-primary-border);
+  box-shadow: inset 0 0 0 var(--effects-focus-outline-width) var(--semantic-color-action-primary-background);
+}
+
+.swatch[data-state='recent']::after {
+  position: absolute;
+  inset-block-start: var(--spacing-1);
+  inset-inline-end: var(--spacing-1);
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  border-radius: var(--radius-full);
+  background: var(--semantic-color-status-generating);
+  content: '';
+}
+
+.swatch strong {
+  position: relative;
+  z-index: var(--z-index-base);
+  padding: var(--spacing-1);
+  border-radius: var(--radius-xs);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+  font-size: var(--typography-size-caption);
+}
+
+.drawingViewport {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.viewportFrame {
+  position: relative;
+  width: min(100%, calc(var(--spacing-16) * 8));
+  aspect-ratio: var(--workspace-aspect);
+  justify-self: center;
+  overflow: hidden;
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel);
+}
+
+.checkerLayer,
+.sourceLayer,
+.outsideDimLayer,
+.gridLayer,
+.visibleFrame {
+  position: absolute;
+  pointer-events: none;
+}
+
+.checkerLayer,
+.sourceLayer,
+.outsideDimLayer {
+  inset: 0;
+}
+
+.checkerLayer {
+  z-index: var(--z-index-base);
+  background-color: var(--semantic-color-studio-canvas-checker-a);
+  background-image:
+    linear-gradient(45deg, var(--semantic-color-studio-canvas-checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--semantic-color-studio-canvas-checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--semantic-color-studio-canvas-checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--semantic-color-studio-canvas-checker-b) 75%);
+  background-position:
+    0 0,
+    0 var(--spacing-2),
+    var(--spacing-2) calc(var(--spacing-2) * -1),
+    calc(var(--spacing-2) * -1) 0;
+  background-size: var(--spacing-4) var(--spacing-4);
+}
+
+.drawingViewport[data-checker-mode='dark'] .checkerLayer {
+  background-color: var(--primitive-color-checker-dark-a);
+  background-image:
+    linear-gradient(45deg, var(--primitive-color-checker-dark-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--primitive-color-checker-dark-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--primitive-color-checker-dark-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--primitive-color-checker-dark-b) 75%);
+}
+
+.sourceLayer {
+  z-index: var(--z-index-sticky);
+  display: grid;
+  place-items: center;
+}
+
+.sampleSourcePixels {
+  width: var(--visible-width);
+  height: var(--visible-height);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--spacing-2);
+}
+
+.sampleSourcePixels span {
+  display: block;
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--semantic-color-action-primary-background);
+}
+
+.sampleSourcePixels span:first-child {
+  height: 45%;
+}
+
+.sampleSourcePixels span:nth-child(2) {
+  height: 75%;
+  background: var(--semantic-color-status-generating);
+}
+
+.sampleSourcePixels span:last-child {
+  height: 60%;
+  background: var(--semantic-color-status-success);
+}
+
+.outsideDimLayer {
+  z-index: var(--z-index-overlay);
+}
+
+.outsideDimLayer span {
+  position: absolute;
+  background: var(--semantic-color-studio-canvas-outside-dim);
+}
+
+.outsideDimLayer span[data-edge='top'] {
+  inset: 0 0 auto;
+  height: var(--visible-top);
+}
+
+.outsideDimLayer span[data-edge='right'] {
+  inset-block: var(--visible-top) calc(100% - var(--visible-top) - var(--visible-height));
+  inset-inline: calc(var(--visible-left) + var(--visible-width)) 0;
+}
+
+.outsideDimLayer span[data-edge='bottom'] {
+  inset: calc(var(--visible-top) + var(--visible-height)) 0 0;
+}
+
+.outsideDimLayer span[data-edge='left'] {
+  inset-block: var(--visible-top) calc(100% - var(--visible-top) - var(--visible-height));
+  inset-inline: 0 calc(100% - var(--visible-left));
+}
+
+.gridLayer,
+.visibleFrame {
+  inset-block-start: var(--visible-top);
+  inset-inline-start: var(--visible-left);
+  width: var(--visible-width);
+  height: var(--visible-height);
+}
+
+.gridLayer {
+  z-index: var(--z-index-toast);
+  background-image:
+    linear-gradient(to right, var(--semantic-color-studio-canvas-grid-minor) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--semantic-color-studio-canvas-grid-minor) 1px, transparent 1px),
+    linear-gradient(to right, var(--semantic-color-studio-canvas-grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--semantic-color-studio-canvas-grid-major) 1px, transparent 1px);
+  background-size:
+    var(--spacing-8) var(--spacing-8),
+    var(--spacing-8) var(--spacing-8),
+    var(--spacing-16) var(--spacing-16),
+    var(--spacing-16) var(--spacing-16);
+}
+
+.visibleFrame {
+  z-index: var(--z-index-toast);
+  border: 1px solid var(--semantic-color-focus-ring);
+  box-shadow: inset 0 0 0 var(--effects-focus-outline-width) var(--semantic-color-focus-ring-on-dark);
+}
+
+.viewportStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+}
+
+.attributeField legend {
+  margin: 0 0 var(--spacing-2);
+  font-weight: var(--typography-weight-bold);
+}
+
+.attributeField input[type='text'],
+.attributeField select {
+  min-height: var(--spacing-10);
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--component-color-field-border);
+  border-radius: var(--radius-md);
+  color: var(--component-color-field-text);
+  background: var(--component-color-field-background);
+}
+
+.optionStack {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.optionRow {
+  min-height: var(--spacing-10);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel);
+}
+
+.optionRow[data-selected='true'] {
+  border-color: var(--semantic-color-action-primary-border);
+  background: var(--semantic-color-action-primary-background);
+}
+
+.optionRow span,
+.assetLoadItem {
+  min-width: 0;
+}
+
+.optionRow strong,
+.optionRow em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.optionRow em {
+  color: var(--semantic-color-text-secondary);
+  font-style: normal;
+  font-size: var(--typography-size-caption);
+}
+
+.fieldHelper,
+.fieldError {
+  margin: 0;
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-semibold);
+  line-height: var(--typography-line-height-normal);
+}
+
+.fieldHelper {
+  color: var(--semantic-color-text-secondary);
+}
+
+.fieldError {
+  color: var(--semantic-color-text-danger);
+}
+
+.assetLoadModal {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.assetLoadList {
+  min-height: calc(var(--spacing-16) * 4);
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.assetLoadItem {
+  min-height: var(--spacing-16);
+  display: grid;
+  grid-template-columns: var(--spacing-12) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+  text-align: start;
+}
+
+.assetLoadItem > span {
+  width: var(--spacing-12);
+  height: var(--spacing-10);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--semantic-color-studio-tool-surface);
+}
+
+.assetLoadItem strong {
+  overflow-wrap: anywhere;
+}
+
+.assetLoadItem em {
+  color: var(--semantic-color-text-secondary);
+  font-style: normal;
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.dirtyNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-studio-tool-surface);
+}
+
+.dirtyNotice[data-state='dirty'] {
+  border-color: var(--semantic-color-status-warning);
+}
+
+.dirtyNotice[data-state='submitted'] {
+  border-color: var(--semantic-color-status-success);
+}
+
+.dirtyNotice p {
+  flex: 1 1 calc(var(--spacing-16) * 3);
+  color: var(--semantic-color-text-secondary);
+}
+
+.panelToggle:focus-visible,
+.resizeHandle:focus-visible,
+.toolButton:focus-visible,
+.brushControl input:focus-visible,
+.presetRow button:focus-visible,
+.swatch:focus-visible,
+.attributeField input:focus-visible,
+.attributeField select:focus-visible,
+.assetLoadItem:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+}
+
+@media (max-width: 900px) {
+  .assetLoadItem {
+    grid-template-columns: var(--spacing-12) minmax(0, 1fr);
+  }
+}

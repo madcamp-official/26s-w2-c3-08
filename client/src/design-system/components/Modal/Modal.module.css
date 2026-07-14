@@ -1,0 +1,111 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-index-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-6);
+  background: var(--semantic-color-game-hud-surface);
+}
+
+.dialog {
+  width: min(var(--modal-width), 100%);
+  max-height: calc(100svh - var(--spacing-12));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-lg);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel);
+  box-shadow: var(--effects-shadow-modal);
+}
+
+.dialog[data-size='small'] {
+  --modal-width: calc(var(--spacing-16) * 6 + var(--spacing-8));
+}
+
+.dialog[data-size='medium'] {
+  --modal-width: calc(var(--spacing-16) * 10);
+}
+
+.dialog[data-size='large'] {
+  --modal-width: calc(var(--spacing-16) * 14 + var(--spacing-6));
+}
+
+.dialog:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+}
+
+.header,
+.footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  padding: var(--spacing-5);
+}
+
+.header {
+  border-bottom: 1px solid var(--semantic-color-border-default);
+}
+
+.footer {
+  border-top: 1px solid var(--semantic-color-border-default);
+}
+
+.titleGroup {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.titleGroup h2,
+.titleGroup p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.titleGroup h2 {
+  font-size: var(--typography-size-title-sm);
+  line-height: var(--typography-line-height-tight);
+}
+
+.titleGroup p {
+  color: var(--semantic-color-text-secondary);
+}
+
+.body {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--spacing-5);
+}
+
+.closeButton {
+  min-width: var(--spacing-10);
+  min-height: var(--spacing-10);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-surface-panel-muted);
+  font-size: var(--typography-size-title-sm);
+  line-height: var(--typography-line-height-tight);
+}
+
+.closeButton:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+}
+
+@media (max-width: 720px) {
+  .backdrop {
+    padding: var(--spacing-3);
+  }
+
+  .dialog {
+    max-height: calc(100svh - var(--spacing-6));
+  }
+}
