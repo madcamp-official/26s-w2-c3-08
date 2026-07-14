@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCorsOrigins } from "../src/config/env.js";
 import { createApp } from "../src/http/app.js";
 import { onApiAssetJobUpdated } from "../src/http/routes/apiRoutes.js";
+import { validateInternalRouteToken } from "../src/http/routes/qwenRoutes.js";
 
 describe("V2 HTTP API contract", () => {
   afterEach(() => {
@@ -15,6 +16,35 @@ describe("V2 HTTP API contract", () => {
       "https://relay.example.test",
       "https://admin.example.test",
     ]);
+  });
+
+  it("requires backend internal auth for production Qwen proxy routes", () => {
+    expect(validateInternalRouteToken({
+      nodeEnv: "production",
+      expectedToken: undefined,
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      status: 503,
+      code: "INTERNAL_API_TOKEN_MISSING",
+    }));
+    expect(validateInternalRouteToken({
+      nodeEnv: "production",
+      expectedToken: "internal-token",
+      authorization: "Bearer wrong-token",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      status: 401,
+      code: "INTERNAL_API_AUTHENTICATION_FAILED",
+    }));
+    expect(validateInternalRouteToken({
+      nodeEnv: "production",
+      expectedToken: "internal-token",
+      backendInternalToken: "internal-token",
+    })).toEqual({ ok: true });
+    expect(validateInternalRouteToken({
+      nodeEnv: "test",
+      expectedToken: undefined,
+    })).toEqual({ ok: true });
   });
 
   it("supports remote session and warehouse asset job flow", async () => {

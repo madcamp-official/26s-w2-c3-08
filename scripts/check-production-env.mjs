@@ -235,6 +235,7 @@ function validateBackend(env, checks, failures, warnings) {
   requireOptionalPositiveInteger(env, service, 'PORT', checks, failures)
   requireCorsOrigins(env, service, 'CORS_ORIGIN', checks, failures)
   requireSecret(env, service, 'WORKER_TOKEN', { minLength: 16 }, checks, failures)
+  requireSecret(env, service, 'INTERNAL_API_TOKEN', { minLength: 16 }, checks, failures)
   requireHttpUrl(env, service, 'QWEN_BASE_URL', { allowPrivate: true }, checks, failures)
   requireSecret(env, service, 'QWEN_API_TOKEN', { minLength: 16 }, checks, failures)
   requireOptionalPositiveInteger(env, service, 'QWEN_TIMEOUT_MS', checks, failures)
@@ -574,6 +575,7 @@ function runSelfTest() {
     PORT: '3000',
     CORS_ORIGIN: 'https://relay.madcamp-kaist.org,https://admin.madcamp-kaist.org',
     WORKER_TOKEN: 'worker-token-1234567890',
+    INTERNAL_API_TOKEN: 'internal-token-1234567890',
     QWEN_BASE_URL: 'http://qwen.internal:8001',
     QWEN_API_TOKEN: 'qwen-token-1234567890',
     QWEN_TIMEOUT_MS: '45000',

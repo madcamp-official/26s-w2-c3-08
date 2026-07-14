@@ -11,6 +11,7 @@ const envSchema = z.object({
   QWEN_API_TOKEN: z.string().optional(),
   QWEN_TIMEOUT_MS: z.coerce.number().int().positive().default(45000),
   WORKER_TOKEN: z.string().optional(),
+  INTERNAL_API_TOKEN: z.string().optional(),
   IMAGE_STORAGE_DIR: z.string().optional(),
   IMAGE_PUBLIC_PATH: z.string().default("/generated-assets")
 });

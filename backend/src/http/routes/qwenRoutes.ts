@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
 import { QwenClient, QwenClientError } from "../../clients/qwenClient.js";
+import { env } from "../../config/env.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -27,6 +28,28 @@ const refineFormSchema = z.object({
 const allowedImageMimes = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export const qwenRoutes = Router();
+
+qwenRoutes.use((req, res, next) => {
+  const authResult = validateInternalRouteToken({
+    nodeEnv: env.NODE_ENV,
+    expectedToken: env.INTERNAL_API_TOKEN,
+    authorization: req.headers.authorization,
+    backendInternalToken: req.headers["x-backend-internal-token"]
+  });
+
+  if (authResult.ok) {
+    next();
+    return;
+  }
+
+  res.status(authResult.status).json({
+    ok: false,
+    error: {
+      code: authResult.code,
+      message: authResult.message
+    }
+  });
+});
 
 qwenRoutes.get("/health", async (_req, res) => {
   try {
@@ -99,6 +122,60 @@ qwenRoutes.post("/refine", upload.single("image"), async (req, res) => {
     sendQwenError(res, error);
   }
 });
+
+export function validateInternalRouteToken({
+  nodeEnv,
+  expectedToken,
+  authorization,
+  backendInternalToken
+}: {
+  nodeEnv: "development" | "test" | "production";
+  expectedToken: string | undefined;
+  authorization?: string | string[];
+  backendInternalToken?: string | string[];
+}): { ok: true } | { ok: false; status: number; code: string; message: string } {
+  if (!expectedToken) {
+    if (nodeEnv === "production") {
+      return {
+        ok: false,
+        status: 503,
+        code: "INTERNAL_API_TOKEN_MISSING",
+        message: "internal API token is required"
+      };
+    }
+
+    return { ok: true };
+  }
+
+  const providedToken = readInternalAuthToken(authorization) ?? readHeaderString(backendInternalToken);
+
+  if (providedToken !== expectedToken) {
+    return {
+      ok: false,
+      status: 401,
+      code: "INTERNAL_API_AUTHENTICATION_FAILED",
+      message: "internal API authentication failed"
+    };
+  }
+
+  return { ok: true };
+}
+
+function readInternalAuthToken(authorization: string | string[] | undefined) {
+  const value = readHeaderString(authorization);
+
+  if (!value) {
+    return undefined;
+  }
+
+  const [scheme, token] = value.split(/\s+/u);
+
+  return scheme?.toLowerCase() === "bearer" && token ? token : undefined;
+}
+
+function readHeaderString(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function sendQwenError(res: { status: (code: number) => { json: (body: unknown) => void } }, error: unknown) {
   if (error instanceof QwenClientError) {

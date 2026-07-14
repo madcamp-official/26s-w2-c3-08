@@ -74,6 +74,7 @@ npm run check:production-env -- \
 | `PORT` | `3000` | production-facing Express backend 포트입니다. |
 | `CORS_ORIGIN` | `http://localhost:5173` | backend HTTP와 Socket.IO에서 허용할 client origin입니다. 여러 origin은 쉼표로 구분합니다. |
 | `WORKER_TOKEN` | dev/test: `dev-worker-token`, production: required | GPU worker가 `/api/ai/jobs/*`를 claim/complete할 때 사용하는 bearer token입니다. production에서는 명시 값이 필요합니다. |
+| `INTERNAL_API_TOKEN` | production: required | `/internal/qwen/*` backend-internal proxy route 접근 token입니다. `X-Backend-Internal-Token` 또는 bearer token으로 전달합니다. |
 | `SERVER_URL` | gpu-worker: `http://localhost:3000` | GPU worker가 polling할 backend base URL입니다. |
 | `GPU_WORKER_SIMULATE` | `false` | `true`일 때 GPU worker가 외부 이미지 생성기 없이 deterministic simulated result를 반환합니다. |
 | `GPU_WORKER_GENERATION_MODE` | `wan` | `wan`은 Qwen prompt refinement 후 WAN sprite generation을 호출합니다. `gateway`는 단일 내부 generation gateway 호환 모드입니다. |
@@ -98,7 +99,7 @@ npm run check:production-env -- \
 `npm run check:production-env`는 다음 production readiness를 확인한다.
 
 - client: `VITE_DATA_MODE=remote`, `VITE_REALTIME_MODE=remote`, 선택적 `VITE_SOCKET_IO_URL`.
-- backend: `NODE_ENV=production`, public `CORS_ORIGIN` list, real `WORKER_TOKEN`, Qwen token, local storage mode일 때 generated image static path.
+- backend: `NODE_ENV=production`, public `CORS_ORIGIN` list, real `WORKER_TOKEN`, real `INTERNAL_API_TOKEN`, Qwen token, local storage mode일 때 generated image static path.
 - gpu-worker: backend `SERVER_URL`, backend와 동일한 `WORKER_TOKEN`, `GPU_WORKER_SIMULATE=false`, Qwen/WAN 또는 explicit gateway credentials, `local` 또는 `http-put` generated image storage.
 - cross-service: backend/gpu-worker `WORKER_TOKEN` 일치와 generated image URL/path 정합성.
 
