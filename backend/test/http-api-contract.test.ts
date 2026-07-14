@@ -77,6 +77,48 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
+      CORS_ORIGIN: "https://relay.example.test",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "short",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "worker-token-123456",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "http-put",
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      checks: expect.objectContaining({
+        qwenConfigured: false,
+        workerAuthConfigured: true,
+        internalAuthConfigured: true,
+        imageStorageConfigured: true,
+      }),
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: "https://relay.example.test",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "qwen-token-123456",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "replace-with-token",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "http-put",
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      checks: expect.objectContaining({
+        qwenConfigured: true,
+        workerAuthConfigured: false,
+        internalAuthConfigured: true,
+        imageStorageConfigured: true,
+      }),
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
       CORS_ORIGIN: "https://relay.example.test,https://admin.example.test",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "qwen-token-123456",

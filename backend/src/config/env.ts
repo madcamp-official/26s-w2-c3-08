@@ -96,12 +96,22 @@ function isRealSecret(value: string | undefined) {
   }
 
   const normalized = value.trim().toLowerCase();
+  const placeholderFragments = [
+    "<real",
+    "<replace",
+    "replace-with",
+    "changeme",
+    "change-me",
+    "placeholder",
+    "dummy",
+    "example",
+    "todo",
+    "your-"
+  ];
 
   return (
-    normalized.length > 0 &&
+    normalized.length >= 16 &&
     normalized !== "dev-worker-token" &&
-    !normalized.startsWith("<real_") &&
-    !normalized.includes("replace-with") &&
-    !normalized.includes("placeholder")
+    !placeholderFragments.some((fragment) => normalized.includes(fragment))
   );
 }
