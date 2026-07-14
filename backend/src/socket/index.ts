@@ -11,6 +11,7 @@ import {
   joinApiRoomFromRealtime,
   leaveApiRoomFromRealtime,
   mergeApiRoomMap,
+  onApiAssetJobUpdated,
   setApiRoomPhase
 } from "../http/routes/apiRoutes.js";
 
@@ -110,6 +111,11 @@ export function attachSocketServer(httpServer: HttpServer) {
       origin: env.CORS_ORIGIN,
     },
   });
+  const unsubscribeAssetJobs = onApiAssetJobUpdated((job) => {
+    io.emit("asset_job:updated", job);
+  });
+
+  httpServer.on("close", unsubscribeAssetJobs);
 
   io.on("connection", (socket) => {
     const authUserId = readAuthUserId(socket);

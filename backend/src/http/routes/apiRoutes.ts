@@ -127,6 +127,9 @@ interface AssetJobLease {
   leaseExpiresAtMs: number;
 }
 
+type AssetJobUpdatePayload = ReturnType<typeof toAssetJob>;
+type AssetJobUpdateListener = (job: AssetJobUpdatePayload) => void;
+
 const DEVICE_LINK_TTL_MS = 5 * 60 * 1000;
 const ACTION_REGEN_COOLDOWN_MS = 5 * 60 * 1000;
 const ASSET_JOB_LEASE_MS = 2 * 60 * 1000;
@@ -155,6 +158,15 @@ const mergedMaps = new Map<string, MergedMap>();
 const racePlayerStates = new Map<string, Map<string, RacePlayerState>>();
 const deviceLinks = new Map<string, DeviceLinkTicket>();
 const assetJobLeases = new Map<string, AssetJobLease>();
+const assetJobUpdateListeners = new Set<AssetJobUpdateListener>();
+
+export function onApiAssetJobUpdated(listener: AssetJobUpdateListener) {
+  assetJobUpdateListeners.add(listener);
+
+  return () => {
+    assetJobUpdateListeners.delete(listener);
+  };
+}
 
 export function ensureApiRoomForRealtime(roomId: string, nickname?: string) {
   const existingRoom = rooms.get(roomId);
@@ -1306,6 +1318,7 @@ function claimNextAssetJob(workerId: string) {
     if (isWholeAssetGenerationPending(asset) && canLeaseAssetJob(wholeAssetJob.id, nowMs)) {
       asset.status = "generating";
       assetJobLeases.set(wholeAssetJob.id, { leasedBy: workerId, leaseExpiresAtMs: nowMs + ASSET_JOB_LEASE_MS });
+      emitAssetJobUpdated(asset, null);
       return { asset, sprite: null };
     }
 
@@ -1317,6 +1330,7 @@ function claimNextAssetJob(workerId: string) {
         sprite.status = "generating";
         sprite.lastRegenAt = new Date(nowMs).toISOString();
         assetJobLeases.set(spriteJob.id, { leasedBy: workerId, leaseExpiresAtMs: nowMs + ASSET_JOB_LEASE_MS });
+        emitAssetJobUpdated(asset, sprite);
         return { asset, sprite };
       }
     }
@@ -1363,6 +1377,7 @@ function completeAssetJob(
       asset.status = "failed";
     }
 
+    emitAssetJobUpdated(asset, sprite);
     return { ok: true as const, asset, sprite };
   }
 
@@ -1389,6 +1404,7 @@ function completeAssetJob(
     asset.status = asset.sprites.every((candidateSprite) => candidateSprite.status === "ready") ? "ready" : "generating";
   }
 
+  emitAssetJobUpdated(asset, sprite);
   return { ok: true as const, asset, sprite };
 }
 
@@ -1416,6 +1432,14 @@ function canLeaseAssetJob(jobId: string, nowMs: number) {
   const lease = assetJobLeases.get(jobId);
 
   return lease === undefined || lease.leaseExpiresAtMs <= nowMs;
+}
+
+function emitAssetJobUpdated(asset: Asset, sprite: AssetSprite | null) {
+  const job = toAssetJob(asset, sprite);
+
+  assetJobUpdateListeners.forEach((listener) => {
+    listener(job);
+  });
 }
 
 function listAssetJobs(userId: string | null) {

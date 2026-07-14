@@ -42,6 +42,12 @@ describe("Socket.IO realtime contract", () => {
     expect(source).toMatch(/import \{ Server, type Socket \} from "socket\.io";/);
     expect(source).not.toMatch(/BroadcastChannel|localRealtime|mock/i);
   });
+
+  it("broadcasts backend asset job updates over the V2 Socket.IO contract", () => {
+    expect(source).toMatch(/onApiAssetJobUpdated/);
+    expect(source).toMatch(/io\.emit\("asset_job:updated", job\);/);
+    expect(source).toMatch(/httpServer\.on\("close", unsubscribeAssetJobs\);/);
+  });
 });
 
 function readBackendFile(path: string) {

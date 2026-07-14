@@ -1,6 +1,7 @@
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/http/app.js";
+import { onApiAssetJobUpdated } from "../src/http/routes/apiRoutes.js";
 
 describe("V2 HTTP API contract", () => {
   afterEach(() => {
@@ -127,6 +128,11 @@ describe("V2 HTTP API contract", () => {
       ]),
     );
 
+    const pushedJobs: Array<{ outputAssetId?: string; action?: string | null; status?: string }> = [];
+    const unsubscribePushedJobs = onApiAssetJobUpdated((job) => {
+      pushedJobs.push(job);
+    });
+
     const claimedJobResponse = await request(app)
       .get("/api/ai/jobs/next")
       .set("Authorization", "Bearer dev-worker-token")
@@ -139,6 +145,15 @@ describe("V2 HTTP API contract", () => {
         action: "idle",
         requestedActions: ["idle"],
       }),
+    );
+    expect(pushedJobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outputAssetId: avatar.id,
+          action: "idle",
+          status: "generating",
+        }),
+      ]),
     );
 
     const workerResultResponse = await request(app)
@@ -160,6 +175,16 @@ describe("V2 HTTP API contract", () => {
         sheetUrl: "https://assets.example.test/avatar-idle.png",
       }),
     );
+    expect(pushedJobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outputAssetId: avatar.id,
+          action: "idle",
+          status: "ready",
+        }),
+      ]),
+    );
+    unsubscribePushedJobs();
   });
 
   it("supports remote room and game phase flow", async () => {
