@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 interface WorkerJob {
   id: string
+  userId: string | null
   assetId: string | null
   category: string | null
   name: string
@@ -20,9 +21,17 @@ interface WorkerConfig {
   workerId: string
   pollIntervalMs: number
   simulate: boolean
-  comfyUrl: string | null
-  comfyGeneratePath: string
-  comfyTimeoutMs: number
+  generationMode: 'wan' | 'gateway'
+  qwenBaseUrl: string | null
+  qwenApiToken: string | null
+  qwenTimeoutMs: number
+  wanBaseUrl: string | null
+  wanApiToken: string | null
+  wanGeneratePath: string
+  wanTimeoutMs: number
+  gatewayUrl: string | null
+  gatewayGeneratePath: string
+  gatewayTimeoutMs: number
 }
 
 type Fetcher = typeof fetch
@@ -34,9 +43,17 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     workerId: env.WORKER_ID ?? `gpu-worker-${process.pid}`,
     pollIntervalMs: readPositiveInteger(env.JOB_POLL_INTERVAL_MS, 2_000),
     simulate: env.GPU_WORKER_SIMULATE === 'true',
-    comfyUrl: env.COMFYUI_URL ?? null,
-    comfyGeneratePath: env.COMFYUI_GENERATE_PATH ?? '/v2/sprite-jobs/generate',
-    comfyTimeoutMs: readPositiveInteger(env.COMFYUI_TIMEOUT_MS, 10 * 60 * 1_000),
+    generationMode: readGenerationMode(env.GPU_WORKER_GENERATION_MODE) ?? 'wan',
+    qwenBaseUrl: env.QWEN_BASE_URL ?? null,
+    qwenApiToken: env.QWEN_API_TOKEN ?? null,
+    qwenTimeoutMs: readPositiveInteger(env.QWEN_TIMEOUT_MS, 45_000),
+    wanBaseUrl: env.WAN_API_BASE_URL ?? null,
+    wanApiToken: env.WAN_API_TOKEN ?? null,
+    wanGeneratePath: env.WAN_GENERATE_PATH ?? '/v1/sprites/generate',
+    wanTimeoutMs: readPositiveInteger(env.WAN_TIMEOUT_MS, 90_000),
+    gatewayUrl: env.GENERATION_GATEWAY_URL ?? env.COMFYUI_URL ?? null,
+    gatewayGeneratePath: env.GENERATION_GATEWAY_PATH ?? env.COMFYUI_GENERATE_PATH ?? '/v2/sprite-jobs/generate',
+    gatewayTimeoutMs: readPositiveInteger(env.GENERATION_GATEWAY_TIMEOUT_MS ?? env.COMFYUI_TIMEOUT_MS, 10 * 60 * 1_000),
   }
 }
 
@@ -106,19 +123,49 @@ async function runJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher = f
     }
   }
 
-  if (!config.comfyUrl) {
+  if (config.generationMode === 'gateway') {
+    return executeGatewayJob(job, config, fetcher)
+  }
+
+  return executeWanPipelineJob(job, config, fetcher)
+}
+
+async function executeWanPipelineJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
+  if (!config.qwenBaseUrl || !config.qwenApiToken) {
     return {
       status: 'failed',
-      errorCode: 'COMFYUI_URL_MISSING',
-      errorMessage: 'COMFYUI_URL is required unless GPU_WORKER_SIMULATE=true.',
+      errorCode: 'QWEN_NOT_CONFIGURED',
+      errorMessage: 'QWEN_BASE_URL and QWEN_API_TOKEN are required unless GPU_WORKER_SIMULATE=true.',
     }
   }
 
-  return executeComfyGatewayJob(job, config, fetcher)
+  if (!config.wanBaseUrl || !config.wanApiToken) {
+    return {
+      status: 'failed',
+      errorCode: 'WAN_NOT_CONFIGURED',
+      errorMessage: 'WAN_API_BASE_URL and WAN_API_TOKEN are required unless GPU_WORKER_SIMULATE=true.',
+    }
+  }
+
+  const qwenResult = await requestQwenPromptRefinement(job, config, fetcher)
+
+  if (qwenResult.status === 'failed') {
+    return qwenResult
+  }
+
+  return requestWanSpriteGeneration(job, qwenResult, config, fetcher)
 }
 
-async function executeComfyGatewayJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
-  const responseResult = await postWithTimeout(fetcher, `${trimTrailingSlash(config.comfyUrl ?? '')}${ensureLeadingSlash(config.comfyGeneratePath)}`, {
+async function executeGatewayJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
+  if (!config.gatewayUrl) {
+    return {
+      status: 'failed',
+      errorCode: 'GENERATION_GATEWAY_URL_MISSING',
+      errorMessage: 'GENERATION_GATEWAY_URL is required when GPU_WORKER_GENERATION_MODE=gateway.',
+    }
+  }
+
+  const responseResult = await postWithTimeout(fetcher, `${trimTrailingSlash(config.gatewayUrl)}${ensureLeadingSlash(config.gatewayGeneratePath)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -142,7 +189,7 @@ async function executeComfyGatewayJob(job: WorkerJob, config: WorkerConfig, fetc
       requestedActions: job.requestedActions,
       requested_actions: job.requestedActions,
     }),
-  }, config.comfyTimeoutMs)
+  }, config.gatewayTimeoutMs, 'GENERATION_GATEWAY', 'generation gateway')
 
   if (!responseResult.ok) {
     return responseResult.failure
@@ -154,12 +201,120 @@ async function executeComfyGatewayJob(job: WorkerJob, config: WorkerConfig, fetc
     const body = await readJsonSafely(response)
 
     return createFailedJobResult(
-      `COMFYUI_HTTP_${response.status}`,
-      readErrorMessage(body) ?? `ComfyUI gateway request failed with ${response.status}.`,
+      `GENERATION_GATEWAY_HTTP_${response.status}`,
+      readErrorMessage(body) ?? `Generation gateway request failed with ${response.status}.`,
     )
   }
 
-  return normalizeComfyGatewayResponse(response)
+  return normalizeGenerationResponse(response, 'GENERATION_GATEWAY', 'Generation gateway')
+}
+
+interface QwenPipelineResult {
+  status: 'ready'
+  wanPrompt: string
+  wanNegativePrompt: string
+  background: string
+}
+
+async function requestQwenPromptRefinement(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
+  const imageBlobResult = dataUrlToBlob(job.image)
+
+  if (imageBlobResult.status === 'failed') {
+    return imageBlobResult
+  }
+
+  const form = new FormData()
+  const targetType = job.category === 'avatar' ? 'avatar' : 'asset'
+
+  form.append('request_id', job.id)
+  form.append('user_id', job.userId ?? job.assetId ?? 'gpu-worker')
+  form.append('target_type', targetType)
+  form.append('user_prompt', createUserPrompt(job))
+  form.append('locale', 'ko-KR')
+  form.append('style_preset', 'platformer_sprite')
+  form.append('output_language', 'en')
+
+  const assetType = mapQwenAssetType(job.category)
+
+  if (assetType) {
+    form.append('asset_type', assetType)
+  }
+
+  form.append('image', imageBlobResult.blob, `${job.id}.${mimeToExtension(imageBlobResult.blob.type)}`)
+
+  const responseResult = await postWithTimeout(fetcher, `${trimTrailingSlash(config.qwenBaseUrl ?? '')}/v1/prompts/refine`, {
+    method: 'POST',
+    headers: {
+      'X-Internal-Token': config.qwenApiToken ?? '',
+    },
+    body: form,
+  }, config.qwenTimeoutMs, 'QWEN', 'Qwen prompt refinement')
+
+  if (!responseResult.ok) {
+    return responseResult.failure
+  }
+
+  const { response } = responseResult
+  const body = await readJsonSafely(response)
+
+  if (!response.ok) {
+    return createFailedJobResult(
+      readNestedErrorCode(body) ?? `QWEN_HTTP_${response.status}`,
+      readErrorMessage(body) ?? `Qwen prompt refinement failed with ${response.status}.`,
+    )
+  }
+
+  return normalizeQwenResponse(body, job.id)
+}
+
+async function requestWanSpriteGeneration(
+  job: WorkerJob,
+  qwen: QwenPipelineResult,
+  config: WorkerConfig,
+  fetcher: Fetcher,
+) {
+  const targetType = job.category === 'avatar' ? 'avatar' : 'asset'
+  const responseResult = await postWithTimeout(fetcher, `${trimTrailingSlash(config.wanBaseUrl ?? '')}${ensureLeadingSlash(config.wanGeneratePath)}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.wanApiToken ?? ''}`,
+      'Content-Type': 'application/json',
+      'x-worker-id': config.workerId,
+    },
+    body: JSON.stringify({
+      request_id: job.id,
+      mode: 'image_to_sprite',
+      target_type: targetType,
+      prompt: qwen.wanPrompt,
+      negative_prompt: qwen.wanNegativePrompt,
+      reference_image_url: job.image,
+      width: getOutputWidth(job),
+      height: getOutputHeight(job),
+      background: qwen.background,
+      num_outputs: 1,
+      asset_id: job.assetId,
+      category: job.category,
+      action: job.action,
+      requested_actions: job.requestedActions,
+    }),
+  }, config.wanTimeoutMs, 'WAN', 'WAN sprite generation')
+
+  if (!responseResult.ok) {
+    return responseResult.failure
+  }
+
+  const { response } = responseResult
+
+  if (!response.ok) {
+    const body = await readJsonSafely(response)
+
+    return createFailedJobResult(
+      readNestedErrorCode(body) ?? `WAN_HTTP_${response.status}`,
+      readErrorMessage(body) ?? `WAN sprite generation failed with ${response.status}.`,
+    )
+  }
+
+  return normalizeGenerationResponse(response, 'WAN', 'WAN sprite generation')
 }
 
 function normalizeWorkerJob(value: unknown): WorkerJob | null {
@@ -176,6 +331,7 @@ function normalizeWorkerJob(value: unknown): WorkerJob | null {
 
   return {
     id,
+    userId: readString(value.userId) ?? readString(value.user_id) ?? null,
     assetId,
     category: readString(value.category) ?? null,
     name: readString(value.name) ?? '',
@@ -191,7 +347,36 @@ function normalizeWorkerJob(value: unknown): WorkerJob | null {
   }
 }
 
-async function normalizeComfyGatewayResponse(response: Response) {
+function normalizeQwenResponse(body: unknown, expectedRequestId: string): QwenPipelineResult | ReturnType<typeof createFailedJobResult> {
+  if (!isRecord(body)) {
+    return createFailedJobResult('QWEN_MALFORMED_RESPONSE', 'Qwen response was not valid JSON.')
+  }
+
+  if (body.ok !== true) {
+    return createFailedJobResult('QWEN_NOT_OK', 'Qwen response did not report ok=true.')
+  }
+
+  const requestId = readString(body.request_id) ?? readString(body.requestId)
+
+  if (requestId !== expectedRequestId) {
+    return createFailedJobResult('QWEN_REQUEST_ID_MISMATCH', 'Qwen response request_id did not match the worker job id.')
+  }
+
+  const wanPrompt = readString(body.wan_prompt) ?? readString(body.wanPrompt)
+
+  if (!wanPrompt) {
+    return createFailedJobResult('QWEN_MISSING_WAN_PROMPT', 'Qwen response did not include wan_prompt.')
+  }
+
+  return {
+    status: 'ready',
+    wanPrompt,
+    wanNegativePrompt: readString(body.wan_negative_prompt) ?? readString(body.wanNegativePrompt) ?? '',
+    background: readSpriteBackground(body) ?? 'transparent',
+  }
+}
+
+async function normalizeGenerationResponse(response: Response, errorPrefix: string, label: string) {
   const contentType = response.headers.get('content-type') ?? ''
 
   if (contentType.startsWith('image/')) {
@@ -206,13 +391,13 @@ async function normalizeComfyGatewayResponse(response: Response) {
   const body = await readJsonSafely(response)
 
   if (!isRecord(body)) {
-    return createFailedJobResult('COMFYUI_MALFORMED_RESPONSE', 'ComfyUI gateway response was not valid JSON.')
+    return createFailedJobResult(`${errorPrefix}_MALFORMED_RESPONSE`, `${label} response was not valid JSON.`)
   }
 
   if (body.status === 'failed') {
     return createFailedJobResult(
-      readString(body.errorCode) ?? readString(body.error_code) ?? 'COMFYUI_JOB_FAILED',
-      readString(body.errorMessage) ?? readString(body.error_message) ?? 'ComfyUI gateway reported a failed job.',
+      readString(body.errorCode) ?? readString(body.error_code) ?? `${errorPrefix}_JOB_FAILED`,
+      readString(body.errorMessage) ?? readString(body.error_message) ?? `${label} reported a failed job.`,
     )
   }
 
@@ -223,7 +408,7 @@ async function normalizeComfyGatewayResponse(response: Response) {
     readString(body.image_url)
 
   if (!sheetUrl) {
-    return createFailedJobResult('COMFYUI_MISSING_SHEET', 'ComfyUI gateway did not return a sprite sheet.')
+    return createFailedJobResult(`${errorPrefix}_MISSING_SHEET`, `${label} did not return a sprite sheet.`)
   }
 
   return {
@@ -238,6 +423,8 @@ async function postWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit,
   timeoutMs: number,
+  errorPrefix: string,
+  label: string,
 ): Promise<{ ok: true; response: Response } | { ok: false; failure: ReturnType<typeof createFailedJobResult> }> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -253,8 +440,8 @@ async function postWithTimeout(
     return {
       ok: false,
       failure: createFailedJobResult(
-        isAbortError(error) ? 'COMFYUI_TIMEOUT' : 'COMFYUI_NETWORK_ERROR',
-        isAbortError(error) ? 'ComfyUI gateway request timed out.' : 'ComfyUI gateway could not be reached.',
+        isAbortError(error) ? `${errorPrefix}_TIMEOUT` : `${errorPrefix}_NETWORK_ERROR`,
+        isAbortError(error) ? `${label} request timed out.` : `${label} could not be reached.`,
       ),
     }
   } finally {
@@ -297,6 +484,88 @@ function createHeaders(config: WorkerConfig) {
   }
 }
 
+function readGenerationMode(value: string | undefined): WorkerConfig['generationMode'] | null {
+  return value === 'wan' || value === 'gateway' ? value : null
+}
+
+function dataUrlToBlob(value: string) {
+  const match = /^data:([^;,]+);base64,(.+)$/u.exec(value)
+
+  if (!match) {
+    return createFailedJobResult('INVALID_IMAGE_DATA_URL', 'AI worker jobs require a base64 data URL source image.')
+  }
+
+  return {
+    status: 'ready' as const,
+    blob: new Blob([Buffer.from(match[2], 'base64')], {
+      type: match[1],
+    }),
+  }
+}
+
+function createUserPrompt(job: WorkerJob) {
+  const pieces = [
+    job.name,
+    job.description,
+    job.category ? `category: ${job.category}` : '',
+    job.action ? `action: ${job.action}` : '',
+  ].filter(Boolean)
+
+  return pieces.join('\n') || 'platformer sprite asset'
+}
+
+function mapQwenAssetType(category: string | null) {
+  if (category === 'platform') {
+    return 'TERRAIN'
+  }
+
+  if (category === 'obstacle') {
+    return 'DEVICE'
+  }
+
+  if (category === 'monster') {
+    return 'ENEMY'
+  }
+
+  if (category === 'item') {
+    return 'ITEM'
+  }
+
+  if (category === 'background') {
+    return 'BACKGROUND'
+  }
+
+  return undefined
+}
+
+function getOutputWidth(job: WorkerJob) {
+  if (job.category === 'avatar') {
+    return 256
+  }
+
+  return job.widthCells && job.widthCells > 0 ? job.widthCells * 32 : 512
+}
+
+function getOutputHeight(job: WorkerJob) {
+  if (job.category === 'avatar') {
+    return 512
+  }
+
+  return job.heightCells && job.heightCells > 0 ? job.heightCells * 32 : 512
+}
+
+function mimeToExtension(mime: string) {
+  if (mime === 'image/jpeg') {
+    return 'jpg'
+  }
+
+  if (mime === 'image/webp') {
+    return 'webp'
+  }
+
+  return 'png'
+}
+
 function readPositiveInteger(value: string | undefined, fallback: number) {
   if (!value) {
     return fallback
@@ -326,6 +595,40 @@ function readErrorMessage(value: unknown) {
 
   if (isRecord(value.error) && typeof value.error.message === 'string') {
     return value.error.message
+  }
+
+  return undefined
+}
+
+function readNestedErrorCode(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  if (typeof value.code === 'string') {
+    return value.code
+  }
+
+  if (isRecord(value.error) && typeof value.error.code === 'string') {
+    return value.error.code
+  }
+
+  return undefined
+}
+
+function readSpriteBackground(value: Record<string, unknown>) {
+  const directBackground = readString(value.background)
+
+  if (directBackground) {
+    return directBackground
+  }
+
+  if (isRecord(value.sprite_requirements)) {
+    return readString(value.sprite_requirements.background)
+  }
+
+  if (isRecord(value.spriteRequirements)) {
+    return readString(value.spriteRequirements.background)
   }
 
   return undefined
@@ -383,9 +686,17 @@ async function selfTest() {
     workerId: 'self-test-worker',
     pollIntervalMs: 1,
     simulate: true,
-    comfyUrl: null,
-    comfyGeneratePath: '/v2/sprite-jobs/generate',
-    comfyTimeoutMs: 1_000,
+    generationMode: 'wan',
+    qwenBaseUrl: null,
+    qwenApiToken: null,
+    qwenTimeoutMs: 1_000,
+    wanBaseUrl: null,
+    wanApiToken: null,
+    wanGeneratePath: '/v1/sprites/generate',
+    wanTimeoutMs: 1_000,
+    gatewayUrl: null,
+    gatewayGeneratePath: '/v2/sprite-jobs/generate',
+    gatewayTimeoutMs: 1_000,
   }, fetcher)
 
   assert.equal(result.status, 'ready')
@@ -393,13 +704,78 @@ async function selfTest() {
   assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer worker-token')
   assert.match(String(calls[1].init?.body), /sheetUrl/)
 
+  const wanCalls: Array<{ url: string; init?: RequestInit }> = []
+  const wanResult = await runJob({
+    id: 'job-wan-test',
+    userId: 'user-wan-test',
+    assetId: 'asset-wan-test',
+    category: 'platform',
+    name: 'WAN Test',
+    description: 'green platform',
+    image: 'data:image/png;base64,AA==',
+    attrs: { shape: 'flat' },
+    widthCells: 2,
+    heightCells: 1,
+    action: 'static',
+    requestedActions: ['static'],
+  }, {
+    serverUrl: 'http://server.test',
+    workerToken: 'worker-token',
+    workerId: 'self-test-worker',
+    pollIntervalMs: 1,
+    simulate: false,
+    generationMode: 'wan',
+    qwenBaseUrl: 'http://qwen.test',
+    qwenApiToken: 'qwen-token',
+    qwenTimeoutMs: 1_000,
+    wanBaseUrl: 'http://wan.test',
+    wanApiToken: 'wan-token',
+    wanGeneratePath: '/v1/sprites/generate',
+    wanTimeoutMs: 1_000,
+    gatewayUrl: null,
+    gatewayGeneratePath: '/v2/sprite-jobs/generate',
+    gatewayTimeoutMs: 1_000,
+  }, async (url, init) => {
+    wanCalls.push({ url: String(url), init })
+
+    if (String(url) === 'http://qwen.test/v1/prompts/refine') {
+      return new Response(JSON.stringify({
+        ok: true,
+        request_id: 'job-wan-test',
+        wan_prompt: 'green platform sprite',
+        wan_negative_prompt: 'photorealistic',
+        sprite_requirements: {
+          background: 'transparent',
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    return new Response(JSON.stringify({
+      sheet_url: 'data:image/png;base64,wan-generated',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+
+  assert.equal(wanResult.status, 'ready')
+  assert.equal(wanCalls[0].url, 'http://qwen.test/v1/prompts/refine')
+  assert.equal((wanCalls[0].init?.headers as Record<string, string>)['X-Internal-Token'], 'qwen-token')
+  assert.equal(wanCalls[1].url, 'http://wan.test/v1/sprites/generate')
+  assert.equal((wanCalls[1].init?.headers as Record<string, string>).Authorization, 'Bearer wan-token')
+  assert.match(String(wanCalls[1].init?.body), /green platform sprite/)
+
   const gatewayCalls: Array<{ url: string; init?: RequestInit }> = []
   const gatewayResult = await runJob({
     id: 'job-gateway-test',
+    userId: 'user-gateway-test',
     assetId: 'asset-gateway-test',
     category: 'monster',
     name: 'Gateway Test',
-    description: 'Comfy gateway contract test',
+    description: 'Generation gateway contract test',
     image: 'data:image/png;base64,AA==',
     attrs: { movement: 'patrol' },
     widthCells: 1,
@@ -412,9 +788,17 @@ async function selfTest() {
     workerId: 'self-test-worker',
     pollIntervalMs: 1,
     simulate: false,
-    comfyUrl: 'http://comfy.test',
-    comfyGeneratePath: '/v2/sprite-sheets',
-    comfyTimeoutMs: 1_000,
+    generationMode: 'gateway',
+    qwenBaseUrl: null,
+    qwenApiToken: null,
+    qwenTimeoutMs: 1_000,
+    wanBaseUrl: null,
+    wanApiToken: null,
+    wanGeneratePath: '/v1/sprites/generate',
+    wanTimeoutMs: 1_000,
+    gatewayUrl: 'http://gateway.test',
+    gatewayGeneratePath: '/v2/sprite-sheets',
+    gatewayTimeoutMs: 1_000,
   }, async (url, init) => {
     gatewayCalls.push({ url: String(url), init })
 
@@ -427,7 +811,7 @@ async function selfTest() {
   })
 
   assert.equal(gatewayResult.status, 'ready')
-  assert.equal(gatewayCalls[0].url, 'http://comfy.test/v2/sprite-sheets')
+  assert.equal(gatewayCalls[0].url, 'http://gateway.test/v2/sprite-sheets')
   assert.match(String(gatewayCalls[0].init?.body), /requestedActions/)
   console.log('gpu-worker self-test passed')
 }

@@ -66,11 +66,16 @@ git diff --check
 | `WORKER_TOKEN` | dev/test: `dev-worker-token`, production: required | GPU worker가 `/api/ai/jobs/*`를 claim/complete할 때 사용하는 bearer token입니다. production에서는 명시 값이 필요합니다. |
 | `SERVER_URL` | gpu-worker: `http://localhost:3000` | GPU worker가 polling할 backend base URL입니다. |
 | `GPU_WORKER_SIMULATE` | `false` | `true`일 때 GPU worker가 외부 이미지 생성기 없이 deterministic simulated result를 반환합니다. |
-| `COMFYUI_URL` | unset | 실제 sprite/image generation gateway URL입니다. `GPU_WORKER_SIMULATE=true`가 아니면 필요합니다. |
-| `COMFYUI_GENERATE_PATH` | `/v2/sprite-jobs/generate` | GPU worker가 generation gateway에 호출할 path입니다. |
+| `GPU_WORKER_GENERATION_MODE` | `wan` | `wan`은 Qwen prompt refinement 후 WAN sprite generation을 호출합니다. `gateway`는 단일 내부 generation gateway 호환 모드입니다. |
 | `QWEN_BASE_URL` | `http://172.10.5.138:8001` | backend internal Qwen prompt refinement endpoint base URL입니다. |
-| `QWEN_API_TOKEN` | unset | Qwen prompt refinement token입니다. 실제 값은 배포 직전에 주입합니다. |
+| `QWEN_API_TOKEN` | unset | Qwen prompt refinement token입니다. backend internal route와 gpu-worker WAN mode에서 사용합니다. 실제 값은 배포 직전에 주입합니다. |
 | `QWEN_TIMEOUT_MS` | `45000` | Qwen 요청 timeout입니다. |
+| `WAN_API_BASE_URL` | unset | gpu-worker WAN mode의 sprite generation base URL입니다. |
+| `WAN_API_TOKEN` | unset | gpu-worker WAN mode의 sprite generation bearer token입니다. |
+| `WAN_GENERATE_PATH` | `/v1/sprites/generate` | gpu-worker WAN mode의 generation path입니다. |
+| `WAN_TIMEOUT_MS` | `90000` | WAN generation 요청 timeout입니다. |
+| `GENERATION_GATEWAY_URL` | unset | `GPU_WORKER_GENERATION_MODE=gateway`일 때 사용하는 단일 generation gateway URL입니다. |
+| `GENERATION_GATEWAY_PATH` | `/v2/sprite-jobs/generate` | gateway mode generation path입니다. |
 
 실제 Qwen/WAN credentials, 이미지 저장소, 배포 환경 값은 production 배포 단계에서 주입한다. 현재 V2 production authority는 `backend/`이며, `server/`/Colyseus는 대체 transport와 AI/API 실험 검증용 workspace로 유지한다.
 
