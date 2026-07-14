@@ -572,6 +572,25 @@ apiRoutes.get("/asset-jobs", (req, res) => {
   });
 });
 
+apiRoutes.get("/assets/generation-jobs/:jobId", (req, res) => {
+  const requestedUserId = typeof req.query.user_id === "string" ? req.query.user_id : null;
+  const sessionUserId = getSessionByToken(readBearerToken(req))?.id ?? null;
+  const userId = sessionUserId ?? requestedUserId;
+  refreshAssetJobRuntimeState();
+
+  const target = resolveAssetJob(req.params.jobId);
+
+  if (target === null || !canReadAssetJob(userId, target.asset)) {
+    res.status(404).json({ ok: false, error: { code: "ASSET_JOB_NOT_FOUND", message: "asset job not found" } });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    job: toAssetJob(target.asset, target.sprite)
+  });
+});
+
 apiRoutes.get("/ai/jobs/next", (req, res) => {
   if (!requireWorker(req, res)) {
     return;
@@ -1525,11 +1544,15 @@ function emitAssetJobUpdated(asset: Asset, sprite: AssetSprite | null) {
 
 function listAssetJobs(userId: string | null) {
   return Array.from(assets.values())
-    .filter((asset) => !asset.isSystem && (asset.isPublic || asset.creatorId === userId))
+    .filter((asset) => !asset.isSystem && canReadAssetJob(userId, asset))
     .flatMap((asset) => [
       toAssetJob(asset, null),
       ...asset.sprites.map((sprite) => toAssetJob(asset, sprite))
     ]);
+}
+
+function canReadAssetJob(userId: string | null, asset: Asset) {
+  return asset.isSystem || asset.isPublic || asset.creatorId === userId;
 }
 
 function toAssetJob(asset: Asset, sprite: AssetSprite | null) {

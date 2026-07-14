@@ -55,7 +55,7 @@ Current migration gaps:
 |---|---|
 | trigger | only when there is a queued/generating asset/job and no recent push |
 | interval | minimum 5 seconds, matching current `API_ASSET_POLL_INTERVAL_MS` unless changed |
-| endpoint | prefer `/api/assets/generation-jobs/:jobId`; current backend lacks it, so `assets.list` is temporary migration fallback |
+| endpoint | prefer `/api/assets/generation-jobs/:jobId` for a known job id; `/api/asset-jobs?user_id=<id>` remains allowed for session-wide bounded polling |
 | stop condition | all related assets/jobs ready/failed or user leaves relevant session |
 | error | polling failure is non-terminal unless user action needs job status immediately |
 

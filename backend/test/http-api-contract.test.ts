@@ -163,6 +163,24 @@ describe("V2 HTTP API contract", () => {
     expect(avatar.status).toBe("queued");
     expect(avatarResponse.body.job.outputAssetId).toBe(avatar.id);
 
+    const queuedDirectJobResponse = await request(app)
+      .get(`/api/assets/generation-jobs/${encodeURIComponent(avatarResponse.body.job.id)}`)
+      .set("Authorization", `Bearer ${session.token}`)
+      .expect(200);
+
+    expect(queuedDirectJobResponse.body.job).toEqual(
+      expect.objectContaining({
+        id: avatarResponse.body.job.id,
+        outputAssetId: avatar.id,
+        status: "queued",
+      }),
+    );
+
+    await request(app)
+      .get("/api/assets/generation-jobs/job-missing-asset")
+      .set("Authorization", `Bearer ${session.token}`)
+      .expect(404);
+
     const queuedJobsResponse = await request(app)
       .get(`/api/asset-jobs?user_id=${encodeURIComponent(session.id)}`)
       .set("Authorization", `Bearer ${session.token}`)
@@ -236,6 +254,25 @@ describe("V2 HTTP API contract", () => {
           status: "generating",
         }),
       ]),
+    );
+    const idleJob = generatingJobsResponse.body.jobs.find(
+      (job: { outputAssetId?: string; action?: string | null }) => job.outputAssetId === avatar.id && job.action === "idle",
+    );
+
+    expect(idleJob).toEqual(expect.objectContaining({ id: expect.any(String) }));
+
+    const generatingDirectJobResponse = await request(app)
+      .get(`/api/assets/generation-jobs/${encodeURIComponent(idleJob.id)}`)
+      .set("Authorization", `Bearer ${session.token}`)
+      .expect(200);
+
+    expect(generatingDirectJobResponse.body.job).toEqual(
+      expect.objectContaining({
+        id: idleJob.id,
+        outputAssetId: avatar.id,
+        action: "idle",
+        status: "generating",
+      }),
     );
 
     const pushedJobs: Array<{ outputAssetId?: string; action?: string | null; status?: string }> = [];

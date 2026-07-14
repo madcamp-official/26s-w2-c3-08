@@ -15,14 +15,12 @@
 
 | Semantic event name | Current transport event | Payload | Sender | Receiver | Authoritative source | Reconnect behavior | Idempotency | Source evidence |
 |---|---|---|---|---|---|---|---|---|
-| `assetJob.updated` | `asset_job:updated` handled by frontend; backend emit currently `TBD-CONTRACT` | `{ id, status, targetType?, outputAssetId?, errorCode?, errorMessage? }` | backend asset worker `TBD-CONTRACT` | asset store/controller | backend asset job table/worker when implemented | on reconnect call `assets.list`; limited job polling allowed | idempotent by `id` and monotonic status | `client/src/net/realtime.ts RealtimeAssetJobUpdatedPayload`, `docs/LSJ/backend.md asset_job:updated` |
-| `assetJob.polled` | REST fallback, no socket event | `Asset[]` or `AssetJobSnapshot` if endpoint exists | API adapter | asset store | backend API | only while working asset/job exists, >=5s interval | idempotent by asset/job id | `appStore.tickMockGeneration`, `docs/LSJ/backend.md GET /assets/generation-jobs/:jobId` |
+| `assetJob.updated` | `asset_job:updated` over backend Socket.IO | `{ id, status, targetType, outputAssetId, action?, errorCode?, errorMessage?, updatedAtMs }` | backend asset worker result/claim path | asset store/controller | backend asset state in `apiRoutes.ts` | on reconnect call `/api/asset-jobs` or `/api/assets/generation-jobs/:jobId`; limited job polling allowed | idempotent by `id` and monotonic status | `backend/src/socket/index.ts`, `apiRoutes.ts emitAssetJobUpdated`, backend socket contract test |
+| `assetJob.polled` | REST fallback, no socket event | `AssetJobSnapshot` via `/api/assets/generation-jobs/:jobId` or session-wide jobs via `/api/asset-jobs` | API adapter | asset store | backend API | only while working asset/job exists, >=5s interval | idempotent by asset/job id | `apiRoutes.ts /assets/generation-jobs/:jobId`, `/api/asset-jobs`, backend contract test |
 
 TBD-CONTRACT:
 
-- Backend Socket.IO implementation currently does not emit `asset_job:updated`.
-- Current backend has no `/api/assets/generation-jobs/:jobId` route.
-- Final job status enum mapping between `queued/generating/ready/failed` and LSJ `PENDING/REFINING_PROMPT/GENERATING_SPRITE/DONE/FAILED/PENDING_RETRY` needs adapter mapping.
+- Final job status enum mapping between backend `queued/generating/ready/failed` and LSJ `PENDING/REFINING_PROMPT/GENERATING_SPRITE/DONE/FAILED/PENDING_RETRY` needs adapter mapping if LSJ enum names are exposed externally.
 
 ## 3. Domain: RoomRealtime
 
