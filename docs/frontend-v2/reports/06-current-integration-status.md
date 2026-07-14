@@ -40,7 +40,7 @@ Notes:
 - Vite still reports the known `assetRules` chunk-size warning; it does not fail the build.
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
-- Backend asset generation now has a worker claim/result contract covered by `backend/test/http-api-contract.test.ts`; the final production image generator and storage values are still deferred.
+- Backend asset generation now has a worker claim/result contract and Socket.IO asset job update broadcast covered by backend contract tests; the final production image generator and storage values are still deferred.
 
 ## Updated Blocker Status
 
@@ -55,7 +55,7 @@ Notes:
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
 | BLK-010 Visual screenshot coverage | Resolved for Launcher/Studio/Game State Gallery evidence | 165 Launcher screenshots and 114 Studio/Game screenshots pass |
 | BLK-011 Accessibility browser gates | Partially remediated | modal focus trap/restore, icon-only names, live regions, and Game canvas focus boundary pass in `test:accessibility`; full accessibility audit still needs broader screen coverage |
-| AI worker job contract | Resolved for backend/gpu-worker HTTP contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, backend contract test, gpu-worker self-test |
+| AI worker job contract | Resolved for backend/gpu-worker HTTP and Socket.IO update contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
 
 ## Remaining Pre-Switch Risks
 
@@ -64,7 +64,7 @@ Notes:
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
 - Production AI asset generation still needs final Qwen/WAN credentials, image storage, and deployment environment values. The backend/worker HTTP contract exists; final generator credentials and durable storage are not yet wired.
-- Backend Socket.IO still needs production asset job push emission from the final worker/storage path. Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for asset jobs.
+- Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for asset jobs.
 
 ## Next Recommended Work
 
