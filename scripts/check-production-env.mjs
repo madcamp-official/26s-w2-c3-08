@@ -233,7 +233,7 @@ function validateBackend(env, checks, failures, warnings) {
 
   requireExactValue(env, service, 'NODE_ENV', 'production', checks, failures)
   requireOptionalPositiveInteger(env, service, 'PORT', checks, failures)
-  requireHttpUrl(env, service, 'CORS_ORIGIN', { publicUrl: true }, checks, failures)
+  requireCorsOrigins(env, service, 'CORS_ORIGIN', checks, failures)
   requireSecret(env, service, 'WORKER_TOKEN', { minLength: 16 }, checks, failures)
   requireHttpUrl(env, service, 'QWEN_BASE_URL', { allowPrivate: true }, checks, failures)
   requireSecret(env, service, 'QWEN_API_TOKEN', { minLength: 16 }, checks, failures)
@@ -254,9 +254,6 @@ function validateBackend(env, checks, failures, warnings) {
     addWarning(warnings, service, 'BACKEND-STORAGE-002', 'IMAGE_STORAGE_MODE', 'backend static storage is not configured; gpu-worker must use http-put storage')
   }
 
-  if (readEnv(env, 'CORS_ORIGIN')?.includes(',')) {
-    addFailure(failures, service, 'BACKEND-CORS-001', 'CORS_ORIGIN', 'backend currently accepts one origin string; configure a single deployed client origin or update backend CORS parsing first')
-  }
 }
 
 function validateGpuWorker(env, checks, failures, warnings) {
@@ -423,6 +420,45 @@ function requireHttpUrl(env, service, variableName, urlOptions, checks, failures
   addCheck(checks, service, `${service.toUpperCase()}-${variableName}-URL`, `${variableName} URL is valid`)
 }
 
+function requireCorsOrigins(env, service, variableName, checks, failures) {
+  const value = readEnv(env, variableName)
+
+  if (!requireNonPlaceholder(env, service, variableName, checks, failures)) {
+    return
+  }
+
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+
+  if (origins.length === 0) {
+    addFailure(failures, service, `${service.toUpperCase()}-${variableName}`, variableName, 'requires at least one origin')
+    return
+  }
+
+  let hasInvalidOrigin = false
+
+  for (const origin of origins) {
+    const url = parseUrl(origin)
+
+    if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:')) {
+      addFailure(failures, service, `${service.toUpperCase()}-${variableName}-URL`, variableName, `invalid origin ${origin}`)
+      hasInvalidOrigin = true
+      continue
+    }
+
+    if (LOCAL_HOSTNAMES.has(url.hostname)) {
+      addFailure(failures, service, `${service.toUpperCase()}-${variableName}-PUBLIC`, variableName, `production origin must not point to localhost: ${origin}`)
+      hasInvalidOrigin = true
+    }
+  }
+
+  if (!hasInvalidOrigin) {
+    addCheck(checks, service, `${service.toUpperCase()}-${variableName}-URL`, `${origins.length} CORS origin${origins.length === 1 ? '' : 's'} configured`)
+  }
+}
+
 function requirePublicPath(env, service, variableName, checks, failures) {
   const value = readEnv(env, variableName)
 
@@ -536,7 +572,7 @@ function runSelfTest() {
     VITE_SOCKET_IO_URL: 'https://relay.madcamp-kaist.org',
     NODE_ENV: 'production',
     PORT: '3000',
-    CORS_ORIGIN: 'https://relay.madcamp-kaist.org',
+    CORS_ORIGIN: 'https://relay.madcamp-kaist.org,https://admin.madcamp-kaist.org',
     WORKER_TOKEN: 'worker-token-1234567890',
     QWEN_BASE_URL: 'http://qwen.internal:8001',
     QWEN_API_TOKEN: 'qwen-token-1234567890',

@@ -1,13 +1,13 @@
 import cors from "cors";
 import express from "express";
-import { env } from "../config/env.js";
+import { env, parseCorsOrigins } from "../config/env.js";
 import { apiRoutes } from "./routes/apiRoutes.js";
 import { qwenRoutes } from "./routes/qwenRoutes.js";
 
 export function createApp() {
   const app = express();
 
-  app.use(cors({ origin: env.CORS_ORIGIN }));
+  app.use(cors({ origin: parseCorsOrigins(env.CORS_ORIGIN) }));
   app.use(express.json({ limit: "10mb" }));
 
   if (env.IMAGE_STORAGE_DIR) {

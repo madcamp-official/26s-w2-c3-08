@@ -12,6 +12,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - Remote realtime uses the backend Socket.IO contract through `socket.io-client@4.8.3`.
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
+- Backend HTTP and Socket.IO now share the same comma-separated `CORS_ORIGIN` parser for single-origin and multi-origin deployments.
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
@@ -49,6 +50,7 @@ Notes:
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
 - Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
 - Production env readiness now fails closed on missing/placeholder credentials, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
+- Production env readiness accepts comma-separated public `CORS_ORIGIN` values and validates each origin independently.
 - CI is configured to run `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container. This does not replace the need to confirm the first hosted Actions run.
 
 ## Updated Blocker Status

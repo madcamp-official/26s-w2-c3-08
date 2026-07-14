@@ -1,11 +1,20 @@
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseCorsOrigins } from "../src/config/env.js";
 import { createApp } from "../src/http/app.js";
 import { onApiAssetJobUpdated } from "../src/http/routes/apiRoutes.js";
 
 describe("V2 HTTP API contract", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("parses single and comma-separated CORS origins for production deployments", () => {
+    expect(parseCorsOrigins("https://relay.example.test")).toBe("https://relay.example.test");
+    expect(parseCorsOrigins(" https://relay.example.test , https://admin.example.test , https://relay.example.test ")).toEqual([
+      "https://relay.example.test",
+      "https://admin.example.test",
+    ]);
   });
 
   it("supports remote session and warehouse asset job flow", async () => {

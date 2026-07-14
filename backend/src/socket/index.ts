@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
-import { env } from "../config/env.js";
+import { env, parseCorsOrigins } from "../config/env.js";
 import {
   FIRST_FINISH_COUNTDOWN_MS,
   applyApiFirstFinishCountdown,
@@ -108,7 +108,7 @@ const rooms = new Map<string, RoomState>();
 export function attachSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: env.CORS_ORIGIN,
+      origin: parseCorsOrigins(env.CORS_ORIGIN),
     },
   });
   const unsubscribeAssetJobs = onApiAssetJobUpdated((job) => {

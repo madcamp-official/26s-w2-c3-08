@@ -17,6 +17,15 @@ const envSchema = z.object({
 
 export const env = envSchema.parse(process.env);
 
+export function parseCorsOrigins(value: string): string | string[] {
+  const origins = value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return origins.length <= 1 ? origins[0] ?? value : [...new Set(origins)];
+}
+
 export function requireQwenToken(): string {
   if (!env.QWEN_API_TOKEN || env.QWEN_API_TOKEN.startsWith("<REAL_")) {
     throw new Error("QWEN_API_TOKEN is not configured with a real internal token");

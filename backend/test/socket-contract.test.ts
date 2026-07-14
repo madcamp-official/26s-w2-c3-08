@@ -43,6 +43,11 @@ describe("Socket.IO realtime contract", () => {
     expect(source).not.toMatch(/BroadcastChannel|localRealtime|mock/i);
   });
 
+  it("uses the shared CORS origin parser for Socket.IO deployments", () => {
+    expect(source).toMatch(/import \{ env, parseCorsOrigins \} from "\.\.\/config\/env\.js";/);
+    expect(source).toMatch(/origin: parseCorsOrigins\(env\.CORS_ORIGIN\),/);
+  });
+
   it("broadcasts backend asset job updates over the V2 Socket.IO contract", () => {
     expect(source).toMatch(/onApiAssetJobUpdated/);
     expect(source).toMatch(/io\.emit\("asset_job:updated", job\);/);
