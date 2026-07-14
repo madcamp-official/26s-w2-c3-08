@@ -18,7 +18,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
 - Backend HTTP and Socket.IO now share the same comma-separated `CORS_ORIGIN` parser for single-origin and multi-origin deployments.
-- Backend `/health` is a non-sensitive liveness endpoint, while `/ready` exposes sanitized readiness booleans/counts and returns `503` when production backend-required secrets are missing.
+- Backend `/health` is a non-sensitive liveness endpoint, while `/ready` exposes sanitized readiness booleans/counts, the selected image storage mode, and returns `503` when production backend-required secrets are missing.
 - Backend-internal Qwen proxy routes under `/internal/qwen/*` require `INTERNAL_API_TOKEN` in production and accept `X-Backend-Internal-Token` or bearer auth.
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
 - User-generated `item` assets are rejected by `/api/assets/generate` with `ASSET_CATEGORY_NOT_ALLOWED`; backend system item seeds remain available for gameplay placement.
@@ -61,7 +61,7 @@ Notes:
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
 - Backend asset generation now has avatar-specific FormData/JSON generation, generic asset FormData/JSON generation, direct asset job status lookup, a worker claim/result contract, active worker-id lease validation, expired lease recovery, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
-- Production env readiness now fails closed on missing/placeholder credentials, missing backend `INTERNAL_API_TOKEN`, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
+- Production env readiness now fails closed on missing/placeholder credentials, missing backend `INTERNAL_API_TOKEN`, localhost public URLs, backend/gpu-worker worker token mismatch, invalid image storage mode, and `GPU_WORKER_SIMULATE=true`.
 - Production env readiness accepts comma-separated public `CORS_ORIGIN` values and validates each origin independently.
 - CI passes `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container.
 

@@ -45,6 +45,7 @@ describe("V2 HTTP API contract", () => {
       qwenConfigured: expect.any(Boolean),
       workerAuthConfigured: expect.any(Boolean),
       internalAuthConfigured: expect.any(Boolean),
+      imageStorageMode: expect.any(String),
       generatedAssetStaticServing: expect.any(Boolean),
     }));
     expect(JSON.stringify(readinessResponse.body)).not.toContain("172.10.5.138");
@@ -60,11 +61,16 @@ describe("V2 HTTP API contract", () => {
       QWEN_TIMEOUT_MS: 45000,
       WORKER_TOKEN: undefined,
       INTERNAL_API_TOKEN: undefined,
+      IMAGE_STORAGE_MODE: undefined,
       IMAGE_STORAGE_DIR: undefined,
       IMAGE_PUBLIC_PATH: "/generated-assets",
     })).toEqual(expect.objectContaining({
       ok: false,
       environment: "production",
+      checks: expect.objectContaining({
+        imageStorageMode: "inline",
+        generatedAssetStaticServing: false,
+      }),
     }));
     expect(getBackendReadiness({
       NODE_ENV: "production",
@@ -75,6 +81,7 @@ describe("V2 HTTP API contract", () => {
       QWEN_TIMEOUT_MS: 45000,
       WORKER_TOKEN: "worker-token-123456",
       INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "local",
       IMAGE_STORAGE_DIR: "/srv/relay/generated-assets",
       IMAGE_PUBLIC_PATH: "/generated-assets",
     })).toEqual(expect.objectContaining({
@@ -84,7 +91,27 @@ describe("V2 HTTP API contract", () => {
         qwenConfigured: true,
         workerAuthConfigured: true,
         internalAuthConfigured: true,
+        imageStorageMode: "local",
         generatedAssetStaticServing: true,
+      }),
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: "https://relay.example.test",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "qwen-token-123456",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "worker-token-123456",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "http-put",
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: true,
+      checks: expect.objectContaining({
+        imageStorageMode: "http-put",
+        generatedAssetStaticServing: false,
       }),
     }));
   });

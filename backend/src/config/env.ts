@@ -12,6 +12,7 @@ const envSchema = z.object({
   QWEN_TIMEOUT_MS: z.coerce.number().int().positive().default(45000),
   WORKER_TOKEN: z.string().optional(),
   INTERNAL_API_TOKEN: z.string().optional(),
+  IMAGE_STORAGE_MODE: z.enum(["inline", "local", "http-put"]).optional(),
   IMAGE_STORAGE_DIR: z.string().optional(),
   IMAGE_PUBLIC_PATH: z.string().default("/generated-assets")
 });
@@ -27,6 +28,7 @@ export interface BackendReadiness {
     qwenConfigured: boolean;
     workerAuthConfigured: boolean;
     internalAuthConfigured: boolean;
+    imageStorageMode: "inline" | "local" | "http-put";
     generatedAssetStaticServing: boolean;
   };
 }
@@ -43,12 +45,15 @@ export function parseCorsOrigins(value: string): string | string[] {
 export function getBackendReadiness(currentEnv = env): BackendReadiness {
   const production = currentEnv.NODE_ENV === "production";
   const corsOrigins = parseCorsOrigins(currentEnv.CORS_ORIGIN);
+  const imageStorageMode = getBackendImageStorageMode(currentEnv);
   const checks = {
     corsOrigins: Array.isArray(corsOrigins) ? corsOrigins.length : 1,
     qwenConfigured: isRealSecret(currentEnv.QWEN_API_TOKEN),
     workerAuthConfigured: isRealSecret(currentEnv.WORKER_TOKEN),
     internalAuthConfigured: isRealSecret(currentEnv.INTERNAL_API_TOKEN),
-    generatedAssetStaticServing: Boolean(currentEnv.IMAGE_STORAGE_DIR && currentEnv.IMAGE_PUBLIC_PATH)
+    imageStorageMode,
+    generatedAssetStaticServing:
+      imageStorageMode === "local" && Boolean(currentEnv.IMAGE_STORAGE_DIR && currentEnv.IMAGE_PUBLIC_PATH)
   };
 
   return {
@@ -62,6 +67,14 @@ export function getBackendReadiness(currentEnv = env): BackendReadiness {
     environment: currentEnv.NODE_ENV,
     checks
   };
+}
+
+export function getBackendImageStorageMode(currentEnv = env): "inline" | "local" | "http-put" {
+  if (currentEnv.IMAGE_STORAGE_MODE) {
+    return currentEnv.IMAGE_STORAGE_MODE;
+  }
+
+  return currentEnv.IMAGE_STORAGE_DIR ? "local" : "inline";
 }
 
 export function requireQwenToken(): string {

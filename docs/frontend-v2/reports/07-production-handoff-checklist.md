@@ -40,6 +40,7 @@ Real env files are ignored by `.gitignore`.
 | `backend.INTERNAL_API_TOKEN` | real backend-internal token | Required for `/internal/qwen/*` in production |
 | `backend.QWEN_BASE_URL` | Qwen internal base URL | May be private network URL |
 | `backend.QWEN_API_TOKEN` | real Qwen token | Placeholder values fail readiness |
+| `backend.IMAGE_STORAGE_MODE` | `local` or `http-put` | `local` serves a shared volume; `http-put` leaves serving to object storage/CDN |
 | `gpu-worker.SERVER_URL` | backend URL reachable by worker | May be internal service URL |
 | `gpu-worker.WORKER_TOKEN` | same value as backend | Cross-service mismatch fails readiness |
 | `gpu-worker.GPU_WORKER_SIMULATE` | `false` | `true` fails readiness |
@@ -58,7 +59,7 @@ Use one of these production paths.
 | Mode | Required values | Deployment shape |
 | --- | --- | --- |
 | `local` | `backend.IMAGE_STORAGE_MODE=local`, `backend.IMAGE_STORAGE_DIR`, `backend.IMAGE_PUBLIC_PATH`, `gpu-worker.IMAGE_STORAGE_MODE=local`, `gpu-worker.IMAGE_STORAGE_DIR`, `gpu-worker.IMAGE_PUBLIC_BASE_URL` | Backend and worker share a writable volume; backend serves generated files |
-| `http-put` | `gpu-worker.IMAGE_STORAGE_MODE=http-put`, `gpu-worker.IMAGE_STORAGE_UPLOAD_URL`, `gpu-worker.IMAGE_STORAGE_UPLOAD_TOKEN`, `gpu-worker.IMAGE_PUBLIC_BASE_URL` | Worker uploads PNGs to an internal object-storage gateway; public URLs point at CDN/storage |
+| `http-put` | `backend.IMAGE_STORAGE_MODE=http-put`, `gpu-worker.IMAGE_STORAGE_MODE=http-put`, `gpu-worker.IMAGE_STORAGE_UPLOAD_URL`, `gpu-worker.IMAGE_STORAGE_UPLOAD_TOKEN`, `gpu-worker.IMAGE_PUBLIC_BASE_URL` | Worker uploads PNGs to an internal object-storage gateway; public URLs point at CDN/storage |
 
 ## Verification Commands
 

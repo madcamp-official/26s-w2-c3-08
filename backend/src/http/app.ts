@@ -1,6 +1,6 @@
 import cors from "cors";
 import express from "express";
-import { env, getBackendReadiness, parseCorsOrigins } from "../config/env.js";
+import { env, getBackendImageStorageMode, getBackendReadiness, parseCorsOrigins } from "../config/env.js";
 import { apiRoutes } from "./routes/apiRoutes.js";
 import { qwenRoutes } from "./routes/qwenRoutes.js";
 
@@ -10,7 +10,7 @@ export function createApp() {
   app.use(cors({ origin: parseCorsOrigins(env.CORS_ORIGIN) }));
   app.use(express.json({ limit: "10mb" }));
 
-  if (env.IMAGE_STORAGE_DIR) {
+  if (getBackendImageStorageMode() === "local" && env.IMAGE_STORAGE_DIR) {
     app.use(env.IMAGE_PUBLIC_PATH, express.static(env.IMAGE_STORAGE_DIR));
   }
 
