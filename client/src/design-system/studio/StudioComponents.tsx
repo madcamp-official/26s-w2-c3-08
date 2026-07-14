@@ -503,7 +503,7 @@ export function AttributeField({
       data-state={state}
     >
       <legend id={fieldId}>{label}</legend>
-      {renderAttributeControl({ kind, value, options, placeholder, onChange })}
+      {renderAttributeControl({ kind, label, value, options, placeholder, onChange })}
       {helper || error || disabledReason ? (
         <p id={helperId} className={error ? styles.fieldError : styles.fieldHelper}>
           {error ?? disabledReason ?? helper}
@@ -626,6 +626,7 @@ export function DirtyStateNotice({ state, message, action }: DirtyStateNoticePro
 
 interface RenderAttributeControlInput {
   kind: AttributeFieldKind
+  label: string
   value: string | string[]
   options: AttributeFieldOption[]
   placeholder: string | undefined
@@ -634,6 +635,7 @@ interface RenderAttributeControlInput {
 
 function renderAttributeControl({
   kind,
+  label,
   value,
   options,
   placeholder,
@@ -641,7 +643,11 @@ function renderAttributeControl({
 }: RenderAttributeControlInput) {
   if (kind === 'select') {
     return (
-      <select value={String(value)} onChange={(event) => onChange?.(event.currentTarget.value)}>
+      <select
+        value={String(value)}
+        aria-label={label}
+        onChange={(event) => onChange?.(event.currentTarget.value)}
+      >
         {placeholder ? <option value="">{placeholder}</option> : null}
         {options.map((option) => (
           <option key={option.value} value={option.value} disabled={option.disabled}>
@@ -656,6 +662,7 @@ function renderAttributeControl({
     return (
       <input
         type="text"
+        aria-label={label}
         value={String(value)}
         placeholder={placeholder}
         onChange={(event) => onChange?.(event.currentTarget.value)}

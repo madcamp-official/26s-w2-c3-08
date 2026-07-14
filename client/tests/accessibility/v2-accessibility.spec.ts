@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+
+import { stateGalleryCases, type StateGalleryShell } from '../../src/dev/state-gallery/fixtures'
 
 test('settings modal traps focus, closes with Escape, and restores opener focus', async ({ page }) => {
   await loginToMain(page)
@@ -88,6 +90,58 @@ test('game canvas wrapper has a named region, live lifecycle status, and no acci
   await expect(page.locator(':focus')).not.toHaveAttribute('data-v2-component', 'phaser-canvas-frame')
 })
 
+const representativeGalleryCases: Array<{
+  id: string
+  shell: StateGalleryShell
+  minimumFocusedControls: number
+}> = [
+  { id: 's1-login-default', shell: 'launcher', minimumFocusedControls: 2 },
+  { id: 's2-main-avatar-ready', shell: 'launcher', minimumFocusedControls: 3 },
+  { id: 's2b-warehouse-ready', shell: 'launcher', minimumFocusedControls: 5 },
+  { id: 'a-avatar-studio-default', shell: 'studio', minimumFocusedControls: 8 },
+  { id: 'b-asset-studio-default', shell: 'studio', minimumFocusedControls: 8 },
+  { id: 's4-map-build-editing', shell: 'game', minimumFocusedControls: 4 },
+  { id: 'f-results-winner', shell: 'game', minimumFocusedControls: 2 },
+]
+
+test.describe('representative State Gallery keyboard accessibility', () => {
+  for (const galleryCase of representativeGalleryCases) {
+    test(`${galleryCase.id} has labelled landmarks and reachable keyboard focus`, async ({ page }) => {
+      expect(
+        stateGalleryCases.some((candidate) => candidate.id === galleryCase.id),
+        `missing State Gallery fixture ${galleryCase.id}`,
+      ).toBe(true)
+
+      await page.goto(`/ui-v2.html#/state-gallery?case=${encodeURIComponent(galleryCase.id)}`)
+
+      const preview = page.locator(`[data-v2-gallery-case="${galleryCase.id}"]`)
+      const shell = preview.locator(`[data-v2-shell="${galleryCase.shell}"]`).first()
+
+      await expect(preview).toBeVisible()
+      await expect(shell).toBeVisible()
+      await expect(shell).toHaveAttribute('aria-labelledby', /.+/)
+      await expect(shell.locator('main').first()).toBeVisible()
+
+      const shellLabel = await shell.evaluate((element) => {
+        const labelId = element.getAttribute('aria-labelledby')
+
+        return labelId ? document.getElementById(labelId)?.textContent?.trim() ?? '' : ''
+      })
+
+      expect(shellLabel.length).toBeGreaterThan(0)
+      expect(await findUnnamedIconOnlyButtons(preview)).toEqual([])
+
+      const focusReport = await collectKeyboardFocusReport(page, galleryCase.id)
+
+      expect(focusReport.focusedControls.length).toBeGreaterThanOrEqual(galleryCase.minimumFocusedControls)
+      expect(focusReport.unnamedInteractiveControls).toEqual([])
+      expect(focusReport.hiddenFocusTargets).toEqual([])
+      expect(focusReport.canvasFocusTargets).toEqual([])
+      expect(focusReport.missingFocusIndicators).toEqual([])
+    })
+  }
+})
+
 async function loginToMain(page: Page) {
   await page.goto('/ui-v2.html#/login')
   await expect(page.locator('[data-v2-component="login-screen"]')).toBeVisible()
@@ -96,8 +150,8 @@ async function loginToMain(page: Page) {
   await expect(page.locator('[data-v2-component="main-screen"]')).toBeVisible()
 }
 
-async function findUnnamedIconOnlyButtons(page: Page) {
-  return page.locator('button').evaluateAll((buttons) =>
+async function findUnnamedIconOnlyButtons(scope: Page | Locator) {
+  return scope.locator('button').evaluateAll((buttons) =>
     buttons
       .filter((button) => {
         const hasIcon = button.querySelector('svg, [aria-hidden="true"]') !== null
@@ -112,5 +166,133 @@ async function findUnnamedIconOnlyButtons(page: Page) {
         html: button.outerHTML.slice(0, 240),
         component: button.getAttribute('data-v2-component'),
       })),
+  )
+}
+
+async function collectKeyboardFocusReport(page: Page, caseId: string) {
+  const focusedControls = new Map<string, FocusTarget>()
+  const unnamedInteractiveControls: FocusTarget[] = []
+  const hiddenFocusTargets: FocusTarget[] = []
+  const canvasFocusTargets: FocusTarget[] = []
+  const missingFocusIndicators: FocusTarget[] = []
+
+  await page.locator('body').click({ position: { x: 4, y: 4 } })
+
+  for (let index = 0; index < 80; index += 1) {
+    await page.keyboard.press('Tab')
+
+    const target = await page.evaluate((selectedCaseId) => {
+      const preview = document.querySelector(`[data-v2-gallery-case="${selectedCaseId}"]`)
+      const active = document.activeElement
+
+      if (!(active instanceof HTMLElement) || !preview?.contains(active)) {
+        return null
+      }
+
+      const rect = active.getBoundingClientRect()
+      const style = getComputedStyle(active)
+      const text = active.textContent?.replace(/\s+/gu, ' ').trim() ?? ''
+      const ariaLabel = active.getAttribute('aria-label') ?? ''
+      const ariaLabelledBy = active.getAttribute('aria-labelledby') ?? ''
+      const explicitLabel = active.id
+        ? Array.from(document.querySelectorAll<HTMLLabelElement>('label'))
+            .find((label) => label.htmlFor === active.id)
+            ?.textContent?.replace(/\s+/gu, ' ')
+            .trim() ?? ''
+        : ''
+      const wrappingLabel =
+        active.closest('label')?.textContent?.replace(/\s+/gu, ' ').trim() ?? ''
+      const describedByText = ariaLabelledBy
+        .split(/\s+/u)
+        .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+        .filter(Boolean)
+        .join(' ')
+      const tagName = active.tagName.toLowerCase()
+
+      return {
+        key: [
+          tagName,
+          active.getAttribute('data-v2-component') ?? '',
+          active.getAttribute('type') ?? '',
+          ariaLabel,
+          text,
+        ].join('|'),
+        tagName,
+        type: active.getAttribute('type') ?? '',
+        component: active.getAttribute('data-v2-component') ?? '',
+        text,
+        ariaLabel,
+        ariaLabelledBy,
+        accessibleName: ariaLabel || describedByText || explicitLabel || wrappingLabel || text,
+        hidden:
+          rect.width <= 0 ||
+          rect.height <= 0 ||
+          style.visibility === 'hidden' ||
+          style.display === 'none' ||
+          active.getAttribute('aria-hidden') === 'true',
+        insideCanvasFrame: active.closest('[data-v2-component="phaser-canvas-frame"]') !== null,
+        hasFocusIndicator:
+          (style.outlineStyle !== 'none' && style.outlineWidth !== '0px') ||
+          style.boxShadow !== 'none',
+      }
+    }, caseId)
+
+    if (target === null) {
+      continue
+    }
+
+    if (!focusedControls.has(target.key)) {
+      focusedControls.set(target.key, target)
+    }
+  }
+
+  for (const target of focusedControls.values()) {
+    if (target.hidden) {
+      hiddenFocusTargets.push(target)
+    }
+
+    if (target.insideCanvasFrame) {
+      canvasFocusTargets.push(target)
+    }
+
+    if (!target.hasFocusIndicator) {
+      missingFocusIndicators.push(target)
+    }
+
+    if (isNameRequiredInteractive(target) && target.accessibleName.length === 0) {
+      unnamedInteractiveControls.push(target)
+    }
+  }
+
+  return {
+    focusedControls: [...focusedControls.values()],
+    unnamedInteractiveControls,
+    hiddenFocusTargets,
+    canvasFocusTargets,
+    missingFocusIndicators,
+  }
+}
+
+interface FocusTarget {
+  key: string
+  tagName: string
+  type: string
+  component: string
+  text: string
+  ariaLabel: string
+  ariaLabelledBy: string
+  accessibleName: string
+  hidden: boolean
+  insideCanvasFrame: boolean
+  hasFocusIndicator: boolean
+}
+
+function isNameRequiredInteractive(target: FocusTarget) {
+  return (
+    target.tagName === 'button' ||
+    target.tagName === 'a' ||
+    target.tagName === 'input' ||
+    target.tagName === 'select' ||
+    target.tagName === 'textarea'
   )
 }

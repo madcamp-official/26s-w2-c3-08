@@ -33,7 +33,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run check --prefix gpu-worker` | PASS |
 | `npm run test:lobby-room --workspace client` | PASS |
 | `npm run test:launcher-screenshots --workspace client` | PASS, 165 evidence screenshots |
-| `npm run test:accessibility --workspace client` | PASS |
+| `npm run test:accessibility --workspace client` | PASS, 10 browser accessibility tests |
 | `npm run test:studio-game-screenshots --workspace client` | PASS, 114 evidence screenshots |
 | `npm run test:drawing-browser --workspace client` | PASS |
 
@@ -56,13 +56,13 @@ Notes:
 | BLK-008 Playwright environment | Resolved in this local environment for launcher/lobby/remote/drawing suites | launcher, lobby-room, remote-v2, and drawing browser Playwright PASS |
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
 | BLK-010 Visual screenshot coverage | Resolved for Launcher/Studio/Game State Gallery evidence | 165 Launcher screenshots and 114 Studio/Game screenshots pass |
-| BLK-011 Accessibility browser gates | Partially remediated | modal focus trap/restore, icon-only names, live regions, and Game canvas focus boundary pass in `test:accessibility`; full accessibility audit still needs broader screen coverage |
+| BLK-011 Accessibility browser gates | Substantially remediated | modal focus trap/restore, icon-only names, live regions, Game canvas focus boundary, and representative Launcher/Studio/Game State Gallery keyboard traversal pass in `test:accessibility`; full matrix/axe audit still remains optional hardening |
 | AI worker job contract | Resolved for backend/gpu-worker HTTP, Socket.IO update, Qwen/WAN request, and local image materialization contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
 
 ## Remaining Pre-Switch Risks
 
 - Visual evidence now covers Launcher, Studio, and Game State Gallery matrices at 1280x720, 1440x900, and 1920x1080. Golden/baseline approval is still a separate product review step.
-- Accessibility now has browser-level modal, icon label, live region, and Game canvas focus-boundary coverage. Broader keyboard-only flow and Studio/Game screen coverage still need expansion before default V2 switch.
+- Accessibility now has browser-level modal, icon label, live region, Game canvas focus-boundary, and representative Launcher/Studio/Game keyboard traversal coverage. Full matrix/axe audit remains useful hardening before or after default V2 switch.
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
 - Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Shared-directory image storage is wired for local/shared-volume deployment; object storage credentials and URLs remain a deployment decision.
@@ -70,7 +70,7 @@ Notes:
 
 ## Next Recommended Work
 
-1. Expand browser accessibility coverage to full keyboard-only Launcher/Studio/Game flows.
+1. Decide whether to add full-matrix axe accessibility coverage before the default V2 switch or track it as post-switch hardening.
 2. Confirm drawing browser acceptance in CI/pinned environment and then update `drawing-engine-adr` status if it passes there.
 3. Add deployment documentation for the `backend/` production authority and required AI/storage environment variables before default entry switch.
 4. Review and approve visual evidence before creating or updating golden baselines.

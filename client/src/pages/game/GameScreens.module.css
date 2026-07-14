@@ -77,8 +77,8 @@
 }
 
 .assetList button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--semantic-color-border-focus);
-  outline-offset: var(--focus-ring-offset);
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-border-focus);
+  outline-offset: var(--effects-focus-outline-offset);
 }
 
 .assetList small,
