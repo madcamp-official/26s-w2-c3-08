@@ -7,6 +7,7 @@ const browserPath = findChromiumHeadlessShell()
 if (!browserPath) {
   console.error('Playwright Chromium headless shell is not installed.')
   console.error('Run: npm exec --workspace client playwright -- install chromium')
+  console.error(`Searched: ${getPlaywrightCacheRoots().join(', ')}`)
   process.exit(1)
 }
 
@@ -27,10 +28,30 @@ if (missingLibraries.length > 0) {
 console.log('playwright browser environment check passed')
 
 function findChromiumHeadlessShell() {
-  const cacheRoot = join(process.env.HOME ?? '', '.cache', 'ms-playwright')
+  return getPlaywrightCacheRoots()
+    .flatMap((cacheRoot) => findChromiumHeadlessShellIn(cacheRoot))
+    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)[0] ?? null
+}
 
+function getPlaywrightCacheRoots() {
+  const roots = []
+
+  if (process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.PLAYWRIGHT_BROWSERS_PATH !== '0') {
+    roots.push(process.env.PLAYWRIGHT_BROWSERS_PATH)
+  }
+
+  if (process.env.HOME) {
+    roots.push(join(process.env.HOME, '.cache', 'ms-playwright'))
+  }
+
+  roots.push('/ms-playwright')
+
+  return [...new Set(roots)]
+}
+
+function findChromiumHeadlessShellIn(cacheRoot) {
   if (!existsSync(cacheRoot)) {
-    return null
+    return []
   }
 
   return readdirSync(cacheRoot)
@@ -39,7 +60,6 @@ function findChromiumHeadlessShell() {
       join(cacheRoot, entry, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
     )
     .filter((candidate) => existsSync(candidate))
-    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)[0] ?? null
 }
 
 function listMissingLibraries(binaryPath) {
