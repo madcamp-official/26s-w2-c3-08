@@ -45,6 +45,9 @@ jobs:
           ACTUAL_VERSION="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
           test "$ACTUAL_VERSION" = "1.61.1"
 
+      - name: Install pinned Playwright Chromium
+        run: npm exec --workspace client playwright -- install chromium
+
       - name: Run V2 contract test
         run: node --experimental-strip-types client/tests/v2-contracts.test.ts
 

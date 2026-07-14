@@ -73,6 +73,9 @@ jobs:
           ACTUAL_VERSION="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
           test "$ACTUAL_VERSION" = "1.61.1"
 
+      - name: Install pinned Playwright Chromium
+        run: npm exec --workspace client playwright -- install chromium
+
       - name: Check local browser environment
         run: npm run browser-env:check --workspace client
 
