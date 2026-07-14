@@ -56,7 +56,7 @@ git diff --check
 Backend 운영 확인 endpoint:
 
 - `GET /health`: public liveness check. 내부 Qwen URL이나 secret 상태를 노출하지 않습니다.
-- `GET /ready`: sanitized readiness check. production에서 backend 필수 secret/config가 빠지거나 placeholder/too-short secret이면 `503`을 반환하고, 값 자체 대신 boolean/count만 제공합니다.
+- `GET /ready`: sanitized readiness check. production에서 backend 필수 secret/config가 빠지거나 placeholder/too-short secret 또는 local/invalid `CORS_ORIGIN`이면 `503`을 반환하고, 값 자체 대신 boolean/count만 제공합니다.
 
 Production 배포 직전에는 실제 env 파일 또는 배포 환경을 주입한 뒤 다음 검사를 실행합니다. 이 검사는 secret 값 자체를 출력하지 않고 missing/placeholder/localhost/simulate mode를 실패로 처리합니다.
 

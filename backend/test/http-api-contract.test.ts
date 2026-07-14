@@ -42,6 +42,7 @@ describe("V2 HTTP API contract", () => {
     }));
     expect(readinessResponse.body.checks).toEqual(expect.objectContaining({
       corsOrigins: expect.any(Number),
+      corsOriginsConfigured: expect.any(Boolean),
       qwenConfigured: expect.any(Boolean),
       workerAuthConfigured: expect.any(Boolean),
       internalAuthConfigured: expect.any(Boolean),
@@ -52,11 +53,11 @@ describe("V2 HTTP API contract", () => {
     expect(JSON.stringify(readinessResponse.body)).not.toContain("172.10.5.138");
   });
 
-  it("marks production readiness false when backend secrets are missing", () => {
+  it("marks production readiness false when required production config is missing or unsafe", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: undefined,
       QWEN_TIMEOUT_MS: 45000,
@@ -70,6 +71,8 @@ describe("V2 HTTP API contract", () => {
       environment: "production",
       checks: expect.objectContaining({
         imageStorageMode: "inline",
+        corsOrigins: 1,
+        corsOriginsConfigured: true,
         imageStorageConfigured: false,
         generatedAssetStaticServing: false,
       }),
@@ -77,7 +80,7 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "short",
       QWEN_TIMEOUT_MS: 45000,
@@ -98,7 +101,7 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "qwen-token-123456",
       QWEN_TIMEOUT_MS: 45000,
@@ -119,7 +122,7 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test,https://admin.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org,https://admin.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "qwen-token-123456",
       QWEN_TIMEOUT_MS: 45000,
@@ -132,6 +135,7 @@ describe("V2 HTTP API contract", () => {
       ok: true,
       checks: expect.objectContaining({
         corsOrigins: 2,
+        corsOriginsConfigured: true,
         qwenConfigured: true,
         workerAuthConfigured: true,
         internalAuthConfigured: true,
@@ -143,7 +147,7 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "qwen-token-123456",
       QWEN_TIMEOUT_MS: 45000,
@@ -163,7 +167,7 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "qwen-token-123456",
       QWEN_TIMEOUT_MS: 45000,
@@ -183,7 +187,7 @@ describe("V2 HTTP API contract", () => {
     expect(getBackendReadiness({
       NODE_ENV: "production",
       PORT: 3000,
-      CORS_ORIGIN: "https://relay.example.test",
+      CORS_ORIGIN: "https://relay.madcamp-kaist.org",
       QWEN_BASE_URL: "http://qwen.internal:8001",
       QWEN_API_TOKEN: "qwen-token-123456",
       QWEN_TIMEOUT_MS: 45000,
@@ -198,6 +202,67 @@ describe("V2 HTTP API contract", () => {
         imageStorageMode: "inline",
         imageStorageConfigured: false,
         generatedAssetStaticServing: false,
+      }),
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: "http://localhost:5173",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "qwen-token-123456",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "worker-token-123456",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "http-put",
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      checks: expect.objectContaining({
+        corsOrigins: 1,
+        corsOriginsConfigured: false,
+        qwenConfigured: true,
+        workerAuthConfigured: true,
+        internalAuthConfigured: true,
+        imageStorageConfigured: true,
+      }),
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: "https://relay.example.test",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "qwen-token-123456",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "worker-token-123456",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "http-put",
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      checks: expect.objectContaining({
+        corsOrigins: 1,
+        corsOriginsConfigured: false,
+      }),
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: ",",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "qwen-token-123456",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "worker-token-123456",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_MODE: "http-put",
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      checks: expect.objectContaining({
+        corsOrigins: 0,
+        corsOriginsConfigured: false,
       }),
     }));
   });

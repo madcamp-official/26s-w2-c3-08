@@ -25,6 +25,7 @@ export interface BackendReadiness {
   environment: "development" | "test" | "production";
   checks: {
     corsOrigins: number;
+    corsOriginsConfigured: boolean;
     qwenConfigured: boolean;
     workerAuthConfigured: boolean;
     internalAuthConfigured: boolean;
@@ -35,20 +36,18 @@ export interface BackendReadiness {
 }
 
 export function parseCorsOrigins(value: string): string | string[] {
-  const origins = value
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const origins = listCorsOrigins(value);
 
   return origins.length <= 1 ? origins[0] ?? value : [...new Set(origins)];
 }
 
 export function getBackendReadiness(currentEnv = env): BackendReadiness {
   const production = currentEnv.NODE_ENV === "production";
-  const corsOrigins = parseCorsOrigins(currentEnv.CORS_ORIGIN);
+  const corsOrigins = listCorsOrigins(currentEnv.CORS_ORIGIN);
   const imageStorageMode = getBackendImageStorageMode(currentEnv);
   const checks = {
-    corsOrigins: Array.isArray(corsOrigins) ? corsOrigins.length : 1,
+    corsOrigins: corsOrigins.length,
+    corsOriginsConfigured: areCorsOriginsConfigured(currentEnv.CORS_ORIGIN, production),
     qwenConfigured: isRealSecret(currentEnv.QWEN_API_TOKEN),
     workerAuthConfigured: isRealSecret(currentEnv.WORKER_TOKEN),
     internalAuthConfigured: isRealSecret(currentEnv.INTERNAL_API_TOKEN),
@@ -62,7 +61,7 @@ export function getBackendReadiness(currentEnv = env): BackendReadiness {
 
   return {
     ok: production
-      ? checks.corsOrigins > 0 &&
+      ? checks.corsOriginsConfigured &&
         checks.qwenConfigured &&
         checks.workerAuthConfigured &&
         checks.internalAuthConfigured &&
@@ -72,6 +71,46 @@ export function getBackendReadiness(currentEnv = env): BackendReadiness {
     environment: currentEnv.NODE_ENV,
     checks
   };
+}
+
+function listCorsOrigins(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function areCorsOriginsConfigured(value: string, production: boolean): boolean {
+  const origins = listCorsOrigins(value);
+
+  if (origins.length === 0) {
+    return false;
+  }
+
+  if (!production) {
+    return true;
+  }
+
+  if (isPlaceholderValue(value)) {
+    return false;
+  }
+
+  return origins.every((origin) => {
+    try {
+      const parsed = new URL(origin);
+
+      return (
+        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+        !LOCAL_HOSTNAMES.has(parsed.hostname)
+      );
+    } catch {
+      return false;
+    }
+  });
 }
 
 export function getBackendImageStorageMode(currentEnv = env): "inline" | "local" | "http-put" {
@@ -96,6 +135,16 @@ function isRealSecret(value: string | undefined) {
   }
 
   const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.length >= 16 &&
+    normalized !== "dev-worker-token" &&
+    !isPlaceholderValue(normalized)
+  );
+}
+
+function isPlaceholderValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
   const placeholderFragments = [
     "<real",
     "<replace",
@@ -109,9 +158,7 @@ function isRealSecret(value: string | undefined) {
     "your-"
   ];
 
-  return (
-    normalized.length >= 16 &&
-    normalized !== "dev-worker-token" &&
-    !placeholderFragments.some((fragment) => normalized.includes(fragment))
-  );
+  return !normalized || placeholderFragments.some((fragment) => normalized.includes(fragment));
 }
+
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
