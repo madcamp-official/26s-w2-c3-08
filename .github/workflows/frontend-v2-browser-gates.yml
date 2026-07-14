@@ -1,0 +1,102 @@
+name: Frontend V2 Browser Gates
+
+on:
+  push:
+    branches:
+      - feature/frontend-v2
+    paths:
+      - backend/**
+      - client/**
+      - gpu-worker/**
+      - server/**
+      - shared/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/frontend-v2-browser-gates.yml
+  pull_request:
+    paths:
+      - backend/**
+      - client/**
+      - gpu-worker/**
+      - server/**
+      - shared/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/frontend-v2-browser-gates.yml
+  workflow_dispatch:
+
+jobs:
+  v2-aggregate-check:
+    name: V2 Aggregate Check
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify pinned Playwright version
+        run: |
+          ACTUAL_VERSION="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
+          test "$ACTUAL_VERSION" = "1.61.1"
+
+      - name: Run aggregate V2 check
+        run: npm run check:v2
+
+  v2-browser-evidence:
+    name: V2 Browser Evidence
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify pinned Playwright version
+        run: |
+          ACTUAL_VERSION="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
+          test "$ACTUAL_VERSION" = "1.61.1"
+
+      - name: Check local browser environment
+        run: npm run browser-env:check --workspace client
+
+      - name: Run remote V2 browser flow
+        run: npm run test:remote-v2-browser --workspace client
+
+      - name: Run lobby and room browser flow
+        run: npm run test:lobby-room --workspace client
+
+      - name: Run accessibility browser gates
+        run: npm run test:accessibility --workspace client
+
+      - name: Run Launcher visual evidence
+        run: npm run test:launcher-screenshots --workspace client
+
+      - name: Run Studio and Game visual evidence
+        run: npm run test:studio-game-screenshots --workspace client
+
+      - name: Upload Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-v2-browser-artifacts
+          if-no-files-found: ignore
+          path: |
+            client/test-results/**
+            client/playwright-report/**

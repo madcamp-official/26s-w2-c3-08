@@ -18,6 +18,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - GPU worker generation mode defaults to Qwen prompt refinement followed by WAN sprite generation. A single internal generation gateway remains available only through explicit `GPU_WORKER_GENERATION_MODE=gateway`.
 - Generated image data URLs can be materialized into a shared local/static directory through `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_PATH`, and `IMAGE_PUBLIC_BASE_URL`.
 - Production readiness for client/backend/gpu-worker environment values is checked by `npm run check:production-env`; `npm run check:v2` runs the checker self-test without requiring real secrets.
+- `.github/workflows/frontend-v2-browser-gates.yml` now defines pinned Playwright CI jobs for the aggregate V2 check and browser evidence suites.
 
 ## Evidence Collected
 
@@ -38,6 +39,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run test:studio-game-screenshots --workspace client` | PASS, 114 evidence screenshots |
 | `npm run test:drawing-browser --workspace client` | PASS |
 | `npm run check:production-env:self-test` | PASS |
+| `.github/workflows/frontend-v2-browser-gates.yml` | Added; awaiting first CI run on branch/PR |
 
 Notes:
 
@@ -47,6 +49,7 @@ Notes:
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
 - Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and a shared-directory image materialization path covered by contract self-tests. The final production credentials and storage values are still deferred.
 - Production env readiness now fails closed on missing/placeholder credentials, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
+- CI is configured to run `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container. This does not replace the need to confirm the first hosted Actions run.
 
 ## Updated Blocker Status
 
@@ -67,7 +70,7 @@ Notes:
 
 - Visual evidence now covers Launcher, Studio, and Game State Gallery matrices at 1280x720, 1440x900, and 1920x1080. Golden/baseline approval is still a separate product review step.
 - Accessibility now has browser-level modal, icon label, live region, Game canvas focus-boundary, and representative Launcher/Studio/Game keyboard traversal coverage. Full matrix/axe audit remains useful hardening before or after default V2 switch.
-- Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
+- Drawing browser acceptance now passes locally with the Playwright Chromium harness, and V2 browser gates have a pinned CI workflow. Hosted CI results are still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
 - Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Shared-directory image storage is wired for local/shared-volume deployment; object storage credentials and URLs remain a deployment decision.
 - Production env values should be checked with `npm run check:production-env -- --client-env-file client/.env.production --backend-env-file backend/.env.production --gpu-worker-env-file gpu-worker/.env.production` before any default V2 entry switch.
@@ -76,6 +79,6 @@ Notes:
 ## Next Recommended Work
 
 1. Decide whether to add full-matrix axe accessibility coverage before the default V2 switch or track it as post-switch hardening.
-2. Confirm drawing browser acceptance in CI/pinned environment and then update `drawing-engine-adr` status if it passes there.
+2. Confirm the first hosted GitHub Actions run for `Drawing Engine Browser Acceptance` and `Frontend V2 Browser Gates`, then update `drawing-engine-adr` status if the drawing job passes there.
 3. Run `npm run check:production-env` with the final deployment env files once Qwen/WAN credentials, worker token, client origin, and storage URLs are available.
 4. Review and approve visual evidence before creating or updating golden baselines.
