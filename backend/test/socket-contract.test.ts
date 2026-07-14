@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   joinApiRoomFromRealtime,
+  setApiRoomPhase,
   setApiRoomReadyFromRealtime,
 } from "../src/http/routes/apiRoutes.js";
 
@@ -11,6 +12,10 @@ const backendRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("Socket.IO realtime contract", () => {
   const source = readBackendFile("src/socket/index.ts");
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("keeps V2 room readiness compatible with the client adapter", () => {
     expect(source).toMatch(/interface RoomPlayerState \{[\s\S]*isReady: boolean;/);
@@ -64,6 +69,21 @@ describe("Socket.IO realtime contract", () => {
     expect(source).toMatch(/isOvertime: true,/);
     expect(source).toMatch(/isFinishCountdown: true,/);
     expect(source).toMatch(/getApiRoomRaceDurationMs\(room\.id\)/);
+    expect(source).toMatch(/setApiRoomPhase\(room\.id, phase, durationMs\)/);
+  });
+
+  it("persists realtime race duration into API room phase snapshots", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-14T02:00:00.000Z"));
+
+    const roomId = `socket-race-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    joinApiRoomFromRealtime(roomId, `${roomId}-host`, "Host");
+    joinApiRoomFromRealtime(roomId, `${roomId}-guest`, "Guest");
+
+    const room = setApiRoomPhase(roomId, "racing", 80_000);
+
+    expect(room?.phase).toBe("racing");
+    expect(room?.phaseEndsAt).toBe("2026-07-14T02:01:20.000Z");
   });
 
   it("does not bypass REST late-join policy from realtime joins", () => {

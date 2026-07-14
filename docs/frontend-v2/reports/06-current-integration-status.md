@@ -12,6 +12,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - V2 remote session restore validates persisted tokens through backend `/api/session/validate`; invalid tokens clear the V2 session instead of falling back to mock.
 - Remote realtime uses the backend Socket.IO contract through `socket.io-client@4.8.3`.
 - Socket.IO `room:ready` now persists readiness into the backend API room snapshot, so REST refetch/reconnect observes the same ready state.
+- Socket.IO phase advances now persist the same `phaseEndsAt` into the backend API room snapshot, so REST refetch/reconnect observes the same timer metadata.
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
 - Backend HTTP and Socket.IO now share the same comma-separated `CORS_ORIGIN` parser for single-origin and multi-origin deployments.

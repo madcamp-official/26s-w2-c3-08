@@ -484,13 +484,14 @@ function startPhase(io: Server, room: RoomState, phase: RoomPhase) {
   clearRoomTimer(room);
   room.phase = phase;
   const durationMs = phase === "racing" ? getApiRoomRaceDurationMs(room.id) : PHASE_DURATIONS_MS[phase];
+  const apiRoom = setApiRoomPhase(room.id, phase, durationMs);
 
-  setApiRoomPhase(room.id, phase);
   const mergedMap = phase === "merging" ? mergeApiRoomMap(room.id) : null;
   room.phaseEndsAt =
-    durationMs === undefined
+    apiRoom?.phaseEndsAt ??
+    (durationMs === undefined
       ? null
-      : new Date(Date.now() + durationMs).toISOString();
+      : new Date(Date.now() + durationMs).toISOString());
 
   if (phase === "building" || phase === "validating" || phase === "racing") {
     room.players.forEach((player) => {

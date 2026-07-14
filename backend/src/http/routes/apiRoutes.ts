@@ -286,14 +286,15 @@ export function setApiRoomReadyFromRealtime(roomId: string, userId: string, isRe
   return toRoomSnapshot(room);
 }
 
-export function setApiRoomPhase(roomId: string, phase: RoomPhase) {
+export function setApiRoomPhase(roomId: string, phase: RoomPhase, durationOverrideMs?: number) {
   const room = rooms.get(roomId);
 
   if (room === undefined) {
-    return;
+    return null;
   }
 
-  setRoomPhase(room, phase);
+  setRoomPhase(room, phase, durationOverrideMs);
+  return toRoomSummary(room);
 }
 
 export function getApiRoomRaceDurationMs(roomId: string) {
