@@ -40,10 +40,10 @@ interface V2Error {
 | `conflict` | room full, phase mismatch, duplicate/unchanged submit | `ROOM_FULL`; loaded unchanged asset disabled in UI | disable or show state conflict | refresh then retry |
 | `rate_limit` | cooldown or queue pressure | regen cooldown 5min in UI; backend 429 in LSJ Qwen policy | cooldown timer; no spam retry | wait until allowed |
 | `asset_job_failure` | AI/Qwen/WAN/job fails | asset status `failed`; Qwen/WAN failure documented | failed badge and retry if allowed | retry through regen or new submit |
-| `offline` | network unavailable or remote mode no connection | V2 policy; current code catches fetch and returns null | persistent offline banner; remote actions disabled | retry when online/user refresh |
-| `reconnecting` | realtime lost and reconnecting | current `RealtimeStatus` has `connecting`; V2 remote mode should expose reconnecting | badge and disable remote phase actions | adapter reconnect only, no local fallback |
-| `server_unavailable` | non-OK fetch, timeout, Socket.IO server down | current fetch catch/null; Qwen timeout policy | toast/banner; keep local state | manual retry unless adapter has explicit limited polling |
-| `malformed_response` | ok response shape cannot normalize | `unwrapApiResponse` currently permissive | show contract error; log source | no automatic retry |
+| `offline` | network unavailable or remote mode no connection | V2 remote ports return typed failure; Socket.IO manual disconnect maps to `offline` | persistent offline banner; remote actions disabled | retry when online/user refresh |
+| `reconnecting` | realtime lost and reconnecting | Socket.IO `disconnect`, `reconnect_attempt`, and `reconnect_error` map to `reconnecting` unless manually disconnected | badge and disable remote phase actions | adapter reconnect only, no local fallback |
+| `server_unavailable` | non-OK fetch, timeout, Socket.IO server down | V2 remote ports map fetch/non-OK failures to typed errors; Qwen/WAN timeout policy is explicit | toast/banner; keep local state | manual retry unless adapter has explicit limited polling |
+| `malformed_response` | ok response shape cannot normalize | V2 remote ports return `malformed_response`; State Gallery and accessibility suites include malformed/offline states | show contract error; log source | no automatic retry |
 
 ## 3. Current Backend Code Mapping
 
@@ -80,7 +80,7 @@ interface V2Error {
 
 | ID | Item |
 |---|---|
-| TBD-CONTRACT-ERR-001 | Final remote authentication/session validation error codes. |
-| TBD-CONTRACT-ERR-002 | Asset job failure code set from Qwen/WAN worker. |
-| TBD-CONTRACT-ERR-003 | Socket.IO reconnect state names and close reason mapping. |
+| TBD-CONTRACT-ERR-001 | RESOLVED: `/api/session/validate` invalid token returns `SESSION_EXPIRED`; V2 remote session port maps authentication failure to an invalid/null session. |
+| TBD-CONTRACT-ERR-002 | PARTIAL: GPU worker reports concrete Qwen/WAN/storage error codes; final production error-code catalog should be reviewed once deployed generator credentials are available. |
+| TBD-CONTRACT-ERR-003 | RESOLVED: Socket.IO transport maps `connect_error` to `error`, reconnect attempts/errors to `reconnecting`, manual disconnect to `offline`, and successful connect to `connected`. |
 | TBD-CONTRACT-ERR-004 | Malformed response logging destination and redaction rules. |
