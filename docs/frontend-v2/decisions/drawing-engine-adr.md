@@ -2,6 +2,11 @@
 
 Status: PROVISIONALLY_ACCEPTED technical recommendation for Phase 2C planning. Browser acceptance must pass in CI before this ADR can be marked ACCEPTED. Runtime integration is still PLANNED.
 
+Latest browser evidence:
+- 2026-07-14 local Playwright Chromium run: `npm run test:drawing-browser --workspace client` PASS.
+- The Playwright web server runs Vite with `CHOKIDAR_USEPOLLING=1` so the browser harness can execute in watcher-limited environments without weakening the acceptance assertions.
+- CI/pinned-environment PASS is still pending before this ADR status can move to ACCEPTED.
+
 Related decisions:
 - DECISION-V2-002: avatar visible canvas is 256x512.
 - DECISION-V2-003: avatar 3x3 workspace buffer is 768x1536.

@@ -4,22 +4,23 @@
 
 AI로 만든 아바타와 에셋을 재료로 각자 짧은 2D 플랫폼 맵 조각을 만들고, 직접 클리어 가능성을 검증한 뒤, 성공한 조각들을 하나의 레이스 맵으로 이어 달리는 웹 MVP입니다.
 
-현재 이 저장소의 구현 범위는 프론트엔드 MVP입니다. 백엔드가 없어도 기본값인 Mock 모드로 로그인, 아바타/에셋 생성 요청, 창고, 로비, 방 대기, 맵 제작, 검증, 병합, 레이스, 결과 화면을 한 번에 시연할 수 있습니다.
+현재 저장소는 레거시 프론트엔드를 보존하면서 Frontend V2, Express backend, Socket.IO realtime 계약, GPU worker scaffold를 함께 발전시키는 중입니다. V2는 독립 진입점 `client/ui-v2.html`에서 확인하며, 기본 개발 실행은 backend REST와 Socket.IO remote realtime을 사용합니다. `socket.io-client@4.8.3`는 client workspace production dependency로 승인되어 추가되었습니다.
 
 ### 빠른 실행
 
 ```bash
 npm install
-npm run dev --workspace client
+npm run dev:v2
 ```
 
-기본 개발 서버는 다음 주소로 열립니다.
+기본 V2 개발 서버는 다음 주소로 열립니다.
 
-- 로컬: `http://localhost:5174/`
+- V2 로컬: `http://localhost:5174/ui-v2.html#/login`
+- 레거시 로컬: `http://localhost:5174/`
 - 같은 네트워크: `http://192.168.0.200:5174/`
 - Cloudflare Tunnel: `https://mad-mario.madcamp-kaist.org/`
 
-`client/vite.config.ts`는 `0.0.0.0:5174`로 바인딩하며, `mad-mario.madcamp-kaist.org`와 `192.168.0.200`을 기본 허용 호스트로 둡니다. 다른 호스트가 필요하면 쉼표 구분으로 추가합니다.
+`npm run dev:v2`는 `backend`를 `http://localhost:3000`에, `client`를 `http://localhost:5174`에 띄웁니다. 기본값은 `VITE_DATA_MODE=remote`, `VITE_REALTIME_MODE=remote`입니다. `client/vite.config.ts`는 dev/preview 모두 `/api`와 `/socket.io`를 `VITE_API_PROXY_TARGET`으로 proxy합니다. 다른 호스트가 필요하면 쉼표 구분으로 추가합니다.
 
 ```bash
 VITE_ALLOWED_HOSTS=example.com,10.0.0.12 npm run dev --workspace client
@@ -42,20 +43,24 @@ VITE_ALLOWED_HOSTS=example.com,10.0.0.12 npm run dev --workspace client
 
 ```bash
 npm run lint --workspace client -- --quiet
+npm run smoke --workspace client
 npm run build --workspace client
+npm run check:v2
 git diff --check
 ```
 
 빌드 시 `assetRules` 청크가 500 kB를 넘는 Vite 경고가 날 수 있습니다. 현재는 번들 실패가 아니라 경고이며, Phaser 룰 로직 분리/코드 스플리팅은 후속 최적화 범위입니다.
 
+`npm run check:v2`는 브라우저 system dependency가 필요한 Playwright suite를 제외한 V2 token, design system, 화면, controller, remote adapter, backend, server, gpu-worker 검증을 묶어 실행합니다.
+
 ### 환경 변수
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `VITE_REMOTE_API` | unset | `true`일 때만 `/api` 원격 REST 호출을 시도합니다. 기본은 Mock 모드입니다. |
-| `VITE_API_PROXY_TARGET` | `http://localhost:3000` | Vite 개발 서버의 `/api` 프록시 대상입니다. |
-| `VITE_COLYSEUS_URL` | 현재 접속 origin 기반 | Colyseus 서버 주소입니다. HTTPS 접속 시 기본값은 같은 host의 `wss://`입니다. |
-| `VITE_LOCAL_REALTIME` | enabled | BroadcastChannel 기반 로컬 실시간 폴백입니다. `false`로 두면 끕니다. |
+| `VITE_DATA_MODE` | dev/test: `mock`, `dev:v2`: `remote` | V2 API/data source 선택입니다. remote에서는 mock fallback을 하지 않습니다. |
+| `VITE_REALTIME_MODE` | dev/test: `local`, `dev:v2`: `remote` | V2 realtime transport 선택입니다. `remote`는 backend Socket.IO를 사용하며 실패 시 BroadcastChannel로 자동 fallback하지 않습니다. `local`은 명시적 로컬 다중 탭 시연 전용입니다. |
+| `VITE_API_PROXY_TARGET` | `http://localhost:3000` | Vite 개발/프리뷰 서버의 `/api`, `/socket.io` 프록시 대상입니다. |
+| `VITE_SOCKET_IO_URL` | 현재 접속 origin 기반 | Socket.IO remote realtime 서버 주소입니다. 기본 개발 실행은 Vite `/socket.io` proxy를 통해 backend에 연결합니다. |
 | `VITE_ALLOWED_HOSTS` | unset | 추가 Vite allowed host 목록입니다. 쉼표로 구분합니다. |
 
 ### 참고 문서
@@ -138,7 +143,7 @@ git diff --check
 | 로비/방 | 공개/비공개 방 생성, 비밀번호 입장, 공개방 빠른 입장, 준비/시작 | 필수 |
 | 맵 에디터 | 32x32 그리드, 에셋 배치/이동/삭제, 시작점/끝점, 비용 제한, 테스트 | 필수 |
 | 검증/병합/레이스 | 2분 검증, 실패 패널티, Y축 오프셋 병합, 5분 레이스/30초 연장/결과 | 필수 |
-| 로컬 실시간 폴백 | BroadcastChannel 기반 다중 탭 시연, Colyseus 연결 실패 시 local 상태 표시 | 필수 |
+| 명시적 로컬 실시간 | `VITE_REALTIME_MODE=local`에서 BroadcastChannel 기반 다중 탭 시연. remote 실패 시 자동 local fallback은 금지 | 필수 |
 
 ---
 
@@ -146,7 +151,9 @@ git diff --check
 
 프론트엔드는 `client/` 워크스페이스에 있으며, React는 화면 상태와 일반 UI를 담당하고 Phaser는 맵 에디터·검증·레이스 캔버스를 담당한다. Zustand store가 세션, 에셋, 방, 페이즈, 맵 세그먼트, 병합 맵, 레이스 위치를 관리한다.
 
-실시간 계층은 Colyseus SDK를 우선 시도하고, 백엔드가 없거나 연결되지 않는 환경에서는 BroadcastChannel 기반 로컬 폴백으로 같은 브라우저의 여러 탭 시연을 지원한다. REST API도 `VITE_REMOTE_API=true`일 때만 호출하며, 기본값은 Mock 데이터와 localStorage 기반 동작이다.
+V2 실시간 계층은 `backend/` Socket.IO 계약을 remote mode의 기본 transport로 사용한다. BroadcastChannel은 `VITE_REALTIME_MODE=local`에서만 로컬 다중 탭 시연용으로 사용하며, remote 실패를 숨기는 자동 fallback으로 쓰지 않는다. V2 데이터 계층은 `VITE_DATA_MODE=mock|remote`로 명시적으로 분리하고, remote 실패 시 Mock 데이터로 자동 전환하지 않는다.
+
+기존 Colyseus scaffold인 `server/`는 대체 transport와 AI/API 실험 경로를 검증하는 보조 workspace로 유지한다. V2 production remote room/game realtime의 우선 계약은 `backend/` Socket.IO다.
 
 ---
 
@@ -174,16 +181,16 @@ git diff --check
 | REST | `GET /api/rooms` | 방 목록 조회 | - | rooms | 기본 Mock |
 | REST | `POST /api/rooms` | 방 생성 | name, visibility, max players | room | 기본 Mock |
 | REST | `POST /api/rooms/:id/join` | 방 입장 | user id, password | room | 기본 Mock |
-| Realtime | Colyseus/BroadcastChannel | 방 상태, 페이즈, 검증, 레이스 좌표 동기화 | event payload | room snapshot/event | 로컬 폴백 기본 활성 |
+| Realtime | Socket.IO/BroadcastChannel | 방 상태, 페이즈, 검증, 레이스 좌표 동기화 | event payload | room snapshot/event | remote는 Socket.IO, local은 명시적 BroadcastChannel |
 
 ---
 
 ## 산출물 및 실행 방법
 
-- **산출물 설명:** 브라우저에서 실행되는 프론트엔드 MVP 웹 앱
+- **산출물 설명:** 브라우저에서 실행되는 Frontend V2 + backend REST/realtime 계약 기반 웹 앱
 - **실행 환경:** Node.js, npm, Chromium 계열 브라우저 권장
-- **실행 방법:** `npm install` 후 `npm run dev --workspace client`
-- **접속 주소:** `http://localhost:5174/`, `http://192.168.0.200:5174/`, `https://mad-mario.madcamp-kaist.org/`
+- **실행 방법:** `npm install` 후 `npm run dev:v2`
+- **접속 주소:** `http://localhost:5174/ui-v2.html#/login`, `http://localhost:5174/`, `http://192.168.0.200:5174/`, `https://mad-mario.madcamp-kaist.org/`
 
 ### 실행 방법
 
@@ -191,15 +198,20 @@ git diff --check
 # 의존성 설치
 npm install
 
-# 프론트 개발 서버
-npm run dev --workspace client
+# V2 backend + frontend 개발 서버
+npm run dev:v2
+
+# 프론트 개발 서버만 실행
+npm run dev:client
+
+# 백엔드 개발 서버만 실행
+npm run dev:backend
 
 # 빌드 산출물 프리뷰
 npm run preview --workspace client
 
 # 검증
-npm run lint --workspace client -- --quiet
-npm run build --workspace client
+npm run check:v2
 ```
 
 ### 기술 구성
@@ -208,8 +220,8 @@ npm run build --workspace client
 |---|---|
 | 핵심 기술 | Vite, React, TypeScript, Phaser, Zustand |
 | 실행 환경 | Node.js, npm, Cloudflare Tunnel |
-| 데이터 저장 | 프론트 Mock/localStorage, 원격 API 연동 예약 |
-| 외부 API / 서비스 | Colyseus 연동 예약, BroadcastChannel 로컬 폴백 |
+| 데이터 저장 | V2 mock/localStorage, backend in-memory REST, GPU worker job polling scaffold |
+| 외부 API / 서비스 | backend Socket.IO 계약, BroadcastChannel local realtime, Qwen/WAN gateway scaffold |
 | 기타 | `react-sketch-canvas`, Oxlint |
 
 ---

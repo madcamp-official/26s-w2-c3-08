@@ -46,7 +46,7 @@ Commands run for this audit:
 | Visual | Launcher State Gallery evidence only; Studio/Game missing | FAIL |
 | Accessibility | Static checks only; no browser keyboard/focus/canvas conflict proof | FAIL |
 | Remote/remote | Socket.IO adapter shape exists, but no installed runtime client or approved injection proof | FAIL |
-| Environment | Playwright blocked in previous report by watcher limit and missing browser library | BLOCKED |
+| Environment | Playwright launcher screenshots now reach build + preview; Chromium launch remains blocked by missing browser system library | BLOCKED |
 
 ## 1. `main:check`
 
@@ -442,14 +442,14 @@ Accessibility readiness is `PRE_SWITCH_REQUIRED`, with browser execution partial
 ### BLK-008: Playwright environment is blocked
 
 - Classification: `ENVIRONMENT_BLOCKED`
-- Current status: previous reports record `ENOSPC` file watcher failure for launcher screenshots and missing `libatk-1.0.so.0` for Chromium launch.
+- Current status: launcher screenshots now run against production preview instead of the Vite dev watcher. Browser execution still fails because Chromium cannot load `libatk-1.0.so.0`.
 - Evidence files: `docs/frontend-v2/reports/03-final-parity-matrix.md`, `docs/frontend-v2/reports/03-legacy-removal-readiness.md`, Playwright configs.
 - Failed command: prior report lists `test:launcher-screenshots`, `test:lobby-room`, and `test:drawing-browser` as FAIL/BLOCKED.
-- Root cause: pinned browser/CI system dependencies and watcher limits are not ready.
-- Fix path: define CI/browser image requirements, install required system libraries, raise watcher limit or run in CI mode that does not hit local watcher constraints, and rerun all browser suites.
+- Root cause: pinned browser/CI system dependencies are not ready.
+- Fix path: define CI/browser image requirements, install required system libraries, and rerun all browser suites.
 - Fix forbidden path: do not skip Playwright gates; do not approve legacy removal based only on static tests.
 - Acceptance criteria: all Playwright configs run in pinned environment and produce evidence/report artifacts.
-- Required tests: `npm run test:launcher-screenshots --workspace client`, `npm run test:lobby-room --workspace client`, `npm run test:drawing-browser --workspace client`, future game/accessibility specs.
+- Required tests: `npm run browser-env:check --workspace client`, `npm run test:launcher-screenshots --workspace client`, `npm run test:lobby-room --workspace client`, `npm run test:drawing-browser --workspace client`, future game/accessibility specs.
 - Expected commit unit: `ci(playwright): pinned browser environment`.
 - Predecessors: none.
 
