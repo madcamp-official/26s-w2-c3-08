@@ -5,6 +5,10 @@ import type {
   MainControllerError,
   MainResult,
 } from '../../pages/main/mainControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteDeviceLinkPortOptions {
   baseUrl?: string
@@ -41,7 +45,7 @@ async function requestTicket(
   input: RequestInfo | URL,
   init: RequestInit,
 ): Promise<MainResult<DeviceLinkTicket>> {
-  const responseResult = await requestJson(fetcher, input, init)
+  const responseResult = await requestJson(fetcher, input, 'settings.deviceCode.issue', init)
 
   if (!responseResult.ok) {
     return responseResult
@@ -50,7 +54,7 @@ async function requestTicket(
   const ticket = unwrapTicket(responseResult.value)
 
   if (!ticket) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure('settings.deviceCode.issue', input, 'unexpected_shape', responseResult.value)
   }
 
   return { ok: true, value: ticket }
@@ -61,7 +65,7 @@ async function requestSession(
   input: RequestInfo | URL,
   init: RequestInit,
 ): Promise<MainResult<LoginSession>> {
-  const responseResult = await requestJson(fetcher, input, init)
+  const responseResult = await requestJson(fetcher, input, 'settings.deviceCode.consume', init)
 
   if (!responseResult.ok) {
     return responseResult
@@ -70,7 +74,7 @@ async function requestSession(
   const session = unwrapSession(responseResult.value)
 
   if (!session) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure('settings.deviceCode.consume', input, 'unexpected_shape', responseResult.value)
   }
 
   return { ok: true, value: session }
@@ -79,6 +83,7 @@ async function requestSession(
 async function requestJson(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
+  operation: string,
   init: RequestInit,
 ): Promise<MainResult<unknown>> {
   let response: Response
@@ -107,8 +112,28 @@ async function requestJson(
       value: await response.json(),
     }
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure(operation, input, 'invalid_json', undefined, response.status)
   }
+}
+
+function createMalformedFailure<T>(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): MainResult<T> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteDeviceLinkPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
 }
 
 function unwrapTicket(body: unknown): DeviceLinkTicket | null {

@@ -6,6 +6,10 @@ import type {
   AvatarStudioResult,
   AvatarStudioSubmitPayload,
 } from '../../pages/avatar-studio/avatarStudioControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteAvatarStudioAssetPortOptions {
   baseUrl?: string
@@ -52,13 +56,13 @@ async function requestAvatars(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('avatarStudio.listAvatars', input, 'invalid_json', undefined, response.status)
   }
 
   const records = unwrapAssets(body)
 
   if (!records) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('avatarStudio.listAvatars', input, 'unexpected_shape', body, response.status)
   }
 
   return {
@@ -98,20 +102,40 @@ async function requestCreateAvatar(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('avatarStudio.createAvatar', input, 'invalid_json', undefined, response.status)
   }
 
   const record = unwrapAsset(body)
   const normalizedAvatar = record ? normalizeAvatar(record, payload.userId) : null
 
   if (!normalizedAvatar) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('avatarStudio.createAvatar', input, 'unexpected_shape', body, response.status)
   }
 
   return {
     ok: true,
     value: normalizedAvatar,
   }
+}
+
+function createMalformedFailure<T>(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): AvatarStudioResult<T> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteAvatarStudioAssetPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
 }
 
 function createAvatarBody(payload: AvatarStudioSubmitPayload) {

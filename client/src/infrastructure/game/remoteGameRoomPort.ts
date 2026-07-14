@@ -19,6 +19,10 @@ import type {
   RoomPhase,
 } from '../../types/domain'
 import type { RaceResult } from 'shared/schemas'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteGameRoomPortOptions {
   baseUrl?: string
@@ -31,10 +35,12 @@ export function createRemoteGameRoomPort({
 }: RemoteGameRoomPortOptions = {}): GameRoomPort {
   return {
     async getRoomSnapshot(session, roomId) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}`,
+        input,
         session,
+        'game.roomSnapshot',
         { method: 'GET' },
       )
 
@@ -46,13 +52,15 @@ export function createRemoteGameRoomPort({
 
       return snapshot
         ? { ok: true, value: snapshot }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.roomSnapshot', input, 'unexpected_shape', response.value)
     },
     async saveMapSegment(session, payload) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/segments`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/segments`,
+        input,
         session,
+        'game.saveMapSegment',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -72,13 +80,15 @@ export function createRemoteGameRoomPort({
 
       return segment
         ? { ok: true, value: { ...segment, roomPhase: normalizeRoomPhase(response.value) } }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.saveMapSegment', input, 'unexpected_shape', response.value)
     },
     async getMapSegment(session, roomId, segmentId) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/segments/${encodeURIComponent(segmentId)}`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/segments/${encodeURIComponent(segmentId)}`,
+        input,
         session,
+        'game.getMapSegment',
         { method: 'GET' },
       )
 
@@ -96,13 +106,15 @@ export function createRemoteGameRoomPort({
 
       return segment
         ? { ok: true, value: { ...segment, roomPhase: normalizeRoomPhase(response.value) } }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.getMapSegment', input, 'unexpected_shape', response.value)
     },
     async validateMapSegment(session, payload) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/segments/validate`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/segments/validate`,
+        input,
         session,
+        'game.validateMapSegment',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -128,13 +140,15 @@ export function createRemoteGameRoomPort({
 
       return segment
         ? { ok: true, value: { ...segment, roomPhase: normalizeRoomPhase(response.value) } }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.validateMapSegment', input, 'unexpected_shape', response.value)
     },
     async mergeRoomMap(session, roomId) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/merge`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/merge`,
+        input,
         session,
+        'game.mergeRoomMap',
         { method: 'POST', body: JSON.stringify({ user_id: session.id }) },
       )
 
@@ -146,16 +160,18 @@ export function createRemoteGameRoomPort({
 
       return mergedMap
         ? { ok: true, value: mergedMap }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.mergeRoomMap', input, 'unexpected_shape', response.value)
     },
     async getMergedMap(session, roomId, mergedMapId) {
       const query = mergedMapId
         ? `?merged_map_id=${encodeURIComponent(mergedMapId)}`
         : ''
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/merged-map${query}`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/merged-map${query}`,
+        input,
         session,
+        'game.getMergedMap',
         { method: 'GET' },
       )
 
@@ -167,13 +183,15 @@ export function createRemoteGameRoomPort({
 
       return mergedMap
         ? { ok: true, value: mergedMap }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.getMergedMap', input, 'unexpected_shape', response.value)
     },
     async saveRaceProgress(session, payload) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/race/progress`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/race/progress`,
+        input,
         session,
+        'game.saveRaceProgress',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -192,13 +210,15 @@ export function createRemoteGameRoomPort({
 
       return result
         ? { ok: true, value: result }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.saveRaceProgress', input, 'unexpected_shape', response.value)
     },
     async finishRace(session, payload) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/race/finish`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(payload.roomId)}/race/finish`,
+        input,
         session,
+        'game.finishRace',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -216,13 +236,15 @@ export function createRemoteGameRoomPort({
 
       return result
         ? { ok: true, value: result }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.finishRace', input, 'unexpected_shape', response.value)
     },
     async getRaceResults(session, roomId) {
+      const input = `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/results`
       const response = await requestJson(
         fetcher,
-        `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/results`,
+        input,
         session,
+        'game.getRaceResults',
         { method: 'GET' },
       )
 
@@ -234,7 +256,7 @@ export function createRemoteGameRoomPort({
 
       return result
         ? { ok: true, value: result }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('game.getRaceResults', input, 'unexpected_shape', response.value)
     },
   }
 }
@@ -243,6 +265,7 @@ async function requestJson(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit,
 ): Promise<GameResult<unknown>> {
   let response: Response
@@ -265,7 +288,7 @@ async function requestJson(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure(operation, input, 'invalid_json', undefined, response.status)
   }
 
   if (!response.ok) {
@@ -273,6 +296,26 @@ async function requestJson(
   }
 
   return { ok: true, value: body }
+}
+
+function createMalformedFailure<T>(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): GameResult<T> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteGameRoomPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
 }
 
 function normalizeSegment(

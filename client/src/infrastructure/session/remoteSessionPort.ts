@@ -4,6 +4,10 @@ import type {
   LoginSession,
   SessionPort,
 } from '../../pages/login/loginControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteSessionPortOptions {
   baseUrl?: string
@@ -20,14 +24,14 @@ export function createRemoteSessionPort({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nickname }),
-      })
+      }, 'session.create')
     },
     async validateSession(session) {
       const result = await requestSession(fetcher, `${baseUrl}/api/session/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: session.token }),
-      })
+      }, 'session.validate')
 
       if (!result.ok && result.error.kind === 'authentication') {
         return { ok: true, value: null }
@@ -42,6 +46,7 @@ async function requestSession(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   init: RequestInit,
+  operation: string,
 ): Promise<LoginResult<LoginSession>> {
   let response: Response
 
@@ -73,24 +78,41 @@ async function requestSession(
   try {
     body = await response.json()
   } catch {
-    return {
-      ok: false,
-      error: createError('malformed_response', '서버 응답 형식이 올바르지 않아요.'),
-    }
+    return createMalformedFailure(operation, input, 'invalid_json', undefined, response.status)
   }
 
   const session = unwrapSession(body)
 
   if (!session) {
-    return {
-      ok: false,
-      error: createError('malformed_response', '서버 응답 형식이 올바르지 않아요.'),
-    }
+    return createMalformedFailure(operation, input, 'unexpected_shape', body, response.status)
   }
 
   return {
     ok: true,
     value: session,
+  }
+}
+
+function createMalformedFailure(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): LoginResult<LoginSession> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteSessionPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return {
+    ok: false,
+    error: createError('malformed_response', '서버 응답 형식이 올바르지 않아요.'),
   }
 }
 

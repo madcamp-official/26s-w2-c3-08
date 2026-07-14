@@ -19,7 +19,7 @@
     "warehouse:check": "node tests/warehouse-screen.test.mjs && node tests/warehouse-controller.test.mjs",
     "avatar-studio:check": "node tests/avatar-studio-controller.test.mjs",
     "routes:check": "node tests/prototype-router.test.mjs",
-    "flow:check": "node tests/full-v2-flow.test.mjs && node tests/remote-v2-flow.test.mjs",
+    "flow:check": "node tests/malformed-response-logging.test.mjs && node tests/full-v2-flow.test.mjs && node tests/remote-v2-flow.test.mjs",
     "lobby-room:check": "node tests/prototype-router.test.mjs && node tests/lobby-room-controller.test.mjs && node tests/remote-room-port.test.mjs",
     "asset-studio:check": "node tests/asset-studio-controller.test.mjs",
     "game:check": "node tests/game-shell-bridge.test.mjs && node tests/game-controller-flow.test.mjs && node tests/remote-game-room-port.test.mjs",

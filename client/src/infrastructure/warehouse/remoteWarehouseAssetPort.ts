@@ -10,6 +10,10 @@ import type {
   WarehouseControllerError,
   WarehouseResult,
 } from '../../pages/warehouse/warehouseControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteWarehouseAssetPortOptions {
   baseUrl?: string
@@ -25,13 +29,13 @@ export function createRemoteWarehouseAssetPort({
       return requestAssets(fetcher, `${baseUrl}/api/assets?user_id=${encodeURIComponent(session.id)}`, session)
     },
     async equipAvatar(session, assetId) {
-      return requestSession(fetcher, `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/equip-avatar`, session, {
+      return requestSession(fetcher, `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/equip-avatar`, session, 'warehouse.equipAvatar', {
         method: 'POST',
         body: JSON.stringify({ user_id: session.id }),
       })
     },
     async retryAsset(session, assetId) {
-      return requestAsset(fetcher, `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/retry`, session, {
+      return requestAsset(fetcher, `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/retry`, session, 'warehouse.retryAsset', {
         method: 'POST',
         body: JSON.stringify({ user_id: session.id }),
       })
@@ -41,6 +45,7 @@ export function createRemoteWarehouseAssetPort({
         fetcher,
         `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/sprites/${encodeURIComponent(action)}/regenerate`,
         session,
+        'warehouse.regenerateAction',
         {
           method: 'POST',
           body: JSON.stringify({ user_id: session.id }),
@@ -74,19 +79,19 @@ async function requestAssets(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('warehouse.listAssets', input, 'invalid_json', undefined, response.status)
   }
 
   const assets = unwrapAssets(body)
 
   if (!assets) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('warehouse.listAssets', input, 'unexpected_shape', body, response.status)
   }
 
   const normalizedAssets = normalizeAssetList(assets, session)
 
   if (!normalizedAssets) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('warehouse.listAssets', input, 'unexpected_shape', body, response.status)
   }
 
   return {
@@ -99,9 +104,10 @@ async function requestSession(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit,
 ): Promise<WarehouseResult<LoginSession>> {
-  const responseResult = await requestJson(fetcher, input, session, init)
+  const responseResult = await requestJson(fetcher, input, session, operation, init)
 
   if (!responseResult.ok) {
     return responseResult
@@ -111,16 +117,17 @@ async function requestSession(
 
   return nextSession
     ? { ok: true, value: nextSession }
-    : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    : createMalformedFailure(operation, input, 'unexpected_shape', responseResult.value)
 }
 
 async function requestAsset(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit,
 ): Promise<WarehouseResult<WarehouseAssetRecord>> {
-  const responseResult = await requestJson(fetcher, input, session, init)
+  const responseResult = await requestJson(fetcher, input, session, operation, init)
 
   if (!responseResult.ok) {
     return responseResult
@@ -131,13 +138,14 @@ async function requestAsset(
 
   return normalizedAsset
     ? { ok: true, value: normalizedAsset }
-    : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    : createMalformedFailure(operation, input, 'unexpected_shape', responseResult.value)
 }
 
 async function requestJson(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit,
 ): Promise<WarehouseResult<unknown>> {
   let response: Response
@@ -154,13 +162,43 @@ async function requestJson(
     return createFailure('server_unavailable', '서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.', true)
   }
 
-  const body = await readJsonSafely(response)
+  let body: unknown
+
+  try {
+    body = await response.json()
+  } catch {
+    if (!response.ok) {
+      return mapHttpError(response.status, null)
+    }
+
+    return createMalformedFailure(operation, input, 'invalid_json', undefined, response.status)
+  }
 
   if (!response.ok) {
     return mapHttpError(response.status, body)
   }
 
   return { ok: true, value: body }
+}
+
+function createMalformedFailure<T>(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): WarehouseResult<T> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteWarehouseAssetPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
 }
 
 async function readJsonSafely(response: Response) {

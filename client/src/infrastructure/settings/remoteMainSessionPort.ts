@@ -4,6 +4,10 @@ import type {
   MainResult,
   MainSessionPort,
 } from '../../pages/main/mainControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteMainSessionPortOptions {
   baseUrl?: string
@@ -50,19 +54,39 @@ async function requestSession(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure('settings.updateNickname', input, 'invalid_json', undefined, response.status)
   }
 
   const session = unwrapSession(body)
 
   if (!session) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure('settings.updateNickname', input, 'unexpected_shape', body, response.status)
   }
 
   return {
     ok: true,
     value: session,
   }
+}
+
+function createMalformedFailure(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): MainResult<never> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteMainSessionPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
 }
 
 function unwrapSession(body: unknown): LoginSession | null {

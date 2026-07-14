@@ -5,6 +5,10 @@ import type {
   MainResult,
   MainSnapshot,
 } from '../../pages/main/mainControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteAssetPortOptions {
   baseUrl?: string
@@ -48,19 +52,39 @@ async function requestAssets(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure('main.loadAssets', input, 'invalid_json', undefined, response.status)
   }
 
   const assets = unwrapAssets(body)
 
   if (!assets) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
+    return createMalformedFailure('main.loadAssets', input, 'unexpected_shape', body, response.status)
   }
 
   return {
     ok: true,
     value: summarizeAssets(assets, session),
   }
+}
+
+function createMalformedFailure(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): MainResult<never> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteAssetPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.')
 }
 
 function unwrapAssets(body: unknown): Array<Record<string, unknown>> | null {

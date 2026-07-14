@@ -6,6 +6,7 @@ import type {
 import type { LoginSession } from '../../pages/login/loginControllerCore'
 import { createSocketIoRemoteRealtimeAdapters } from '../realtime/socketIoRemoteAdapters'
 import type { V2RealtimeConnectionStatus } from '../realtime/socketIoTransport'
+import { logMalformedResponse } from '../diagnostics/malformedResponseLogger'
 
 interface RemoteAssetJobUpdatesOptions {
   adapters?: ReturnType<typeof createSocketIoRemoteRealtimeAdapters>
@@ -115,8 +116,9 @@ function startAssetJobPolling({
     }
 
     try {
+      const input = `${baseUrl}/api/asset-jobs?user_id=${encodeURIComponent(session.id)}`
       const response = await fetcher(
-        `${baseUrl}/api/asset-jobs?user_id=${encodeURIComponent(session.id)}`,
+        input,
         {
           headers: {
             Authorization: `Bearer ${session.token}`,
@@ -129,10 +131,38 @@ function startAssetJobPolling({
         return
       }
 
-      const body = await response.json()
+      let body: unknown
+
+      try {
+        body = await response.json()
+      } catch {
+        logMalformedResponse({
+          source: 'api',
+          adapter: 'remoteAssetJobUpdates',
+          operation: 'assetJobs.poll',
+          reason: 'invalid_json',
+          endpoint: input,
+          status: response.status,
+        })
+        onStatus({
+          status: 'malformed_response',
+          message: '에셋 작업 상태 응답 형식이 올바르지 않아요.',
+        })
+        return
+      }
+
       const jobs = unwrapJobs(body)
 
       if (!jobs) {
+        logMalformedResponse({
+          source: 'api',
+          adapter: 'remoteAssetJobUpdates',
+          operation: 'assetJobs.poll',
+          reason: 'unexpected_shape',
+          endpoint: input,
+          status: response.status,
+          body,
+        })
         onStatus({
           status: 'malformed_response',
           message: '에셋 작업 상태 응답 형식이 올바르지 않아요.',

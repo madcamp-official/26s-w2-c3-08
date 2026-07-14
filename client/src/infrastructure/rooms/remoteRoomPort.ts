@@ -7,6 +7,10 @@ import type {
   RoomRealtimeSnapshot,
   RoomSummaryRecord,
 } from '../../pages/room/roomControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteRoomPortOptions {
   baseUrl?: string
@@ -19,27 +23,27 @@ export function createRemoteRoomPort({
 }: RemoteRoomPortOptions = {}): RoomPort {
   return {
     async listRooms(session) {
-      return requestRoomList(fetcher, `${baseUrl}/api/rooms`, session)
+      return requestRoomList(fetcher, `${baseUrl}/api/rooms`, session, 'rooms.list')
     },
     async getRoomSnapshot(session, roomId) {
-      return requestRoomSnapshot(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}`, session, {
+      return requestRoomSnapshot(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}`, session, 'rooms.snapshot', {
         method: 'GET',
       })
     },
     async createRoom(session, payload) {
-      return requestRoom(fetcher, `${baseUrl}/api/rooms`, session, {
+      return requestRoom(fetcher, `${baseUrl}/api/rooms`, session, 'rooms.create', {
         method: 'POST',
         body: JSON.stringify(toCreateRoomBody(session, payload)),
       })
     },
     async joinPublicRoom(session) {
-      return requestRoom(fetcher, `${baseUrl}/api/rooms/public/join`, session, {
+      return requestRoom(fetcher, `${baseUrl}/api/rooms/public/join`, session, 'rooms.joinPublic', {
         method: 'POST',
         body: JSON.stringify({ user_id: session.id }),
       })
     },
     async joinRoom(session, roomId, password) {
-      return requestRoom(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/join`, session, {
+      return requestRoom(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/join`, session, 'rooms.joinPrivate', {
         method: 'POST',
         body: JSON.stringify({
           user_id: session.id,
@@ -48,7 +52,7 @@ export function createRemoteRoomPort({
       })
     },
     async startRoom(session, roomId) {
-      return requestRoom(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/start`, session, {
+      return requestRoom(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/start`, session, 'rooms.start', {
         method: 'POST',
         body: JSON.stringify({
           user_id: session.id,
@@ -56,7 +60,7 @@ export function createRemoteRoomPort({
       })
     },
     async setReady(session, roomId, isReady) {
-      return requestRoomSnapshot(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/ready`, session, {
+      return requestRoomSnapshot(fetcher, `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/ready`, session, 'rooms.setReady', {
         method: 'POST',
         body: JSON.stringify({
           user_id: session.id,
@@ -69,6 +73,7 @@ export function createRemoteRoomPort({
         fetcher,
         `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/leave`,
         session,
+        'rooms.leave',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -91,7 +96,7 @@ export function createRemoteRoomPort({
 
       return snapshot
         ? { ok: true, value: snapshot }
-        : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+        : createMalformedFailure('rooms.leave', `${baseUrl}/api/rooms/${encodeURIComponent(roomId)}/leave`, 'unexpected_shape', body)
     },
   }
 }
@@ -100,8 +105,9 @@ async function requestRoomList(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
 ): Promise<RoomResult<RoomSummaryRecord[]>> {
-  const responseResult = await requestJson(fetcher, input, session)
+  const responseResult = await requestJson(fetcher, input, session, operation)
 
   if (!responseResult.ok) {
     return responseResult
@@ -110,13 +116,13 @@ async function requestRoomList(
   const rooms = unwrapRooms(responseResult.value)
 
   if (!rooms) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure(operation, input, 'unexpected_shape', responseResult.value)
   }
 
   const normalizedRooms = rooms.map(normalizeRoomSummary)
 
   if (normalizedRooms.some((room) => room === null)) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure(operation, input, 'unexpected_shape', responseResult.value)
   }
 
   return {
@@ -129,9 +135,10 @@ async function requestRoom(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit,
 ): Promise<RoomResult<RoomSummaryRecord>> {
-  const responseResult = await requestJson(fetcher, input, session, init)
+  const responseResult = await requestJson(fetcher, input, session, operation, init)
 
   if (!responseResult.ok) {
     return responseResult
@@ -141,7 +148,7 @@ async function requestRoom(
   const normalizedRoom = room ? normalizeRoomSummary(room) : null
 
   if (!normalizedRoom) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure(operation, input, 'unexpected_shape', responseResult.value)
   }
 
   return {
@@ -154,9 +161,10 @@ async function requestRoomSnapshot(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit,
 ): Promise<RoomResult<RoomRealtimeSnapshot>> {
-  const responseResult = await requestJson(fetcher, input, session, init)
+  const responseResult = await requestJson(fetcher, input, session, operation, init)
 
   if (!responseResult.ok) {
     return responseResult
@@ -166,13 +174,14 @@ async function requestRoomSnapshot(
 
   return snapshot
     ? { ok: true, value: snapshot }
-    : createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    : createMalformedFailure(operation, input, 'unexpected_shape', responseResult.value)
 }
 
 async function requestJson(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   session: LoginSession,
+  operation: string,
   init: RequestInit = {},
 ): Promise<RoomResult<unknown>> {
   let response: Response
@@ -195,7 +204,7 @@ async function requestJson(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure(operation, input, 'invalid_json', undefined, response.status)
   }
 
   if (!response.ok) {
@@ -206,6 +215,26 @@ async function requestJson(
     ok: true,
     value: body,
   }
+}
+
+function createMalformedFailure<T>(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): RoomResult<T> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteRoomPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
 }
 
 function toCreateRoomBody(session: LoginSession, payload: CreateRoomPayload) {

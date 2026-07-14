@@ -6,6 +6,10 @@ import type {
   AssetStudioResult,
   AssetStudioSubmitPayload,
 } from '../../pages/asset-studio/assetStudioControllerCore'
+import {
+  logMalformedResponse,
+  type MalformedResponseReason,
+} from '../diagnostics/malformedResponseLogger'
 
 interface RemoteAssetStudioAssetPortOptions {
   baseUrl?: string
@@ -47,7 +51,7 @@ async function requestAssets(
     return createFailure('server_unavailable', '서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.', true)
   }
 
-  return normalizeAssetsResponse(response, session)
+  return normalizeAssetsResponse(response, input, session)
 }
 
 async function requestCreateAsset(
@@ -79,14 +83,14 @@ async function requestCreateAsset(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('assetStudio.createAsset', input, 'invalid_json', undefined, response.status)
   }
 
   const record = unwrapAsset(body)
   const normalizedAsset = record ? normalizeAsset(record, payload.userId) : null
 
   if (!normalizedAsset) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('assetStudio.createAsset', input, 'unexpected_shape', body, response.status)
   }
 
   return {
@@ -97,6 +101,7 @@ async function requestCreateAsset(
 
 async function normalizeAssetsResponse(
   response: Response,
+  input: RequestInfo | URL,
   session: LoginSession,
 ): Promise<AssetStudioResult<AssetStudioAssetRecord[]>> {
   let body: unknown
@@ -104,13 +109,13 @@ async function normalizeAssetsResponse(
   try {
     body = await response.json()
   } catch {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('assetStudio.listAssets', input, 'invalid_json', undefined, response.status)
   }
 
   const records = unwrapAssets(body)
 
   if (!records) {
-    return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
+    return createMalformedFailure('assetStudio.listAssets', input, 'unexpected_shape', body, response.status)
   }
 
   const assets = records
@@ -121,6 +126,26 @@ async function normalizeAssetsResponse(
     ok: true,
     value: assets,
   }
+}
+
+function createMalformedFailure<T>(
+  operation: string,
+  input: RequestInfo | URL,
+  reason: MalformedResponseReason,
+  body?: unknown,
+  status?: number,
+): AssetStudioResult<T> {
+  logMalformedResponse({
+    source: 'api',
+    adapter: 'remoteAssetStudioAssetPort',
+    operation,
+    reason,
+    endpoint: input,
+    status,
+    body,
+  })
+
+  return createFailure('malformed_response', '서버 응답 형식이 올바르지 않아요.', false)
 }
 
 function createAssetBody(payload: AssetStudioSubmitPayload) {

@@ -315,16 +315,40 @@ assert.doesNotMatch(source, /createMock|Mock fallback|relay\.mock/i)
 console.log('remote game room port contract self-test passed')
 
 async function importTypeScriptModule(tsSource) {
-  const output = ts.transpileModule(tsSource, {
+  const output = transpileTypeScript(inlineDiagnosticsImport(tsSource))
+  const encoded = Buffer.from(output, 'utf8').toString('base64')
+
+  return import(`data:text/javascript;base64,${encoded}`)
+}
+
+function inlineDiagnosticsImport(source) {
+  if (!source.includes('malformedResponseLogger')) {
+    return source
+  }
+
+  const helperUrl = toTypeScriptModuleUrl(read('client/src/infrastructure/diagnostics/malformedResponseLogger.ts'))
+
+  return source.replace(
+    /import\s*\{\s*logMalformedResponse,\s*type\s+MalformedResponseReason,\s*\}\s*from\s*['"][^'"]*malformedResponseLogger['"]/g,
+    `import { logMalformedResponse } from '${helperUrl}'\ntype MalformedResponseReason = 'invalid_json' | 'unexpected_shape'`,
+  )
+}
+
+function toTypeScriptModuleUrl(source) {
+  const output = transpileTypeScript(source)
+  const encoded = Buffer.from(output, 'utf8').toString('base64')
+
+  return `data:text/javascript;base64,${encoded}`
+}
+
+function transpileTypeScript(source) {
+  return ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
       target: ts.ScriptTarget.ES2022,
       verbatimModuleSyntax: true,
     },
   }).outputText
-  const encoded = Buffer.from(output, 'utf8').toString('base64')
-
-  return import(`data:text/javascript;base64,${encoded}`)
 }
 
 function read(path) {
