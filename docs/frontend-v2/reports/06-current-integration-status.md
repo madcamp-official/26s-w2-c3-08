@@ -36,7 +36,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run lobby-room:check --workspace client` | PASS |
 | `npm run game:check --workspace client` | PASS |
 | `npm run flow:check --workspace client` | PASS |
-| `npm run test --prefix backend` | PASS, includes avatar-specific FormData generation, category mismatch rejection, user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, and stale result rejection |
+| `npm run test --prefix backend` | PASS, includes remote nickname update, sprite regeneration, avatar-specific FormData generation, category mismatch rejection, user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, and stale result rejection |
 | `npm run typecheck --prefix backend` | PASS |
 | `npm run check:v2` | PASS |
 | `npm run check --prefix gpu-worker` | PASS |

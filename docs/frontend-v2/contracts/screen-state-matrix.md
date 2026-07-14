@@ -79,7 +79,7 @@
 | reconnecting | asset job status may be stale; show reconnecting badge |
 | permission/disabled | working assets unusable; cooldown disables regen; item hidden from user-created component filter |
 | localStorage | mock assets in `relay.mock.assets`; session avatar persisted |
-| API | `listAssets`, `requestSpriteRegeneration` is `TBD-CONTRACT` for remote endpoint |
+| API | `listAssets`, `requestSpriteRegeneration` via `/api/assets/:assetId/sprites/:action/regenerate` |
 | realtime | `AssetJobUpdates.assetJobUpdated` |
 | keyboard | tabs arrow/Tab navigable; modal ESC close |
 | responsive rules | grid reflows; cards keep stable dimensions |
@@ -104,7 +104,7 @@
 | reconnecting | realtime status informational only |
 | permission/disabled | invalid nickname/code disables submit |
 | localStorage | `relay.settings`, session keys |
-| API | `createDeviceLinkCode`, `consumeDeviceLinkCode`; remote nickname update is `TBD-CONTRACT` |
+| API | `createDeviceLinkCode`, `consumeDeviceLinkCode`, `updateNickname` via `/api/session/nickname` |
 | realtime | nickname update may notify lobby presence if in room |
 | keyboard | ESC closes; sliders keyboard operable |
 | responsive rules | modal fits 720p height with internal scroll |
