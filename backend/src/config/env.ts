@@ -29,6 +29,7 @@ export interface BackendReadiness {
     workerAuthConfigured: boolean;
     internalAuthConfigured: boolean;
     imageStorageMode: "inline" | "local" | "http-put";
+    imageStorageConfigured: boolean;
     generatedAssetStaticServing: boolean;
   };
 }
@@ -52,6 +53,9 @@ export function getBackendReadiness(currentEnv = env): BackendReadiness {
     workerAuthConfigured: isRealSecret(currentEnv.WORKER_TOKEN),
     internalAuthConfigured: isRealSecret(currentEnv.INTERNAL_API_TOKEN),
     imageStorageMode,
+    imageStorageConfigured:
+      imageStorageMode === "http-put" ||
+      (imageStorageMode === "local" && Boolean(currentEnv.IMAGE_STORAGE_DIR && currentEnv.IMAGE_PUBLIC_PATH)),
     generatedAssetStaticServing:
       imageStorageMode === "local" && Boolean(currentEnv.IMAGE_STORAGE_DIR && currentEnv.IMAGE_PUBLIC_PATH)
   };
@@ -61,7 +65,8 @@ export function getBackendReadiness(currentEnv = env): BackendReadiness {
       ? checks.corsOrigins > 0 &&
         checks.qwenConfigured &&
         checks.workerAuthConfigured &&
-        checks.internalAuthConfigured
+        checks.internalAuthConfigured &&
+        checks.imageStorageConfigured
       : true,
     service: "relay-map-maker-backend",
     environment: currentEnv.NODE_ENV,
