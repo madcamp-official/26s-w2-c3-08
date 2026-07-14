@@ -142,6 +142,39 @@ test.describe('representative State Gallery keyboard accessibility', () => {
   }
 })
 
+test.describe('full State Gallery structural accessibility', () => {
+  for (const galleryCase of stateGalleryCases) {
+    test(`${galleryCase.id} has named controls and valid aria references`, async ({ page }) => {
+      await page.goto(`/ui-v2.html#/state-gallery?case=${encodeURIComponent(galleryCase.id)}`)
+
+      const preview = page.locator(`[data-v2-gallery-case="${galleryCase.id}"]`)
+      const shell = preview.locator(`[data-v2-shell="${galleryCase.shell}"]`).first()
+
+      await expect(preview).toBeVisible()
+      await expect(shell).toBeVisible()
+      await expect(shell).toHaveAttribute('aria-labelledby', /.+/)
+      await expect(shell.locator('main').first()).toBeVisible()
+      await expect(await findUnnamedIconOnlyButtons(preview)).toEqual([])
+
+      const shellLabel = await shell.evaluate((element) => {
+        const labelId = element.getAttribute('aria-labelledby')
+
+        return labelId ? document.getElementById(labelId)?.textContent?.trim() ?? '' : ''
+      })
+
+      expect(shellLabel.length).toBeGreaterThan(0)
+
+      const report = await collectStructuralAccessibilityReport(preview)
+
+      expect(report.unnamedInteractiveControls).toEqual([])
+      expect(report.brokenAriaReferences).toEqual([])
+      expect(report.dialogsMissingModal).toEqual([])
+      expect(report.gameCanvasTabStops).toEqual([])
+      expect(report.duplicateIds).toEqual([])
+    })
+  }
+})
+
 async function loginToMain(page: Page) {
   await page.goto('/ui-v2.html#/login')
   await expect(page.locator('[data-v2-component="login-screen"]')).toBeVisible()
@@ -167,6 +200,163 @@ async function findUnnamedIconOnlyButtons(scope: Page | Locator) {
         component: button.getAttribute('data-v2-component'),
       })),
   )
+}
+
+async function collectStructuralAccessibilityReport(scope: Locator) {
+  return scope.evaluate((root) => {
+    const readVisibleText = (element: Element) => element.textContent?.replace(/\s+/gu, ' ').trim() ?? ''
+    const readReferenceTexts = (element: Element, attr: 'aria-labelledby' | 'aria-describedby') => {
+      const ids = element.getAttribute(attr)?.trim().split(/\s+/u).filter(Boolean) ?? []
+
+      return ids.map((id) => {
+        const target = document.getElementById(id)
+
+        return {
+          id,
+          exists: target !== null,
+          text: target?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+        }
+      })
+    }
+    const readExplicitLabel = (element: HTMLElement) => {
+      if (element.id.length === 0) {
+        return ''
+      }
+
+      return (
+        Array.from(document.querySelectorAll<HTMLLabelElement>('label'))
+          .find((label) => label.htmlFor === element.id)
+          ?.textContent?.replace(/\s+/gu, ' ')
+          .trim() ?? ''
+      )
+    }
+    const readAccessibleName = (element: HTMLElement) => {
+      const labelledByTexts = readReferenceTexts(element, 'aria-labelledby')
+        .filter((reference) => reference.exists)
+        .map((reference) => reference.text)
+        .filter(Boolean)
+        .join(' ')
+
+      return (
+        element.getAttribute('aria-label')?.trim() ||
+        labelledByTexts ||
+        readExplicitLabel(element) ||
+        element.closest('label')?.textContent?.replace(/\s+/gu, ' ').trim() ||
+        readVisibleText(element)
+      )
+    }
+    const toTarget = (element: HTMLElement) => ({
+      tagName: element.tagName.toLowerCase(),
+      type: element.getAttribute('type') ?? '',
+      component: element.getAttribute('data-v2-component') ?? '',
+      text: readVisibleText(element),
+      ariaLabel: element.getAttribute('aria-label') ?? '',
+      ariaLabelledBy: element.getAttribute('aria-labelledby') ?? '',
+      html: element.outerHTML.slice(0, 240),
+    })
+    const isHidden = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+
+      return (
+        rect.width <= 0 ||
+        rect.height <= 0 ||
+        style.visibility === 'hidden' ||
+        style.display === 'none' ||
+        element.getAttribute('aria-hidden') === 'true'
+      )
+    }
+    const interactiveSelector = [
+      'a[href]',
+      'button',
+      'input',
+      'select',
+      'textarea',
+      '[role="button"]',
+      '[role="tab"]',
+      '[role="switch"]',
+      '[role="menuitem"]',
+    ].join(',')
+    const focusableInsideCanvasSelector = [
+      'a[href]',
+      'button:not(:disabled)',
+      'input:not(:disabled)',
+      'select:not(:disabled)',
+      'textarea:not(:disabled)',
+      'canvas[tabindex]:not([tabindex="-1"])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',')
+    const unnamedInteractiveControls: ReturnType<typeof toTarget>[] = []
+    const brokenAriaReferences: Array<{
+      tagName: string
+      component: string
+      attr: string
+      id: string
+      reason: 'missing' | 'empty'
+      html: string
+    }> = []
+    const duplicateIds: Array<{ id: string; count: number }> = []
+    const dialogsMissingModal: ReturnType<typeof toTarget>[] = []
+    const gameCanvasTabStops: ReturnType<typeof toTarget>[] = []
+
+    root.querySelectorAll<HTMLElement>(interactiveSelector).forEach((element) => {
+      if (isHidden(element)) {
+        return
+      }
+
+      if (readAccessibleName(element).length === 0) {
+        unnamedInteractiveControls.push(toTarget(element))
+      }
+    })
+
+    root.querySelectorAll<HTMLElement>('[aria-labelledby], [aria-describedby]').forEach((element) => {
+      ;(['aria-labelledby', 'aria-describedby'] as const).forEach((attr) => {
+        readReferenceTexts(element, attr).forEach((reference) => {
+          if (!reference.exists || reference.text.length === 0) {
+            brokenAriaReferences.push({
+              tagName: element.tagName.toLowerCase(),
+              component: element.getAttribute('data-v2-component') ?? '',
+              attr,
+              id: reference.id,
+              reason: reference.exists ? 'empty' : 'missing',
+              html: element.outerHTML.slice(0, 240),
+            })
+          }
+        })
+      })
+    })
+
+    const idCounts = new Map<string, number>()
+
+    root.querySelectorAll<HTMLElement>('[id]').forEach((element) => {
+      idCounts.set(element.id, (idCounts.get(element.id) ?? 0) + 1)
+    })
+    idCounts.forEach((count, id) => {
+      if (count > 1) {
+        duplicateIds.push({ id, count })
+      }
+    })
+
+    root.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((dialog) => {
+      if (dialog.getAttribute('aria-modal') !== 'true') {
+        dialogsMissingModal.push(toTarget(dialog))
+      }
+    })
+
+    root.querySelectorAll<HTMLElement>('[data-v2-component="phaser-canvas-frame"]').forEach((frame) => {
+      frame.querySelectorAll<HTMLElement>(focusableInsideCanvasSelector).forEach((element) => {
+        gameCanvasTabStops.push(toTarget(element))
+      })
+    })
+
+    return {
+      unnamedInteractiveControls,
+      brokenAriaReferences,
+      duplicateIds,
+      dialogsMissingModal,
+      gameCanvasTabStops,
+    }
+  })
 }
 
 async function collectKeyboardFocusReport(page: Page, caseId: string) {

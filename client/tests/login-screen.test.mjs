@@ -52,7 +52,7 @@ assert.match(screenSource, /data-v2-component="login-form"/)
 assert.match(screenSource, /data-v2-component="login-error"/)
 assert.match(screenSource, /data-v2-component="login-submit"/)
 assert.match(screenSource, /id=\{nicknameInputId\}/)
-assert.match(screenSource, /aria-describedby=\{nicknameErrorId\}/)
+assert.match(screenSource, /aria-describedby=\{errorMessage \? nicknameErrorId : undefined\}/)
 assert.match(screenSource, /aria-invalid=\{Boolean\(errorMessage\) \|\| undefined\}/)
 assert.match(screenSource, /aria-live="polite"/)
 

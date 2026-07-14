@@ -91,7 +91,7 @@ export function LoginScreen({
               disabled={isBusy}
               loading={state === 'boot'}
               aria-invalid={Boolean(errorMessage) || undefined}
-              aria-describedby={nicknameErrorId}
+              aria-describedby={errorMessage ? nicknameErrorId : undefined}
               onChange={onNicknameChange}
             />
           </div>
