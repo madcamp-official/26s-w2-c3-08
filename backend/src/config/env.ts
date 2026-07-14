@@ -48,9 +48,9 @@ export function getBackendReadiness(currentEnv = env): BackendReadiness {
   const checks = {
     corsOrigins: corsOrigins.length,
     corsOriginsConfigured: areCorsOriginsConfigured(currentEnv.CORS_ORIGIN, production),
-    qwenConfigured: isRealSecret(currentEnv.QWEN_API_TOKEN),
-    workerAuthConfigured: isRealSecret(currentEnv.WORKER_TOKEN),
-    internalAuthConfigured: isRealSecret(currentEnv.INTERNAL_API_TOKEN),
+    qwenConfigured: isProductionSecretConfigured(currentEnv.QWEN_API_TOKEN),
+    workerAuthConfigured: isProductionSecretConfigured(currentEnv.WORKER_TOKEN),
+    internalAuthConfigured: isProductionSecretConfigured(currentEnv.INTERNAL_API_TOKEN),
     imageStorageMode,
     imageStorageConfigured:
       imageStorageMode === "http-put" ||
@@ -122,14 +122,16 @@ export function getBackendImageStorageMode(currentEnv = env): "inline" | "local"
 }
 
 export function requireQwenToken(): string {
-  if (!env.QWEN_API_TOKEN || env.QWEN_API_TOKEN.startsWith("<REAL_")) {
+  const token = env.QWEN_API_TOKEN;
+
+  if (!token || !isProductionSecretConfigured(token)) {
     throw new Error("QWEN_API_TOKEN is not configured with a real internal token");
   }
 
-  return env.QWEN_API_TOKEN;
+  return token;
 }
 
-function isRealSecret(value: string | undefined) {
+export function isProductionSecretConfigured(value: string | undefined): boolean {
   if (!value) {
     return false;
   }

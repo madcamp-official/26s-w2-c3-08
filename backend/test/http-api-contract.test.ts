@@ -2,7 +2,7 @@ import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getBackendReadiness, parseCorsOrigins } from "../src/config/env.js";
 import { createApp } from "../src/http/app.js";
-import { onApiAssetJobUpdated } from "../src/http/routes/apiRoutes.js";
+import { onApiAssetJobUpdated, validateWorkerRouteToken } from "../src/http/routes/apiRoutes.js";
 import { validateInternalRouteToken } from "../src/http/routes/qwenRoutes.js";
 
 describe("V2 HTTP API contract", () => {
@@ -278,7 +278,7 @@ describe("V2 HTTP API contract", () => {
     }));
     expect(validateInternalRouteToken({
       nodeEnv: "production",
-      expectedToken: "internal-token",
+      expectedToken: "internal-token-123456",
       authorization: "Bearer wrong-token",
     })).toEqual(expect.objectContaining({
       ok: false,
@@ -287,12 +287,60 @@ describe("V2 HTTP API contract", () => {
     }));
     expect(validateInternalRouteToken({
       nodeEnv: "production",
-      expectedToken: "internal-token",
-      backendInternalToken: "internal-token",
+      expectedToken: "replace-with-token",
+      backendInternalToken: "replace-with-token",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      status: 503,
+      code: "INTERNAL_API_TOKEN_UNSAFE",
+    }));
+    expect(validateInternalRouteToken({
+      nodeEnv: "production",
+      expectedToken: "internal-token-123456",
+      backendInternalToken: "internal-token-123456",
     })).toEqual({ ok: true });
     expect(validateInternalRouteToken({
       nodeEnv: "test",
       expectedToken: undefined,
+    })).toEqual({ ok: true });
+  });
+
+  it("requires safe worker auth for production AI job routes", () => {
+    expect(validateWorkerRouteToken({
+      nodeEnv: "production",
+      expectedToken: undefined,
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      status: 503,
+      code: "WORKER_TOKEN_MISSING",
+    }));
+    expect(validateWorkerRouteToken({
+      nodeEnv: "production",
+      expectedToken: "dev-worker-token",
+      authorization: "Bearer dev-worker-token",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      status: 503,
+      code: "WORKER_TOKEN_UNSAFE",
+    }));
+    expect(validateWorkerRouteToken({
+      nodeEnv: "production",
+      expectedToken: "worker-token-123456",
+      authorization: "Bearer wrong-token",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      status: 401,
+      code: "WORKER_AUTHENTICATION_FAILED",
+    }));
+    expect(validateWorkerRouteToken({
+      nodeEnv: "production",
+      expectedToken: "worker-token-123456",
+      workerToken: "worker-token-123456",
+    })).toEqual({ ok: true });
+    expect(validateWorkerRouteToken({
+      nodeEnv: "test",
+      expectedToken: undefined,
+      authorization: "Bearer dev-worker-token",
     })).toEqual({ ok: true });
   });
 

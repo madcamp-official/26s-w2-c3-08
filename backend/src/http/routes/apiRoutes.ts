@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { env } from "../../config/env.js";
+import { env, isProductionSecretConfigured } from "../../config/env.js";
 
 type AssetCategory = "avatar" | "platform" | "obstacle" | "monster" | "background" | "item";
 type AssetStatus = "queued" | "generating" | "ready" | "failed";
@@ -1612,8 +1612,11 @@ function toRoomSnapshot(room: RoomSummary) {
 }
 
 function readBearerToken(req: { headers: { authorization?: string | string[] } }) {
-  const header = req.headers.authorization;
-  const value = Array.isArray(header) ? header[0] : header;
+  return readAuthHeaderToken(req.headers.authorization);
+}
+
+function readAuthHeaderToken(authorization: string | string[] | undefined) {
+  const value = readHeaderString(authorization);
 
   if (value === undefined) {
     return undefined;
@@ -1636,27 +1639,67 @@ function requireWorker(
   req: { headers: { authorization?: string | string[]; "x-worker-token"?: string | string[] } },
   res: { status: (code: number) => { json: (body: unknown) => void } }
 ) {
-  const expectedToken = env.WORKER_TOKEN ?? (env.NODE_ENV === "production" ? undefined : "dev-worker-token");
+  const authResult = validateWorkerRouteToken({
+    nodeEnv: env.NODE_ENV,
+    expectedToken: env.WORKER_TOKEN,
+    authorization: req.headers.authorization,
+    workerToken: req.headers["x-worker-token"]
+  });
 
-  if (expectedToken === undefined) {
-    res.status(503).json({
-      ok: false,
-      error: { code: "WORKER_TOKEN_MISSING", message: "worker token is required" }
-    });
-    return false;
+  if (authResult.ok) {
+    return true;
   }
 
-  const providedToken = readBearerToken(req) ?? readHeaderString(req.headers["x-worker-token"]);
+  res.status(authResult.status).json({
+    ok: false,
+    error: { code: authResult.code, message: authResult.message }
+  });
+  return false;
+}
 
-  if (providedToken !== expectedToken) {
-    res.status(401).json({
+export function validateWorkerRouteToken({
+  nodeEnv,
+  expectedToken,
+  authorization,
+  workerToken
+}: {
+  nodeEnv: "development" | "test" | "production";
+  expectedToken: string | undefined;
+  authorization?: string | string[];
+  workerToken?: string | string[];
+}): { ok: true } | { ok: false; status: number; code: string; message: string } {
+  const resolvedExpectedToken = expectedToken ?? (nodeEnv === "production" ? undefined : "dev-worker-token");
+
+  if (resolvedExpectedToken === undefined) {
+    return {
       ok: false,
-      error: { code: "WORKER_AUTHENTICATION_FAILED", message: "worker authentication failed" }
-    });
-    return false;
+      status: 503,
+      code: "WORKER_TOKEN_MISSING",
+      message: "worker token is required"
+    };
   }
 
-  return true;
+  if (nodeEnv === "production" && !isProductionSecretConfigured(resolvedExpectedToken)) {
+    return {
+      ok: false,
+      status: 503,
+      code: "WORKER_TOKEN_UNSAFE",
+      message: "worker token must be replaced with a real production secret"
+    };
+  }
+
+  const providedToken = readAuthHeaderToken(authorization) ?? readHeaderString(workerToken);
+
+  if (providedToken !== resolvedExpectedToken) {
+    return {
+      ok: false,
+      status: 401,
+      code: "WORKER_AUTHENTICATION_FAILED",
+      message: "worker authentication failed"
+    };
+  }
+
+  return { ok: true };
 }
 
 function getSessionByToken(token: string | undefined) {

@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
 import { QwenClient, QwenClientError } from "../../clients/qwenClient.js";
-import { env } from "../../config/env.js";
+import { env, isProductionSecretConfigured } from "../../config/env.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -145,6 +145,15 @@ export function validateInternalRouteToken({
     }
 
     return { ok: true };
+  }
+
+  if (nodeEnv === "production" && !isProductionSecretConfigured(expectedToken)) {
+    return {
+      ok: false,
+      status: 503,
+      code: "INTERNAL_API_TOKEN_UNSAFE",
+      message: "internal API token must be replaced with a real production secret"
+    };
   }
 
   const providedToken = readInternalAuthToken(authorization) ?? readHeaderString(backendInternalToken);
