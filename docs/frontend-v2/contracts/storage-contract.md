@@ -31,7 +31,7 @@
 
 | Data | Source of truth in `mock` | Source of truth in `remote` | Notes |
 |---|---|---|---|
-| session | localStorage mock session | backend session response plus local persisted token/session | session validation endpoint is `TBD-CONTRACT` |
+| session | localStorage mock session | backend session response plus local persisted token/session validated by `/api/session/validate` | invalid remote token clears V2 session; no remote-to-mock fallback |
 | settings | localStorage | localStorage | settings are device-local |
 | studio layout | localStorage | localStorage | device-local; no DB sync |
 | assets | `relay.mock.assets` + starter assets | backend `/api/assets` | no remote->mock fallback |

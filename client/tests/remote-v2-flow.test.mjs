@@ -36,6 +36,11 @@ async function testRemotePortsAgainstServerShapedFlow() {
   assert.equal(sessionResult.value.token, 'token-a')
 
   const session = sessionResult.value
+  const validatedSessionResult = await sessionPort.validateSession(session)
+
+  assert.equal(validatedSessionResult.ok, true)
+  assert.equal(validatedSessionResult.value.id, session.id)
+
   const roomResult = await roomPort.createRoom(
     session,
     {
@@ -136,6 +141,7 @@ async function testRemotePortsAgainstServerShapedFlow() {
   assert.equal(resultsResult.value.players[0].rank, 1)
   assert.deepEqual(server.calls.map((call) => `${call.method} ${call.pathname}`), [
     'POST /api/session',
+    'POST /api/session/validate',
     'POST /api/rooms',
     'GET /api/rooms/room-flow',
     'POST /api/rooms/room-flow/start',
@@ -171,7 +177,7 @@ function createServerContractHarness() {
         auth,
       })
 
-      if (url.pathname !== '/api/session' && auth !== 'Bearer token-a') {
+      if (url.pathname !== '/api/session' && url.pathname !== '/api/session/validate' && auth !== 'Bearer token-a') {
         return json({ error: { message: '로그인이 필요해요.' } }, 401)
       }
 
@@ -180,6 +186,18 @@ function createServerContractHarness() {
           session: {
             id: 'user-a',
             nickname: body.nickname,
+            token: 'token-a',
+            avatarAssetId: null,
+          },
+        })
+      }
+
+      if (method === 'POST' && url.pathname === '/api/session/validate') {
+        assert.equal(body.token, 'token-a')
+        return json({
+          session: {
+            id: 'user-a',
+            nickname: '릴레이러',
             token: 'token-a',
             avatarAssetId: null,
           },

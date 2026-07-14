@@ -34,7 +34,7 @@ interface V2Error {
 | Kind | When | Current code evidence | User-facing behavior | Retry policy |
 |---|---|---|---|---|
 | `validation` | form/body/schema invalid | backend `INVALID_REQUEST`; login nickname 1-12; asset name required | inline field error; keep user input | user edits and retries |
-| `authentication` | session/token invalid or missing | device code session not found; session restore validation is TBD | route to login or show session expired | no automatic retry |
+| `authentication` | session/token invalid or missing | `SESSION_EXPIRED`, device code session not found, `/api/session/validate` invalid token | route to login or show session expired | no automatic retry |
 | `authorization` | user cannot access resource/action | private room invalid password maps here | modal/form error | user changes credential |
 | `not_found` | room/segment/session/device code missing | `ROOM_NOT_FOUND`, `SEGMENT_NOT_FOUND`, `DEVICE_CODE_NOT_FOUND`, `NO_PUBLIC_ROOM` | stale state message; close invalid overlay if needed | manual refresh/retry |
 | `conflict` | room full, phase mismatch, duplicate/unchanged submit | `ROOM_FULL`; loaded unchanged asset disabled in UI | disable or show state conflict | refresh then retry |

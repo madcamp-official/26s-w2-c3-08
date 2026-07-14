@@ -29,7 +29,7 @@
 | reconnecting | not applicable |
 | permission/disabled | nickname 1-12자 아닐 때 submit disabled |
 | localStorage | reads/writes `relay.session` or profile-scoped session via API adapter |
-| API | `createSession`; optional session validation is `TBD-CONTRACT` |
+| API | `createSession`; remote session restore validates through `/api/session/validate` |
 | realtime | on success controller connects realtime according to `VITE_REALTIME_MODE` |
 | keyboard | Enter submit; Tab order input -> submit |
 | responsive rules | launcher shell, 720p height에서 form과 CTA가 접히지 않아야 함 |

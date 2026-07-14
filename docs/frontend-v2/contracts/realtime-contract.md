@@ -71,8 +71,8 @@ TBD-CONTRACT:
 
 | ID | Gap |
 |---|---|
-| RT-GAP-001 | Frontend currently imports `@colyseus/sdk`; V2 remote priority is Socket.IO backend. |
-| RT-GAP-002 | Current frontend uses `VITE_LOCAL_REALTIME !== 'false'`; V2 requires `VITE_REALTIME_MODE`. |
-| RT-GAP-003 | Backend does not currently emit `asset_job:updated`. |
-| RT-GAP-004 | Backend ready/lobby presence semantics rely mostly on full `room:state`; frontend local events have extra lobby events. |
-| RT-GAP-005 | Current code can auto-enter local fallback on remote failure; V2 forbids this in remote mode. |
+| RT-GAP-001 | RESOLVED for V2 entry: remote realtime uses `socket.io-client` through `createSocketIoRemoteRealtimeAdapters`; `@colyseus/sdk` remains only in legacy realtime code until legacy removal. |
+| RT-GAP-002 | RESOLVED for V2 entry: `resolveV2ModeConfig` reads `VITE_REALTIME_MODE`; legacy `VITE_LOCAL_REALTIME` remains only in legacy realtime code until removal. |
+| RT-GAP-003 | RESOLVED: backend emits `asset_job:updated` from API asset job state changes through Socket.IO. |
+| RT-GAP-004 | OPEN: backend ready/lobby presence semantics rely mostly on full `room:state`; frontend local events have extra lobby events. |
+| RT-GAP-005 | RESOLVED for V2 entry: remote realtime errors surface status/error and do not select BroadcastChannel fallback. |

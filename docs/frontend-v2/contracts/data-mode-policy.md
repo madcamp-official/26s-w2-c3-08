@@ -74,7 +74,7 @@ Current migration gaps:
 
 | ID | Gap |
 |---|---|
-| MODE-GAP-001 | Current API fallback semantics are incompatible with V2 remote mode. |
-| MODE-GAP-002 | Current realtime fallback semantics are incompatible with V2 remote mode. |
-| MODE-GAP-003 | Current store `apiSource: 'api' | 'mock'` is result-derived; V2 needs configured mode plus runtime status. |
+| MODE-GAP-001 | RESOLVED for V2 entry: controllers select mock/remote ports from `VITE_DATA_MODE`; legacy `client/src/net/api.ts` fallback remains isolated to the legacy root until removal. |
+| MODE-GAP-002 | RESOLVED for V2 entry: `VITE_REALTIME_MODE=remote` selects Socket.IO and `local` selects BroadcastChannel; no automatic local fallback is selected in remote mode. |
+| MODE-GAP-003 | RESOLVED for V2 entry: mode config is explicit and controller state exposes data/realtime mode; legacy store `apiSource` remains only in legacy root until removal. |
 | MODE-GAP-004 | RESOLVED: Production missing env values are not defaults. They are startup `ConfigurationError`s. |
