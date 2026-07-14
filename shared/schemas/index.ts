@@ -89,6 +89,7 @@ export const realtimeConnectionStatusValues = [
   'connected',
   'reconnecting',
   'offline',
+  'error',
   'local',
 ] as const
 
@@ -186,6 +187,7 @@ export interface RoomSummary {
   maxPlayers: number
   phase: RoomPhase
   elapsedSeconds: number
+  phaseEndsAt: string | null
 }
 
 export interface RoomPlayer {
@@ -219,6 +221,7 @@ export interface RaceResultPlayer {
   userId: string
   nickname: string
   isHost: boolean
+  isReady: boolean
   validationCleared: boolean
   raceProgress: number
   raceFinishedAtMs: number | null
@@ -245,6 +248,7 @@ export interface RoomPhaseChangedPayload {
   phase: RoomPhase
   phaseEndsAt: string | null
   isOvertime?: boolean
+  isFinishCountdown?: boolean
 }
 
 export interface RoomTimerTickPayload {
@@ -257,6 +261,7 @@ export interface RealtimeRoomPlayer {
   userId: string
   nickname: string
   isHost: boolean
+  isReady: boolean
   validationCleared: boolean
   raceProgress: number
   raceFinishedAtMs: number | null
@@ -420,6 +425,7 @@ export const roomSummarySchema = defineSchema<RoomSummary>(
       maxPlayers: readRequiredInteger(record, 'maxPlayers', schemaName, 2, 4),
       phase: parseEnumValue(record.phase, roomPhaseValues, schemaName, 'phase'),
       elapsedSeconds: readRequiredInteger(record, 'elapsedSeconds', schemaName, 0),
+      phaseEndsAt: readNullableString(record, 'phaseEndsAt', schemaName, true),
     }
   },
 )
@@ -536,6 +542,10 @@ export const roomPhaseChangedPayloadSchema = defineSchema<RoomPhaseChangedPayloa
         record.isOvertime === undefined
           ? undefined
           : readRequiredBoolean(record, 'isOvertime', schemaName),
+      isFinishCountdown:
+        record.isFinishCountdown === undefined
+          ? undefined
+          : readRequiredBoolean(record, 'isFinishCountdown', schemaName),
     }
   },
 )
@@ -648,6 +658,7 @@ function parseRealtimeRoomPlayer(
     userId: readRequiredString(record, 'userId', schemaName, `${path}.userId`),
     nickname: readRequiredString(record, 'nickname', schemaName, `${path}.nickname`),
     isHost: readRequiredBoolean(record, 'isHost', schemaName, `${path}.isHost`),
+    isReady: readRequiredBoolean(record, 'isReady', schemaName, `${path}.isReady`),
     validationCleared: readRequiredBoolean(record, 'validationCleared', schemaName, `${path}.validationCleared`),
     raceProgress: readRequiredFiniteNumber(record, 'raceProgress', schemaName, 0, 100, `${path}.raceProgress`),
     raceFinishedAtMs: readNullableFiniteNumber(record, 'raceFinishedAtMs', schemaName, 0, undefined, `${path}.raceFinishedAtMs`),
@@ -671,6 +682,7 @@ function parseRaceResultPlayer(
     userId: player.userId,
     nickname: player.nickname,
     isHost: player.isHost,
+    isReady: player.isReady,
     validationCleared: player.validationCleared,
     raceProgress: player.raceProgress,
     raceFinishedAtMs: player.raceFinishedAtMs,

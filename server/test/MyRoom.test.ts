@@ -2,8 +2,10 @@ import assert from "assert";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 
 // import your "app.config.ts" file here.
-import appConfig from "../src/app.config.js";
+import { createAppConfig } from "../src/app.config.js";
 import { MyRoomState } from "../src/rooms/schema/MyRoomState.js";
+
+const appConfig = createAppConfig();
 
 describe("testing your Colyseus app", () => {
   let colyseus: ColyseusTestServer<typeof appConfig>;
@@ -25,7 +27,20 @@ describe("testing your Colyseus app", () => {
 
     // wait for state sync
     await room.waitForNextPatch();
+    await waitForState(() => client1.state.toJSON().mySynchronizedProperty === "Hello world");
 
-    assert.deepStrictEqual({ mySynchronizedProperty: "Hello world" }, client1.state.toJSON());
+    assert.deepStrictEqual(client1.state.toJSON(), { mySynchronizedProperty: "Hello world" });
   });
 });
+
+async function waitForState(predicate: () => boolean) {
+  const startedAt = Date.now();
+
+  while (!predicate()) {
+    if (Date.now() - startedAt > 1_000) {
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

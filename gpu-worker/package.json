@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "check": "tsx src/index.ts --self-test"
   },
   "devDependencies": {
     "tsx": "^4.23.0"

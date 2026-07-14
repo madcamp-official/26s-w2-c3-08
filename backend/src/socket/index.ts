@@ -2,8 +2,14 @@ import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { env } from "../config/env.js";
 import {
+  FIRST_FINISH_COUNTDOWN_MS,
+  applyApiFirstFinishCountdown,
+  applyApiLastDance,
+  ensureApiRoomForRealtime,
+  getApiRoomRaceDurationMs,
   getApiRoomPhase,
   joinApiRoomFromRealtime,
+  leaveApiRoomFromRealtime,
   mergeApiRoomMap,
   setApiRoomPhase
 } from "../http/routes/apiRoutes.js";
@@ -14,6 +20,7 @@ interface RoomPlayerState {
   userId: string;
   nickname: string;
   isHost: boolean;
+  isReady: boolean;
   validationCleared: boolean;
   raceProgress: number;
   raceFinishedAtMs: number | null;
@@ -45,6 +52,13 @@ interface PhasePayload {
   userId?: string;
   phase?: RoomPhase;
 }
+
+interface RoomReadyPayload extends PhasePayload {
+  isReady?: boolean;
+  is_ready?: boolean;
+}
+
+interface RoomLeavePayload extends PhasePayload {}
 
 interface TimeVotePayload extends PhasePayload {
   deltaSec?: number;
@@ -86,7 +100,6 @@ const PHASE_DURATIONS_MS: Partial<Record<RoomPhase, number>> = {
   building: 180_000,
   validating: 120_000,
   merging: 3_000,
-  racing: 300_000,
 };
 
 const rooms = new Map<string, RoomState>();
@@ -113,14 +126,22 @@ export function attachSocketServer(httpServer: HttpServer) {
       const nickname = payload.nickname?.trim() || `player-${userId.slice(0, 4)}`;
       const room = getRoom(roomId);
       const apiRoomJoin = joinApiRoomFromRealtime(roomId, userId, nickname);
+
+      if ("rejected" in apiRoomJoin && apiRoomJoin.rejected) {
+        emitSocketError(socket, "ROOM_NOT_JOINABLE", apiRoomJoin.message);
+        return;
+      }
+
       const isHost = apiRoomJoin.isHost || room.players.size === 0;
 
       room.phase = apiRoomJoin.phase;
+      room.phaseEndsAt = ensureApiRoomForRealtime(roomId).phaseEndsAt;
 
       room.players.set(userId, {
         userId,
         nickname,
         isHost,
+        isReady: isHost,
         validationCleared: false,
         raceProgress: 0,
         raceFinishedAtMs: null,
@@ -133,6 +154,47 @@ export function attachSocketServer(httpServer: HttpServer) {
       io.to(roomId).emit("room:state", toRoomSnapshot(room));
     });
 
+    socket.on("room:ready", (payload: RoomReadyPayload) => {
+      const room = findPayloadRoom(socket, payload);
+      const userId = payload.userId ?? socket.data.userId;
+
+      if (room === null || userId === undefined) {
+        return;
+      }
+
+      const player = room.players.get(userId);
+
+      if (player === undefined) {
+        emitSocketError(socket, "PLAYER_NOT_FOUND", "player was not found in room");
+        return;
+      }
+
+      player.isReady = payload.isReady ?? payload.is_ready ?? false;
+      io.to(room.id).emit("room:state", toRoomSnapshot(room));
+    });
+
+    socket.on("room:leave", (payload: RoomLeavePayload) => {
+      const room = findPayloadRoom(socket, payload);
+      const userId = payload.userId ?? socket.data.userId;
+
+      if (room === null || userId === undefined) {
+        return;
+      }
+
+      leaveApiRoomFromRealtime(room.id, userId);
+      room.players.delete(userId);
+      socket.leave(room.id);
+
+      if (room.players.size === 0) {
+        clearRoomTimer(room);
+        rooms.delete(room.id);
+        return;
+      }
+
+      ensureHost(room);
+      io.to(room.id).emit("room:state", toRoomSnapshot(room));
+    });
+
     socket.on("room:start", (payload: PhasePayload) => {
       const room = findPayloadRoom(socket, payload);
 
@@ -141,6 +203,11 @@ export function attachSocketServer(httpServer: HttpServer) {
       }
 
       if (room.phase === "lobby") {
+        if (!canStartLobby(room)) {
+          emitSocketError(socket, "ROOM_NOT_READY", "all guest players must be ready before starting");
+          return;
+        }
+
         startPhase(io, room, "building");
         return;
       }
@@ -155,11 +222,24 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
+      const userId = payload.userId ?? socket.data.userId;
+      const player = userId === undefined ? undefined : room.players.get(userId);
+
+      if (player !== undefined) {
+        player.isReady = true;
+      }
+
       io.to(room.id).emit("phase:ready", {
         roomId: room.id,
-        userId: payload.userId ?? socket.data.userId,
+        userId,
         phase: payload.phase ?? room.phase,
       });
+
+      if (syncRoomPhaseFromApi(io, room)) {
+        return;
+      }
+
+      io.to(room.id).emit("room:state", toRoomSnapshot(room));
     });
 
     socket.on("time_vote:request", (payload: TimeVotePayload) => {
@@ -189,12 +269,24 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
+      const player = room.players.get(userId);
+
+      if (player !== undefined) {
+        player.isReady = true;
+      }
+
       room.submittedSegmentIds.set(userId, payload.segmentId);
       io.to(room.id).emit("segment:submitted", {
         roomId: room.id,
         userId,
         segmentId: payload.segmentId,
       });
+
+      if (syncRoomPhaseFromApi(io, room)) {
+        return;
+      }
+
+      io.to(room.id).emit("room:state", toRoomSnapshot(room));
     });
 
     socket.on("validation:completed", (payload: ValidationCompletedPayload) => {
@@ -209,6 +301,7 @@ export function attachSocketServer(httpServer: HttpServer) {
       const cleared = payload.cleared === true;
 
       if (player !== undefined) {
+        player.isReady = true;
         player.validationCleared = cleared;
       }
 
@@ -220,6 +313,11 @@ export function attachSocketServer(httpServer: HttpServer) {
         clearTimeMs: payload.clearTimeMs,
         penaltyMs: cleared ? 0 : 15_000,
       });
+
+      if (syncRoomPhaseFromApi(io, room)) {
+        return;
+      }
+
       io.to(room.id).emit("room:state", toRoomSnapshot(room));
     });
 
@@ -254,9 +352,11 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
+      const wasFirstFinisher = !hasAnyFinisher(room);
       const player = room.players.get(userId);
 
       if (player !== undefined) {
+        player.isReady = true;
         player.raceProgress = 100;
         player.raceFinishedAtMs =
           player.raceFinishedAtMs === null
@@ -272,14 +372,15 @@ export function attachSocketServer(httpServer: HttpServer) {
 
       if (Array.from(room.players.values()).every((roomPlayer) => roomPlayer.raceFinishedAtMs !== null)) {
         startPhase(io, room, "finished");
+      } else if (wasFirstFinisher && !room.hasOvertime) {
+        applyFirstFinishCountdown(io, room);
       }
     });
 
     socket.on("disconnect", () => {
       const roomId = socket.data.roomId as string | undefined;
-      const userId = socket.data.userId as string | undefined;
 
-      if (roomId === undefined || userId === undefined) {
+      if (roomId === undefined) {
         return;
       }
 
@@ -289,15 +390,6 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
-      room.players.delete(userId);
-
-      if (room.players.size === 0) {
-        clearRoomTimer(room);
-        rooms.delete(roomId);
-        return;
-      }
-
-      ensureHost(room);
       io.to(room.id).emit("room:state", toRoomSnapshot(room));
     });
   });
@@ -311,11 +403,12 @@ function getRoom(roomId: string): RoomState {
   if (existingRoom !== undefined) {
     return existingRoom;
   }
+  const apiRoom = ensureApiRoomForRealtime(roomId);
 
   const room: RoomState = {
     id: roomId,
-    phase: getApiRoomPhase(roomId),
-    phaseEndsAt: null,
+    phase: apiRoom.phase,
+    phaseEndsAt: apiRoom.phaseEndsAt,
     players: new Map(),
     submittedSegmentIds: new Map(),
     hasOvertime: false,
@@ -326,15 +419,69 @@ function getRoom(roomId: string): RoomState {
   return room;
 }
 
+function syncRoomPhaseFromApi(io: Server, room: RoomState) {
+  const apiRoom = ensureApiRoomForRealtime(room.id);
+
+  if (apiRoom.phase === room.phase && apiRoom.phaseEndsAt === room.phaseEndsAt) {
+    return false;
+  }
+
+  clearRoomTimer(room);
+  room.phase = apiRoom.phase;
+  room.phaseEndsAt = apiRoom.phaseEndsAt;
+
+  if (room.phase === "building" || room.phase === "validating" || room.phase === "racing") {
+    room.players.forEach((player) => {
+      player.isReady = false;
+    });
+  }
+
+  if (room.phase === "racing") {
+    room.hasOvertime = false;
+    room.players.forEach((player) => {
+      player.raceProgress = 0;
+      player.raceFinishedAtMs = null;
+    });
+  }
+
+  io.to(room.id).emit("phase:changed", {
+    roomId: room.id,
+    phase: room.phase,
+    phaseEndsAt: room.phaseEndsAt,
+  });
+  io.to(room.id).emit("room:state", toRoomSnapshot(room));
+
+  if (room.phaseEndsAt !== null) {
+    room.timer = setInterval(() => tickRoomTimer(io, room), 1_000);
+  }
+
+  if (room.phase === "finished") {
+    io.to(room.id).emit("results:final", {
+      roomId: room.id,
+      players: buildRaceResults(room),
+    });
+  }
+
+  return true;
+}
+
 function startPhase(io: Server, room: RoomState, phase: RoomPhase) {
   clearRoomTimer(room);
   room.phase = phase;
+  const durationMs = phase === "racing" ? getApiRoomRaceDurationMs(room.id) : PHASE_DURATIONS_MS[phase];
+
   setApiRoomPhase(room.id, phase);
   const mergedMap = phase === "merging" ? mergeApiRoomMap(room.id) : null;
   room.phaseEndsAt =
-    PHASE_DURATIONS_MS[phase] === undefined
+    durationMs === undefined
       ? null
-      : new Date(Date.now() + PHASE_DURATIONS_MS[phase]).toISOString();
+      : new Date(Date.now() + durationMs).toISOString();
+
+  if (phase === "building" || phase === "validating" || phase === "racing") {
+    room.players.forEach((player) => {
+      player.isReady = false;
+    });
+  }
 
   if (phase === "racing") {
     room.hasOvertime = false;
@@ -367,6 +514,21 @@ function startPhase(io: Server, room: RoomState, phase: RoomPhase) {
   }
 }
 
+function applyFirstFinishCountdown(io: Server, room: RoomState) {
+  const countdownEndsAt = new Date(Date.now() + FIRST_FINISH_COUNTDOWN_MS).toISOString();
+
+  room.phaseEndsAt = countdownEndsAt;
+  applyApiFirstFinishCountdown(room.id);
+
+  io.to(room.id).emit("phase:changed", {
+    roomId: room.id,
+    phase: room.phase,
+    phaseEndsAt: room.phaseEndsAt,
+    isFinishCountdown: true,
+  });
+  io.to(room.id).emit("room:state", toRoomSnapshot(room));
+}
+
 function tickRoomTimer(io: Server, room: RoomState) {
   if (room.phaseEndsAt === null) {
     return;
@@ -387,6 +549,7 @@ function tickRoomTimer(io: Server, room: RoomState) {
   if (room.phase === "racing" && !room.hasOvertime && !hasAnyFinisher(room)) {
     room.hasOvertime = true;
     room.phaseEndsAt = new Date(Date.now() + 30_000).toISOString();
+    applyApiLastDance(room.id);
     io.to(room.id).emit("phase:changed", {
       roomId: room.id,
       phase: room.phase,
@@ -502,7 +665,14 @@ function ensureHost(room: RoomState) {
 
   if (firstPlayer !== undefined) {
     firstPlayer.isHost = true;
+    firstPlayer.isReady = true;
   }
+}
+
+function canStartLobby(room: RoomState) {
+  const players = Array.from(room.players.values());
+
+  return players.length >= 2 && players.every((player) => player.isHost || player.isReady);
 }
 
 function hasAnyFinisher(room: RoomState) {

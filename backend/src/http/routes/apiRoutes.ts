@@ -48,6 +48,7 @@ interface RoomSummary {
   maxPlayers: number;
   phase: RoomPhase;
   elapsedSeconds: number;
+  phaseEndsAt: string | null;
   createdAt: number;
 }
 
@@ -107,6 +108,13 @@ interface MergedMap {
   createdAt: string;
 }
 
+interface RacePlayerState {
+  validationCleared: boolean;
+  raceProgress: number;
+  raceFinishedAtMs: number | null;
+  raceDistanceToGoal: number;
+}
+
 interface DeviceLinkTicket {
   code: string;
   userId: string;
@@ -114,6 +122,19 @@ interface DeviceLinkTicket {
 }
 
 const DEVICE_LINK_TTL_MS = 5 * 60 * 1000;
+const ACTION_REGEN_COOLDOWN_MS = 5 * 60 * 1000;
+export const RACE_MS_PER_LINE = 40 * 1000;
+export const FIRST_FINISH_COUNTDOWN_MS = 10 * 1000;
+export const LAST_DANCE_MS = 30 * 1000;
+export const BUILD_LATE_JOIN_CUTOFF_MS = 60 * 1000;
+const ROOM_PHASE_DURATIONS_MS: Record<RoomPhase, number | null> = {
+  lobby: null,
+  building: 3 * 60 * 1000,
+  validating: 2 * 60 * 1000,
+  merging: 30 * 1000,
+  racing: null,
+  finished: null
+};
 
 const sessions = new Map<string, UserSession>();
 const assets = new Map<string, Asset>();
@@ -121,8 +142,10 @@ const rooms = new Map<string, RoomSummary>();
 const roomPlayers = new Map<string, Set<string>>();
 const roomHosts = new Map<string, string>();
 const roomPasswords = new Map<string, string>();
+const roomReadyPlayers = new Map<string, Set<string>>();
 const segments = new Map<string, MapSegmentSnapshot>();
 const mergedMaps = new Map<string, MergedMap>();
+const racePlayerStates = new Map<string, Map<string, RacePlayerState>>();
 const deviceLinks = new Map<string, DeviceLinkTicket>();
 
 export function ensureApiRoomForRealtime(roomId: string, nickname?: string) {
@@ -141,6 +164,7 @@ export function ensureApiRoomForRealtime(roomId: string, nickname?: string) {
     maxPlayers: 4,
     phase: "lobby",
     elapsedSeconds: 0,
+    phaseEndsAt: null,
     createdAt: Date.now()
   };
 
@@ -172,6 +196,18 @@ export function joinApiRoomFromRealtime(roomId: string, userId: string, nickname
   const players = roomPlayers.get(roomId) ?? new Set<string>();
   const existingHostId = roomHosts.get(roomId);
   const isHost = existingHostId === undefined || existingHostId === userId;
+  const isExistingPlayer = players.has(userId);
+
+  if (!isExistingPlayer && !canJoinRoomPhase(storedRoom)) {
+    return {
+      isHost: false,
+      phase: storedRoom.phase,
+      rejected: true as const,
+      message: storedRoom.phase === "building"
+        ? "제작 시간이 1분 미만이라 새 제작자로 입장할 수 없어요."
+        : "room cannot be joined",
+    };
+  }
 
   if (existingHostId === undefined) {
     roomHosts.set(roomId, userId);
@@ -180,6 +216,7 @@ export function joinApiRoomFromRealtime(roomId: string, userId: string, nickname
   players.add(userId);
   roomPlayers.set(roomId, players);
   storedRoom.players = players.size;
+  setPlayerReady(roomId, userId, isHost);
 
   if (isHost) {
     storedRoom.hostNickname = nickname;
@@ -198,9 +235,12 @@ export function leaveApiRoomFromRealtime(roomId: string, userId: string) {
 
   players.delete(userId);
   room.players = players.size;
+  roomReadyPlayers.get(roomId)?.delete(userId);
+  racePlayerStates.get(roomId)?.delete(userId);
 
   if (roomHosts.get(roomId) === userId) {
     roomHosts.delete(roomId);
+    assignNextHost(room);
   }
 }
 
@@ -211,8 +251,34 @@ export function setApiRoomPhase(roomId: string, phase: RoomPhase) {
     return;
   }
 
-  room.phase = phase;
-  room.createdAt = Date.now();
+  setRoomPhase(room, phase);
+}
+
+export function getApiRoomRaceDurationMs(roomId: string) {
+  return getRaceDurationMs(mergedMaps.get(roomId)?.segments.length ?? 1);
+}
+
+export function applyApiFirstFinishCountdown(roomId: string, nowMs = Date.now()) {
+  const room = rooms.get(roomId);
+
+  if (room === undefined || room.phase !== "racing") {
+    return null;
+  }
+
+  applyFirstFinishCountdown(room, nowMs);
+  return toRoomSummary(room);
+}
+
+export function applyApiLastDance(roomId: string, nowMs = Date.now()) {
+  const room = rooms.get(roomId);
+
+  if (room === undefined || room.phase !== "racing") {
+    return null;
+  }
+
+  room.createdAt = nowMs;
+  room.phaseEndsAt = new Date(nowMs + LAST_DANCE_MS).toISOString();
+  return toRoomSummary(room);
 }
 
 export function getApiRoomPhase(roomId: string): RoomPhase {
@@ -234,11 +300,26 @@ export function mergeApiRoomMap(roomId: string) {
   const mergedMap = buildMergedMap(roomId, sourceSegments, usedFallback);
 
   mergedMaps.set(roomId, mergedMap);
+  setRoomPhase(room, "racing", getRaceDurationMs(mergedMap.segments.length));
   return mergedMap;
 }
 
 const sessionSchema = z.object({
   nickname: z.string().trim().min(1).max(12)
+});
+
+const sessionValidateSchema = z.object({
+  token: z.string().min(1).optional()
+});
+
+const nicknameSchema = z.object({
+  token: z.string().min(1).optional(),
+  nickname: z.string().trim().min(1).max(12)
+});
+
+const userActionSchema = z.object({
+  user_id: z.string().min(1).optional(),
+  userId: z.string().min(1).optional()
 });
 
 const assetGenerateSchema = z.object({
@@ -269,6 +350,11 @@ const createRoomSchema = z.object({
 const joinRoomSchema = z.object({
   user_id: z.string().min(1),
   password: z.string().nullable().optional()
+});
+
+const readyRoomSchema = z.object({
+  user_id: z.string().min(1),
+  is_ready: z.boolean()
 });
 
 const mapPointSchema = z.object({
@@ -310,6 +396,17 @@ const validateSegmentSchema = z.object({
   clear_time_ms: z.number().int().nonnegative()
 });
 
+const raceProgressSchema = z.object({
+  user_id: z.string().min(1),
+  progress: z.number().min(0).max(100),
+  race_distance_to_goal: z.number().nonnegative().default(0)
+});
+
+const raceFinishSchema = z.object({
+  user_id: z.string().min(1),
+  finish_time_ms: z.number().int().nonnegative()
+});
+
 const deviceCodeSchema = z.object({
   user_id: z.string().min(1)
 });
@@ -337,6 +434,41 @@ apiRoutes.post("/session", (req, res) => {
   };
 
   sessions.set(session.id, session);
+  res.json({ ok: true, session });
+});
+
+apiRoutes.post("/session/validate", (req, res) => {
+  const body = parseBody(sessionValidateSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const session = getSessionByToken(body.token ?? readBearerToken(req));
+
+  if (session === null) {
+    res.status(401).json({ ok: false, error: { code: "SESSION_EXPIRED", message: "session expired" } });
+    return;
+  }
+
+  res.json({ ok: true, session });
+});
+
+apiRoutes.post("/session/nickname", (req, res) => {
+  const body = parseBody(nicknameSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const session = getSessionByToken(body.token ?? readBearerToken(req));
+
+  if (session === null) {
+    res.status(401).json({ ok: false, error: { code: "SESSION_EXPIRED", message: "session expired" } });
+    return;
+  }
+
+  session.nickname = body.nickname;
   res.json({ ok: true, session });
 });
 
@@ -398,6 +530,16 @@ apiRoutes.get("/assets", (req, res) => {
   res.json({ ok: true, assets: visibleAssets });
 });
 
+apiRoutes.get("/asset-jobs", (req, res) => {
+  const userId = typeof req.query.user_id === "string" ? req.query.user_id : null;
+  updateAssetGenerationStates();
+
+  res.json({
+    ok: true,
+    jobs: listAssetJobs(userId)
+  });
+});
+
 apiRoutes.post("/assets/generate", (req, res) => {
   const body = parseBody(assetGenerateSchema, req.body, res);
 
@@ -420,14 +562,133 @@ apiRoutes.post("/assets/generate", (req, res) => {
     heightCells: body.heightCells ?? body.height_cells ?? null,
     sourceImageUrl: body.image,
     remixOfId: body.remixOfId ?? body.remix_of_id ?? null,
-    status: "generating",
+    status: "queued",
     isPublic: true,
     createdAt: now,
     sprites: createSpriteJobs(body.category, now)
   };
 
   assets.set(asset.id, asset);
-  res.status(202).json({ ok: true, asset, job: { id: asset.id, status: "queued" } });
+  res.status(202).json({ ok: true, asset, job: toAssetJob(asset, null) });
+});
+
+apiRoutes.post("/assets/:assetId/equip-avatar", (req, res) => {
+  const body = parseBody(userActionSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const userId = body.user_id ?? body.userId;
+  const session = resolveActionSession(userId, req, res);
+
+  if (session === null) {
+    return;
+  }
+
+  const asset = assets.get(req.params.assetId);
+
+  if (asset === undefined || asset.category !== "avatar") {
+    res.status(404).json({ ok: false, error: { code: "ASSET_NOT_FOUND", message: "avatar asset not found" } });
+    return;
+  }
+
+  updateAssetGenerationStates();
+
+  if (asset.status !== "ready") {
+    res.status(409).json({ ok: false, error: { code: "ASSET_NOT_READY", message: "avatar asset is not ready" } });
+    return;
+  }
+
+  session.avatarAssetId = asset.id;
+  res.json({ ok: true, session });
+});
+
+apiRoutes.post("/assets/:assetId/retry", (req, res) => {
+  const body = parseBody(userActionSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const session = resolveActionSession(body.user_id ?? body.userId, req, res);
+
+  if (session === null) {
+    return;
+  }
+
+  const asset = assets.get(req.params.assetId);
+
+  if (asset === undefined || !canUseAsset(session.id, asset)) {
+    res.status(404).json({ ok: false, error: { code: "ASSET_NOT_FOUND", message: "asset not found" } });
+    return;
+  }
+
+  if (asset.status !== "failed") {
+    res.status(409).json({ ok: false, error: { code: "ASSET_NOT_FAILED", message: "asset is not failed" } });
+    return;
+  }
+
+  queueAssetGeneration(asset, new Date());
+  res.json({ ok: true, asset });
+});
+
+apiRoutes.post("/assets/:assetId/sprites/:action/regenerate", (req, res) => {
+  const body = parseBody(userActionSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const session = resolveActionSession(body.user_id ?? body.userId, req, res);
+
+  if (session === null) {
+    return;
+  }
+
+  const asset = assets.get(req.params.assetId);
+  const action = normalizeSpriteAction(req.params.action);
+
+  if (asset === undefined || action === null || !canUseAsset(session.id, asset)) {
+    res.status(404).json({ ok: false, error: { code: "ASSET_ACTION_NOT_FOUND", message: "asset action not found" } });
+    return;
+  }
+
+  const sprite = asset.sprites.find((candidateSprite) => candidateSprite.action === action);
+
+  if (sprite === undefined) {
+    res.status(404).json({ ok: false, error: { code: "ASSET_ACTION_NOT_FOUND", message: "asset action not found" } });
+    return;
+  }
+
+  updateAssetGenerationStates();
+
+  if (asset.status !== "ready") {
+    res.status(409).json({ ok: false, error: { code: "ASSET_NOT_READY", message: "asset is not ready" } });
+    return;
+  }
+
+  if (sprite.lastRegenAt !== null && Date.now() - Date.parse(sprite.lastRegenAt) < ACTION_REGEN_COOLDOWN_MS) {
+    res.status(429).json({ ok: false, error: { code: "ASSET_ACTION_COOLDOWN", message: "asset action is cooling down" } });
+    return;
+  }
+
+  const now = new Date();
+  asset.status = "generating";
+  asset.createdAt = now.toISOString();
+  asset.sprites = asset.sprites.map((candidateSprite) =>
+    candidateSprite.action === action
+      ? {
+          ...candidateSprite,
+          status: "generating",
+          sheetUrl: null,
+          frameCount: null,
+          lastRegenAt: now.toISOString()
+        }
+      : candidateSprite
+  );
+
+  res.json({ ok: true, asset });
 });
 
 apiRoutes.get("/rooms", (_req, res) => {
@@ -451,12 +712,14 @@ apiRoutes.post("/rooms", (req, res) => {
     maxPlayers: body.max_players,
     phase: "lobby",
     elapsedSeconds: 0,
+    phaseEndsAt: null,
     createdAt: Date.now()
   };
 
   rooms.set(room.id, room);
   roomPlayers.set(room.id, new Set([body.user_id]));
   roomHosts.set(room.id, body.user_id);
+  setPlayerReady(room.id, body.user_id, true);
 
   if (!body.is_public && body.password !== undefined && body.password !== null) {
     roomPasswords.set(room.id, body.password);
@@ -475,7 +738,7 @@ apiRoutes.post("/rooms/public/join", (req, res) => {
   const room = Array.from(rooms.values()).find(
     (candidateRoom) =>
       candidateRoom.isPublic &&
-      candidateRoom.phase === "lobby" &&
+      canJoinRoomPhase(candidateRoom) &&
       getRoomPlayerCount(candidateRoom.id) < candidateRoom.maxPlayers
   );
 
@@ -497,8 +760,22 @@ apiRoutes.post("/rooms/:roomId/join", (req, res) => {
 
   const room = rooms.get(req.params.roomId);
 
-  if (room === undefined || room.phase !== "lobby") {
+  if (room === undefined) {
     res.status(404).json({ ok: false, error: { code: "ROOM_NOT_JOINABLE", message: "room cannot be joined" } });
+    return;
+  }
+
+  if (!canJoinRoomPhase(room)) {
+    const isLateBuildJoin = room.phase === "building";
+    res.status(isLateBuildJoin ? 409 : 404).json({
+      ok: false,
+      error: {
+        code: isLateBuildJoin ? "BUILD_LATE_JOIN_CLOSED" : "ROOM_NOT_JOINABLE",
+        message: isLateBuildJoin
+          ? "제작 시간이 1분 미만이라 새 제작자로 입장할 수 없어요."
+          : "room cannot be joined",
+      },
+    });
     return;
   }
 
@@ -514,6 +791,105 @@ apiRoutes.post("/rooms/:roomId/join", (req, res) => {
 
   joinRoomState(room, body.user_id);
   res.json({ ok: true, room: toRoomSummary(room) });
+});
+
+apiRoutes.get("/rooms/:roomId", (req, res) => {
+  const room = rooms.get(req.params.roomId);
+
+  if (room === undefined) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_NOT_FOUND", message: "room not found" } });
+    return;
+  }
+
+  res.json(toRoomSnapshot(room));
+});
+
+apiRoutes.post("/rooms/:roomId/start", (req, res) => {
+  const body = parseBody(z.object({ user_id: z.string().min(1) }), req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const room = rooms.get(req.params.roomId);
+
+  if (room === undefined) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_NOT_FOUND", message: "room not found" } });
+    return;
+  }
+
+  if (roomHosts.get(room.id) !== body.user_id) {
+    res.status(403).json({ ok: false, error: { code: "HOST_REQUIRED", message: "host is required" } });
+    return;
+  }
+
+  if (!canStartRoom(room.id)) {
+    res.status(409).json({ ok: false, error: { code: "ROOM_NOT_READY", message: "아직 준비하지 않은 플레이어가 있어요." } });
+    return;
+  }
+
+  setRoomPhase(room, "building");
+  resetRoomReadiness(room.id);
+  res.json({ ok: true, room: toRoomSummary(room) });
+});
+
+apiRoutes.post("/rooms/:roomId/ready", (req, res) => {
+  const body = parseBody(readyRoomSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const room = rooms.get(req.params.roomId);
+  const players = roomPlayers.get(req.params.roomId);
+
+  if (room === undefined || players === undefined || !players.has(body.user_id)) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_PLAYER_NOT_FOUND", message: "room player not found" } });
+    return;
+  }
+
+  setPlayerReady(room.id, body.user_id, body.is_ready);
+  res.json(toRoomSnapshot(room));
+});
+
+apiRoutes.post("/rooms/:roomId/leave", (req, res) => {
+  const body = parseBody(z.object({ user_id: z.string().min(1) }), req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const room = rooms.get(req.params.roomId);
+  const players = roomPlayers.get(req.params.roomId);
+
+  if (room === undefined || players === undefined || !players.has(body.user_id)) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_PLAYER_NOT_FOUND", message: "room player not found" } });
+    return;
+  }
+
+  players.delete(body.user_id);
+  roomReadyPlayers.get(room.id)?.delete(body.user_id);
+  racePlayerStates.get(room.id)?.delete(body.user_id);
+  room.players = players.size;
+
+  if (players.size === 0) {
+    rooms.delete(room.id);
+    roomPlayers.delete(room.id);
+    roomHosts.delete(room.id);
+    roomPasswords.delete(room.id);
+    roomReadyPlayers.delete(room.id);
+    racePlayerStates.delete(room.id);
+    mergedMaps.delete(room.id);
+    res.json({ ok: true, room: null, players: [] });
+    return;
+  }
+
+  if (roomHosts.get(room.id) === body.user_id) {
+    roomHosts.delete(room.id);
+    assignNextHost(room);
+  }
+
+  res.json(toRoomSnapshot(room));
 });
 
 apiRoutes.post("/rooms/:roomId/segments", (req, res) => {
@@ -550,8 +926,26 @@ apiRoutes.post("/rooms/:roomId/segments", (req, res) => {
     .filter((storedSegment) => storedSegment.roomId === room.id && storedSegment.creatorId === body.user_id)
     .forEach((storedSegment) => segments.delete(storedSegment.id));
   segments.set(segment.id, segment);
+  setPlayerReady(room.id, body.user_id, true);
 
-  res.status(201).json({ ok: true, segment });
+  if (hasEveryCurrentPlayerSubmitted(room.id)) {
+    setRoomPhase(room, "validating");
+    resetRoomReadiness(room.id);
+  }
+
+  res.status(201).json({ ok: true, segment, room: toRoomSummary(room) });
+});
+
+apiRoutes.get("/rooms/:roomId/segments/:segmentId", (req, res) => {
+  const room = rooms.get(req.params.roomId);
+  const segment = segments.get(req.params.segmentId);
+
+  if (room === undefined || segment === undefined || segment.roomId !== room.id) {
+    res.status(404).json({ ok: false, error: { code: "SEGMENT_NOT_FOUND", message: "segment was not found" } });
+    return;
+  }
+
+  res.json({ ok: true, segment, room: toRoomSummary(room) });
 });
 
 apiRoutes.post("/rooms/:roomId/segments/validate", (req, res) => {
@@ -581,18 +975,114 @@ apiRoutes.post("/rooms/:roomId/segments/validate", (req, res) => {
   };
 
   segments.set(validatedSegment.id, validatedSegment);
-  res.json({ ok: true, segment: validatedSegment });
+  setPlayerReady(validatedSegment.roomId, body.user_id, true);
+  setPlayerRaceState(validatedSegment.roomId, body.user_id, {
+    validationCleared: body.cleared
+  });
+
+  const room = rooms.get(validatedSegment.roomId);
+
+  if (room !== undefined && hasEveryCurrentPlayerValidated(room.id)) {
+    setRoomPhase(room, "merging");
+    resetRoomReadiness(room.id);
+  }
+
+  res.json({ ok: true, segment: validatedSegment, room: room ? toRoomSummary(room) : undefined });
 });
 
 apiRoutes.post("/rooms/:roomId/merge", (req, res) => {
   const mergedMap = mergeApiRoomMap(req.params.roomId);
+  const room = rooms.get(req.params.roomId);
 
-  if (mergedMap === null) {
+  if (mergedMap === null || room === undefined) {
     res.status(404).json({ ok: false, error: { code: "ROOM_NOT_FOUND", message: "room not found" } });
     return;
   }
 
-  res.json({ ok: true, mergedMap });
+  res.json({ ok: true, mergedMap, room: toRoomSummary(room) });
+});
+
+apiRoutes.get("/rooms/:roomId/merged-map", (req, res) => {
+  const room = rooms.get(req.params.roomId);
+  const mergedMap = mergedMaps.get(req.params.roomId);
+  const requestedMapId = typeof req.query.merged_map_id === "string" ? req.query.merged_map_id : null;
+
+  if (room === undefined || mergedMap === undefined || (requestedMapId !== null && mergedMap.id !== requestedMapId)) {
+    res.status(404).json({ ok: false, error: { code: "MERGED_MAP_NOT_FOUND", message: "merged map was not found" } });
+    return;
+  }
+
+  res.json({ ok: true, mergedMap, room: toRoomSummary(room) });
+});
+
+apiRoutes.post("/rooms/:roomId/race/progress", (req, res) => {
+  const body = parseBody(raceProgressSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const room = rooms.get(req.params.roomId);
+
+  if (room === undefined || !isRoomPlayer(room.id, body.user_id)) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_PLAYER_NOT_FOUND", message: "room player not found" } });
+    return;
+  }
+
+  setPlayerRaceState(room.id, body.user_id, {
+    raceProgress: body.progress,
+    raceDistanceToGoal: body.race_distance_to_goal
+  });
+
+  res.json({ ok: true, result: toRaceResult(room.id), room: toRoomSummary(room) });
+});
+
+apiRoutes.post("/rooms/:roomId/race/finish", (req, res) => {
+  const body = parseBody(raceFinishSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const room = rooms.get(req.params.roomId);
+
+  if (room === undefined || !isRoomPlayer(room.id, body.user_id)) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_PLAYER_NOT_FOUND", message: "room player not found" } });
+    return;
+  }
+
+  const wasFirstFinisher = !hasAnyCurrentPlayerFinished(room.id);
+
+  setPlayerReady(room.id, body.user_id, true);
+  setPlayerRaceState(room.id, body.user_id, {
+    raceProgress: 100,
+    raceDistanceToGoal: 0,
+    raceFinishedAtMs: body.finish_time_ms
+  });
+
+  if (hasEveryCurrentPlayerFinished(room.id)) {
+    setRoomPhase(room, "finished");
+  } else if (wasFirstFinisher) {
+    applyFirstFinishCountdown(room);
+  }
+
+  res.json({ ok: true, result: toRaceResult(room.id), room: toRoomSummary(room) });
+});
+
+apiRoutes.get("/rooms/:roomId/results", (req, res) => {
+  const room = rooms.get(req.params.roomId);
+
+  if (room === undefined) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_NOT_FOUND", message: "room not found" } });
+    return;
+  }
+
+  if (room.phase !== "finished") {
+    res.status(404).json({ ok: false, error: { code: "RESULT_NOT_READY", message: "아직 레이스 결과가 없어요." } });
+    return;
+  }
+
+  res.json({ ok: true, result: toRaceResult(room.id), room: toRoomSummary(room) });
 });
 
 function parseBody<T extends z.ZodTypeAny>(
@@ -621,24 +1111,350 @@ function toRoomSummary(room: RoomSummary) {
   return {
     id: room.id,
     name: room.name,
+    hostId: roomHosts.get(room.id) ?? null,
+    host_id: roomHosts.get(room.id) ?? null,
     hostNickname: room.hostNickname,
+    host_nickname: room.hostNickname,
     isPublic: room.isPublic,
+    is_public: room.isPublic,
     players: getRoomPlayerCount(room.id),
     maxPlayers: room.maxPlayers,
+    max_players: room.maxPlayers,
     phase: room.phase,
-    elapsedSeconds: Math.max(0, Math.floor((Date.now() - room.createdAt) / 1000))
+    elapsedSeconds: Math.max(0, Math.floor((Date.now() - room.createdAt) / 1000)),
+    elapsed_seconds: Math.max(0, Math.floor((Date.now() - room.createdAt) / 1000)),
+    phaseEndsAt: room.phaseEndsAt,
+    phase_ends_at: room.phaseEndsAt
+  };
+}
+
+function toRoomSnapshot(room: RoomSummary) {
+  return {
+    ok: true,
+    room: toRoomSummary(room),
+    players: toRoomPlayers(room.id)
+  };
+}
+
+function readBearerToken(req: { headers: { authorization?: string | string[] } }) {
+  const header = req.headers.authorization;
+  const value = Array.isArray(header) ? header[0] : header;
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const [scheme, token] = value.split(/\s+/u);
+
+  return scheme?.toLowerCase() === "bearer" && token ? token : undefined;
+}
+
+function getSessionByToken(token: string | undefined) {
+  if (token === undefined) {
+    return null;
+  }
+
+  return Array.from(sessions.values()).find((session) => session.token === token) ?? null;
+}
+
+function resolveActionSession(
+  userId: string | undefined,
+  req: { headers: { authorization?: string | string[] } },
+  res: { status: (code: number) => { json: (body: unknown) => void } }
+) {
+  const session = getSessionByToken(readBearerToken(req)) ?? (userId ? sessions.get(userId) ?? null : null);
+
+  if (session === null) {
+    res.status(401).json({ ok: false, error: { code: "SESSION_REQUIRED", message: "session is required" } });
+    return null;
+  }
+
+  if (userId !== undefined && session.id !== userId) {
+    res.status(403).json({ ok: false, error: { code: "SESSION_FORBIDDEN", message: "session user mismatch" } });
+    return null;
+  }
+
+  return session;
+}
+
+function canUseAsset(userId: string, asset: Asset) {
+  return asset.creatorId === userId || asset.isPublic || asset.isSystem;
+}
+
+function queueAssetGeneration(asset: Asset, now: Date) {
+  const isoNow = now.toISOString();
+
+  asset.status = "generating";
+  asset.createdAt = isoNow;
+  asset.sprites = asset.sprites.map((sprite) => ({
+    ...sprite,
+    status: "queued",
+    sheetUrl: null,
+    frameCount: null,
+    lastRegenAt: isoNow
+  }));
+}
+
+function listAssetJobs(userId: string | null) {
+  return Array.from(assets.values())
+    .filter((asset) => !asset.isSystem && (asset.isPublic || asset.creatorId === userId))
+    .flatMap((asset) => [
+      toAssetJob(asset, null),
+      ...asset.sprites.map((sprite) => toAssetJob(asset, sprite))
+    ]);
+}
+
+function toAssetJob(asset: Asset, sprite: AssetSprite | null) {
+  const status = sprite?.status ?? asset.status;
+  const updatedAt = sprite?.lastRegenAt ?? asset.createdAt;
+
+  return {
+    id: sprite === null ? `job-${asset.id}-asset` : `job-${asset.id}-sprite-${sprite.action}`,
+    userId: asset.creatorId,
+    user_id: asset.creatorId,
+    status,
+    targetType: sprite === null ? asset.category : "sprite",
+    target_type: sprite === null ? asset.category : "sprite",
+    outputAssetId: asset.id,
+    output_asset_id: asset.id,
+    action: sprite?.action ?? null,
+    errorCode: status === "failed" ? "GENERATION_FAILED" : null,
+    error_code: status === "failed" ? "GENERATION_FAILED" : null,
+    errorMessage: status === "failed" ? "에셋 생성에 실패했어요." : null,
+    error_message: status === "failed" ? "에셋 생성에 실패했어요." : null,
+    updatedAtMs: Date.parse(updatedAt),
+    updated_at_ms: Date.parse(updatedAt)
   };
 }
 
 function joinRoomState(room: RoomSummary, userId: string) {
   const players = roomPlayers.get(room.id) ?? new Set<string>();
+  const isHost = roomHosts.get(room.id) === undefined || roomHosts.get(room.id) === userId;
+
+  if (isHost && roomHosts.get(room.id) === undefined) {
+    roomHosts.set(room.id, userId);
+  }
+
   players.add(userId);
   roomPlayers.set(room.id, players);
   room.players = players.size;
+  setPlayerReady(room.id, userId, isHost);
 }
 
 function getRoomPlayerCount(roomId: string) {
   return roomPlayers.get(roomId)?.size ?? rooms.get(roomId)?.players ?? 0;
+}
+
+function canJoinRoomPhase(room: RoomSummary) {
+  if (room.phase === "lobby") {
+    return true;
+  }
+
+  if (room.phase !== "building" || room.phaseEndsAt === null) {
+    return false;
+  }
+
+  return Date.parse(room.phaseEndsAt) - Date.now() >= BUILD_LATE_JOIN_CUTOFF_MS;
+}
+
+function toRoomPlayers(roomId: string) {
+  const players = Array.from(roomPlayers.get(roomId) ?? []);
+  const hostId = roomHosts.get(roomId);
+  const readyPlayers = roomReadyPlayers.get(roomId) ?? new Set<string>();
+  const raceStates = racePlayerStates.get(roomId) ?? new Map<string, RacePlayerState>();
+
+  return players.map((userId) => {
+    const session = sessions.get(userId);
+    const raceState = raceStates.get(userId) ?? createDefaultRacePlayerState();
+    const isHost = hostId === userId;
+    const nickname = session?.nickname ?? (isHost ? rooms.get(roomId)?.hostNickname ?? "host" : "플레이어");
+
+    return {
+      userId,
+      user_id: userId,
+      nickname,
+      isHost,
+      is_host: isHost,
+      isReady: isHost || readyPlayers.has(userId),
+      is_ready: isHost || readyPlayers.has(userId),
+      validationCleared: raceState.validationCleared,
+      validation_cleared: raceState.validationCleared,
+      raceProgress: raceState.raceProgress,
+      race_progress: raceState.raceProgress,
+      raceFinishedAtMs: raceState.raceFinishedAtMs,
+      race_finished_at_ms: raceState.raceFinishedAtMs,
+      raceDistanceToGoal: raceState.raceDistanceToGoal,
+      race_distance_to_goal: raceState.raceDistanceToGoal
+    };
+  });
+}
+
+function setRoomPhase(room: RoomSummary, phase: RoomPhase, durationOverrideMs?: number) {
+  const durationMs = durationOverrideMs ?? ROOM_PHASE_DURATIONS_MS[phase];
+
+  room.phase = phase;
+  room.createdAt = Date.now();
+  room.phaseEndsAt = durationMs === null ? null : new Date(Date.now() + durationMs).toISOString();
+}
+
+function applyFirstFinishCountdown(room: RoomSummary, nowMs = Date.now()) {
+  room.createdAt = nowMs;
+  room.phaseEndsAt = new Date(nowMs + FIRST_FINISH_COUNTDOWN_MS).toISOString();
+}
+
+function setPlayerReady(roomId: string, userId: string, isReady: boolean) {
+  const readyPlayers = roomReadyPlayers.get(roomId) ?? new Set<string>();
+
+  if (isReady) {
+    readyPlayers.add(userId);
+  } else {
+    readyPlayers.delete(userId);
+  }
+
+  roomReadyPlayers.set(roomId, readyPlayers);
+}
+
+function resetRoomReadiness(roomId: string) {
+  roomReadyPlayers.set(roomId, new Set<string>());
+}
+
+function assignNextHost(room: RoomSummary) {
+  const nextHostId = roomPlayers.get(room.id)?.values().next().value as string | undefined;
+
+  if (nextHostId === undefined) {
+    return;
+  }
+
+  roomHosts.set(room.id, nextHostId);
+  setPlayerReady(room.id, nextHostId, true);
+  room.hostNickname = sessions.get(nextHostId)?.nickname ?? "host";
+}
+
+function canStartRoom(roomId: string) {
+  const players = Array.from(roomPlayers.get(roomId) ?? []);
+  const hostId = roomHosts.get(roomId);
+  const readyPlayers = roomReadyPlayers.get(roomId) ?? new Set<string>();
+
+  return players.length >= 2 && players.every((userId) => userId === hostId || readyPlayers.has(userId));
+}
+
+function isRoomPlayer(roomId: string, userId: string) {
+  return roomPlayers.get(roomId)?.has(userId) ?? false;
+}
+
+function hasEveryCurrentPlayerSubmitted(roomId: string) {
+  const players = Array.from(roomPlayers.get(roomId) ?? []);
+
+  return (
+    players.length > 0 &&
+    players.every((userId) =>
+      Array.from(segments.values()).some((segment) => segment.roomId === roomId && segment.creatorId === userId)
+    )
+  );
+}
+
+function hasEveryCurrentPlayerValidated(roomId: string) {
+  const players = Array.from(roomPlayers.get(roomId) ?? []);
+
+  return (
+    players.length > 0 &&
+    players.every((userId) =>
+      Array.from(segments.values()).some(
+        (segment) => segment.roomId === roomId && segment.creatorId === userId && segment.validatedAt !== null
+      )
+    )
+  );
+}
+
+function hasEveryCurrentPlayerFinished(roomId: string) {
+  const players = Array.from(roomPlayers.get(roomId) ?? []);
+  const raceStates = racePlayerStates.get(roomId) ?? new Map<string, RacePlayerState>();
+
+  return players.length > 0 && players.every((userId) => typeof raceStates.get(userId)?.raceFinishedAtMs === "number");
+}
+
+function hasAnyCurrentPlayerFinished(roomId: string) {
+  const raceStates = racePlayerStates.get(roomId) ?? new Map<string, RacePlayerState>();
+
+  return Array.from(roomPlayers.get(roomId) ?? []).some(
+    (userId) => typeof raceStates.get(userId)?.raceFinishedAtMs === "number"
+  );
+}
+
+function getRaceDurationMs(segmentCount: number) {
+  return Math.max(1, segmentCount) * RACE_MS_PER_LINE;
+}
+
+function setPlayerRaceState(roomId: string, userId: string, patch: Partial<RacePlayerState>) {
+  const raceStates = racePlayerStates.get(roomId) ?? new Map<string, RacePlayerState>();
+  const currentState = raceStates.get(userId) ?? createDefaultRacePlayerState();
+
+  raceStates.set(userId, {
+    ...currentState,
+    ...patch
+  });
+  racePlayerStates.set(roomId, raceStates);
+}
+
+function createDefaultRacePlayerState(): RacePlayerState {
+  return {
+    validationCleared: false,
+    raceProgress: 0,
+    raceFinishedAtMs: null,
+    raceDistanceToGoal: 100
+  };
+}
+
+function toRaceResult(roomId: string) {
+  const players = toRoomPlayers(roomId)
+    .map((player) => ({
+      userId: player.userId,
+      user_id: player.userId,
+      nickname: player.nickname,
+      isHost: player.isHost,
+      is_host: player.isHost,
+      isReady: player.isReady,
+      is_ready: player.isReady,
+      validationCleared: player.validationCleared,
+      validation_cleared: player.validationCleared,
+      raceProgress: player.raceProgress,
+      race_progress: player.raceProgress,
+      raceFinishedAtMs: player.raceFinishedAtMs,
+      race_finished_at_ms: player.raceFinishedAtMs,
+      raceDistanceToGoal: player.raceDistanceToGoal,
+      race_distance_to_goal: player.raceDistanceToGoal,
+      rank: 0
+    }))
+    .sort((left, right) => compareRacePlayers(left, right))
+    .map((player, index) => ({
+      ...player,
+      rank: index + 1
+    }));
+
+  return {
+    roomId,
+    room_id: roomId,
+    players
+  };
+}
+
+function compareRacePlayers(
+  left: ReturnType<typeof toRoomPlayers>[number] & { rank: number },
+  right: ReturnType<typeof toRoomPlayers>[number] & { rank: number }
+) {
+  if (left.raceFinishedAtMs !== null && right.raceFinishedAtMs !== null) {
+    return left.raceFinishedAtMs - right.raceFinishedAtMs;
+  }
+
+  if (left.raceFinishedAtMs !== null) {
+    return -1;
+  }
+
+  if (right.raceFinishedAtMs !== null) {
+    return 1;
+  }
+
+  return right.raceProgress - left.raceProgress;
 }
 
 function normalizeSegmentAsset(asset: z.infer<typeof segmentAssetSchema>): MapSegmentAssetSnapshot {
@@ -770,15 +1586,25 @@ function shuffleSegments<T>(values: T[]) {
 }
 
 function createSpriteJobs(category: AssetCategory, now: string): AssetSprite[] {
+  void now;
+
   if (category === "avatar" || category === "monster") {
     return [
-      { action: "idle", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: now },
-      { action: "walk", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: now },
-      { action: "onair", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: now }
+      { action: "idle", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: null },
+      { action: "walk", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: null },
+      { action: "onair", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: null }
     ];
   }
 
-  return [{ action: "static", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: now }];
+  return [{ action: "static", status: "queued", sheetUrl: null, frameCount: null, lastRegenAt: null }];
+}
+
+function normalizeSpriteAction(value: string) {
+  if (value === "idle" || value === "walk" || value === "onair" || value === "static") {
+    return value;
+  }
+
+  return null;
 }
 
 function inferColliderType(
@@ -934,10 +1760,12 @@ function seedDefaults() {
     maxPlayers: 4,
     phase: "lobby",
     elapsedSeconds: 0,
+    phaseEndsAt: null,
     createdAt: Date.now()
   };
 
   rooms.set(defaultRoom.id, defaultRoom);
   roomPlayers.set(defaultRoom.id, new Set(["system-host"]));
   roomHosts.set(defaultRoom.id, "system-host");
+  setPlayerReady(defaultRoom.id, "system-host", true);
 }
