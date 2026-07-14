@@ -53,6 +53,11 @@ git diff --check
 
 `npm run check:v2`는 브라우저 system dependency가 필요한 Playwright suite를 제외한 V2 token, design system, 화면, controller, remote adapter, backend, server, gpu-worker 검증을 묶어 실행합니다.
 
+Backend 운영 확인 endpoint:
+
+- `GET /health`: public liveness check. 내부 Qwen URL이나 secret 상태를 노출하지 않습니다.
+- `GET /ready`: sanitized readiness check. production에서 backend 필수 secret/config가 빠지면 `503`을 반환하고, 값 자체 대신 boolean/count만 제공합니다.
+
 Production 배포 직전에는 실제 env 파일 또는 배포 환경을 주입한 뒤 다음 검사를 실행합니다. 이 검사는 secret 값 자체를 출력하지 않고 missing/placeholder/localhost/simulate mode를 실패로 처리합니다.
 
 ```bash

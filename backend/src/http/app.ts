@@ -1,6 +1,6 @@
 import cors from "cors";
 import express from "express";
-import { env, parseCorsOrigins } from "../config/env.js";
+import { env, getBackendReadiness, parseCorsOrigins } from "../config/env.js";
 import { apiRoutes } from "./routes/apiRoutes.js";
 import { qwenRoutes } from "./routes/qwenRoutes.js";
 
@@ -17,9 +17,14 @@ export function createApp() {
   app.get("/health", (_req, res) => {
     res.json({
       ok: true,
-      service: "relay-map-maker-backend",
-      qwen_base_url: env.QWEN_BASE_URL
+      service: "relay-map-maker-backend"
     });
+  });
+
+  app.get("/ready", (_req, res) => {
+    const readiness = getBackendReadiness();
+
+    res.status(readiness.ok ? 200 : 503).json(readiness);
   });
 
   app.use("/api", apiRoutes);

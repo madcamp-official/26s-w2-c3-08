@@ -13,6 +13,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
 - Backend HTTP and Socket.IO now share the same comma-separated `CORS_ORIGIN` parser for single-origin and multi-origin deployments.
+- Backend `/health` is a non-sensitive liveness endpoint, while `/ready` exposes sanitized readiness booleans/counts and returns `503` when production backend-required secrets are missing.
 - Backend-internal Qwen proxy routes under `/internal/qwen/*` require `INTERNAL_API_TOKEN` in production and accept `X-Backend-Internal-Token` or bearer auth.
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.

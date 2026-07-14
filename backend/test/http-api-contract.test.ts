@@ -1,6 +1,6 @@
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseCorsOrigins } from "../src/config/env.js";
+import { getBackendReadiness, parseCorsOrigins } from "../src/config/env.js";
 import { createApp } from "../src/http/app.js";
 import { onApiAssetJobUpdated } from "../src/http/routes/apiRoutes.js";
 import { validateInternalRouteToken } from "../src/http/routes/qwenRoutes.js";
@@ -16,6 +16,77 @@ describe("V2 HTTP API contract", () => {
       "https://relay.example.test",
       "https://admin.example.test",
     ]);
+  });
+
+  it("keeps public health non-sensitive and exposes sanitized readiness", async () => {
+    const app = createApp();
+
+    const healthResponse = await request(app)
+      .get("/health")
+      .expect(200);
+
+    expect(healthResponse.body).toEqual({
+      ok: true,
+      service: "relay-map-maker-backend",
+    });
+    expect(healthResponse.body).not.toHaveProperty("qwen_base_url");
+
+    const readinessResponse = await request(app)
+      .get("/ready")
+      .expect(200);
+
+    expect(readinessResponse.body).toEqual(expect.objectContaining({
+      ok: true,
+      service: "relay-map-maker-backend",
+      environment: "test",
+    }));
+    expect(readinessResponse.body.checks).toEqual(expect.objectContaining({
+      corsOrigins: expect.any(Number),
+      qwenConfigured: expect.any(Boolean),
+      workerAuthConfigured: expect.any(Boolean),
+      internalAuthConfigured: expect.any(Boolean),
+      generatedAssetStaticServing: expect.any(Boolean),
+    }));
+    expect(JSON.stringify(readinessResponse.body)).not.toContain("172.10.5.138");
+  });
+
+  it("marks production readiness false when backend secrets are missing", () => {
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: "https://relay.example.test",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: undefined,
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: undefined,
+      INTERNAL_API_TOKEN: undefined,
+      IMAGE_STORAGE_DIR: undefined,
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: false,
+      environment: "production",
+    }));
+    expect(getBackendReadiness({
+      NODE_ENV: "production",
+      PORT: 3000,
+      CORS_ORIGIN: "https://relay.example.test,https://admin.example.test",
+      QWEN_BASE_URL: "http://qwen.internal:8001",
+      QWEN_API_TOKEN: "qwen-token-123456",
+      QWEN_TIMEOUT_MS: 45000,
+      WORKER_TOKEN: "worker-token-123456",
+      INTERNAL_API_TOKEN: "internal-token-123456",
+      IMAGE_STORAGE_DIR: "/srv/relay/generated-assets",
+      IMAGE_PUBLIC_PATH: "/generated-assets",
+    })).toEqual(expect.objectContaining({
+      ok: true,
+      checks: expect.objectContaining({
+        corsOrigins: 2,
+        qwenConfigured: true,
+        workerAuthConfigured: true,
+        internalAuthConfigured: true,
+        generatedAssetStaticServing: true,
+      }),
+    }));
   });
 
   it("requires backend internal auth for production Qwen proxy routes", () => {

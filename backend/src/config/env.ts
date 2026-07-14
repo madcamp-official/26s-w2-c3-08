@@ -18,6 +18,19 @@ const envSchema = z.object({
 
 export const env = envSchema.parse(process.env);
 
+export interface BackendReadiness {
+  ok: boolean;
+  service: "relay-map-maker-backend";
+  environment: "development" | "test" | "production";
+  checks: {
+    corsOrigins: number;
+    qwenConfigured: boolean;
+    workerAuthConfigured: boolean;
+    internalAuthConfigured: boolean;
+    generatedAssetStaticServing: boolean;
+  };
+}
+
 export function parseCorsOrigins(value: string): string | string[] {
   const origins = value
     .split(",")
@@ -27,10 +40,50 @@ export function parseCorsOrigins(value: string): string | string[] {
   return origins.length <= 1 ? origins[0] ?? value : [...new Set(origins)];
 }
 
+export function getBackendReadiness(currentEnv = env): BackendReadiness {
+  const production = currentEnv.NODE_ENV === "production";
+  const corsOrigins = parseCorsOrigins(currentEnv.CORS_ORIGIN);
+  const checks = {
+    corsOrigins: Array.isArray(corsOrigins) ? corsOrigins.length : 1,
+    qwenConfigured: isRealSecret(currentEnv.QWEN_API_TOKEN),
+    workerAuthConfigured: isRealSecret(currentEnv.WORKER_TOKEN),
+    internalAuthConfigured: isRealSecret(currentEnv.INTERNAL_API_TOKEN),
+    generatedAssetStaticServing: Boolean(currentEnv.IMAGE_STORAGE_DIR && currentEnv.IMAGE_PUBLIC_PATH)
+  };
+
+  return {
+    ok: production
+      ? checks.corsOrigins > 0 &&
+        checks.qwenConfigured &&
+        checks.workerAuthConfigured &&
+        checks.internalAuthConfigured
+      : true,
+    service: "relay-map-maker-backend",
+    environment: currentEnv.NODE_ENV,
+    checks
+  };
+}
+
 export function requireQwenToken(): string {
   if (!env.QWEN_API_TOKEN || env.QWEN_API_TOKEN.startsWith("<REAL_")) {
     throw new Error("QWEN_API_TOKEN is not configured with a real internal token");
   }
 
   return env.QWEN_API_TOKEN;
+}
+
+function isRealSecret(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.length > 0 &&
+    normalized !== "dev-worker-token" &&
+    !normalized.startsWith("<real_") &&
+    !normalized.includes("replace-with") &&
+    !normalized.includes("placeholder")
+  );
 }
