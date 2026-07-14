@@ -53,6 +53,15 @@ git diff --check
 
 `npm run check:v2`는 브라우저 system dependency가 필요한 Playwright suite를 제외한 V2 token, design system, 화면, controller, remote adapter, backend, server, gpu-worker 검증을 묶어 실행합니다.
 
+Production 배포 직전에는 실제 env 파일 또는 배포 환경을 주입한 뒤 다음 검사를 실행합니다. 이 검사는 secret 값 자체를 출력하지 않고 missing/placeholder/localhost/simulate mode를 실패로 처리합니다.
+
+```bash
+npm run check:production-env -- \
+  --client-env-file client/.env.production \
+  --backend-env-file backend/.env.production \
+  --gpu-worker-env-file gpu-worker/.env.production
+```
+
 ### 환경 변수
 
 | 변수 | 기본값 | 설명 |
@@ -81,6 +90,13 @@ git diff --check
 | `IMAGE_PUBLIC_BASE_URL` | unset | gpu-worker가 저장된 파일을 public URL로 반환할 때 사용하는 base URL입니다. |
 
 실제 Qwen/WAN credentials, 이미지 저장소, 배포 환경 값은 production 배포 단계에서 주입한다. 현재 V2 production authority는 `backend/`이며, `server/`/Colyseus는 대체 transport와 AI/API 실험 검증용 workspace로 유지한다.
+
+`npm run check:production-env`는 다음 production readiness를 확인한다.
+
+- client: `VITE_DATA_MODE=remote`, `VITE_REALTIME_MODE=remote`, 선택적 `VITE_SOCKET_IO_URL`.
+- backend: `NODE_ENV=production`, public `CORS_ORIGIN`, real `WORKER_TOKEN`, Qwen token, generated image static path.
+- gpu-worker: backend `SERVER_URL`, backend와 동일한 `WORKER_TOKEN`, `GPU_WORKER_SIMULATE=false`, Qwen/WAN 또는 explicit gateway credentials, generated image public URL.
+- cross-service: backend/gpu-worker `WORKER_TOKEN` 일치와 generated image URL/path 정합성.
 
 ### 참고 문서
 
@@ -240,7 +256,7 @@ npm run check:v2
 | 핵심 기술 | Vite, React, TypeScript, Phaser, Zustand |
 | 실행 환경 | Node.js, npm, Cloudflare Tunnel |
 | 데이터 저장 | V2 mock/localStorage, backend in-memory REST, GPU worker job claim/result contract |
-| 외부 API / 서비스 | backend Socket.IO 계약, BroadcastChannel local realtime, Qwen prompt refinement, GPU generation gateway scaffold |
+| 외부 API / 서비스 | backend Socket.IO 계약, BroadcastChannel local realtime, Qwen prompt refinement, WAN sprite generation, explicit gateway compatibility mode |
 | 기타 | `react-sketch-canvas`, Oxlint |
 
 ---

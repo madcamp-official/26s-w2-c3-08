@@ -17,6 +17,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
 - GPU worker generation mode defaults to Qwen prompt refinement followed by WAN sprite generation. A single internal generation gateway remains available only through explicit `GPU_WORKER_GENERATION_MODE=gateway`.
 - Generated image data URLs can be materialized into a shared local/static directory through `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_PATH`, and `IMAGE_PUBLIC_BASE_URL`.
+- Production readiness for client/backend/gpu-worker environment values is checked by `npm run check:production-env`; `npm run check:v2` runs the checker self-test without requiring real secrets.
 
 ## Evidence Collected
 
@@ -36,6 +37,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run test:accessibility --workspace client` | PASS, 10 browser accessibility tests |
 | `npm run test:studio-game-screenshots --workspace client` | PASS, 114 evidence screenshots |
 | `npm run test:drawing-browser --workspace client` | PASS |
+| `npm run check:production-env:self-test` | PASS |
 
 Notes:
 
@@ -43,6 +45,7 @@ Notes:
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 - Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and a shared-directory image materialization path covered by contract self-tests. The final production credentials and storage values are still deferred.
+- Production env readiness now fails closed on missing/placeholder credentials, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
 
 ## Updated Blocker Status
 
@@ -66,11 +69,12 @@ Notes:
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
 - Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Shared-directory image storage is wired for local/shared-volume deployment; object storage credentials and URLs remain a deployment decision.
+- Production env values should be checked with `npm run check:production-env -- --client-env-file client/.env.production --backend-env-file backend/.env.production --gpu-worker-env-file gpu-worker/.env.production` before any default V2 entry switch.
 - Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for asset jobs.
 
 ## Next Recommended Work
 
 1. Decide whether to add full-matrix axe accessibility coverage before the default V2 switch or track it as post-switch hardening.
 2. Confirm drawing browser acceptance in CI/pinned environment and then update `drawing-engine-adr` status if it passes there.
-3. Add deployment documentation for the `backend/` production authority and required AI/storage environment variables before default entry switch.
+3. Run `npm run check:production-env` with the final deployment env files once Qwen/WAN credentials, worker token, client origin, and storage URLs are available.
 4. Review and approve visual evidence before creating or updating golden baselines.
