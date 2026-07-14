@@ -67,6 +67,8 @@ npm run check:production-env -- \
   --gpu-worker-env-file gpu-worker/.env.production
 ```
 
+배포 담당자가 채워야 할 값과 검증 순서는 [production handoff checklist](docs/frontend-v2/reports/07-production-handoff-checklist.md)에 정리되어 있습니다.
+
 ### 환경 변수
 
 | 변수 | 기본값 | 설명 |

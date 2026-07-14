@@ -52,7 +52,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run test:drawing-browser --workspace client` | PASS |
 | `npm run check:production-env:self-test` | PASS |
 | `.github/workflows/drawing-engine-browser.yml` | PASS on GitHub Actions run `29349726560` |
-| `.github/workflows/frontend-v2-browser-gates.yml` | PASS on GitHub Actions run `29350348074`, including `V2 Aggregate Check` and `V2 Browser Evidence` |
+| `.github/workflows/frontend-v2-browser-gates.yml` | PASS on GitHub Actions head run `29351187605`, including `V2 Aggregate Check` and `V2 Browser Evidence` |
 
 Notes:
 
@@ -87,7 +87,7 @@ Notes:
 - Drawing browser acceptance now passes locally and in pinned GitHub Actions; `drawing-engine-adr` is ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
 - Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Generated image storage can use local/shared-volume deployment or an HTTP PUT object-storage gateway; actual storage credentials and URLs remain deployment inputs.
-- Production env values should be checked with `npm run check:production-env -- --client-env-file client/.env.production --backend-env-file backend/.env.production --gpu-worker-env-file gpu-worker/.env.production` before any default V2 entry switch.
+- Production env values should be prepared from `client/.env.example`, `backend/.env.example`, and `gpu-worker/.env.example`, then checked with `npm run check:production-env -- --client-env-file client/.env.production --backend-env-file backend/.env.production --gpu-worker-env-file gpu-worker/.env.production` before any default V2 entry switch. The handoff checklist is `docs/frontend-v2/reports/07-production-handoff-checklist.md`.
 - Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for session-wide asset jobs; `/api/assets/generation-jobs/:jobId` is available for direct job snapshots when a controller tracks a specific job id.
 
 ## Next Recommended Work
