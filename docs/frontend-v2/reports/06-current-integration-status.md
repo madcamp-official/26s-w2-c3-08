@@ -17,6 +17,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - Backend-internal Qwen proxy routes under `/internal/qwen/*` require `INTERNAL_API_TOKEN` in production and accept `X-Backend-Internal-Token` or bearer auth.
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
 - User-generated `item` assets are rejected by `/api/assets/generate` with `ASSET_CATEGORY_NOT_ALLOWED`; backend system item seeds remain available for gameplay placement.
+- Avatar generation primary path `/api/assets/avatar/generate` is implemented for FormData/JSON and rejects non-avatar categories with `ASSET_CATEGORY_MISMATCH`; `/api/assets/generate` remains the generic compatibility endpoint.
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
 - Worker completion now requires the active `x-worker-id` lease. Expired leases are recovered before claim/list refresh, and stale worker completions return typed `409` errors instead of overwriting a re-claimed job.
@@ -35,7 +36,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run lobby-room:check --workspace client` | PASS |
 | `npm run game:check --workspace client` | PASS |
 | `npm run flow:check --workspace client` | PASS |
-| `npm run test --prefix backend` | PASS, includes user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, and stale result rejection |
+| `npm run test --prefix backend` | PASS, includes avatar-specific FormData generation, category mismatch rejection, user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, and stale result rejection |
 | `npm run typecheck --prefix backend` | PASS |
 | `npm run check:v2` | PASS |
 | `npm run check --prefix gpu-worker` | PASS |
@@ -53,7 +54,7 @@ Notes:
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
-- Backend asset generation now has direct asset job status lookup, a worker claim/result contract, active worker-id lease validation, expired lease recovery, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
+- Backend asset generation now has avatar-specific FormData/JSON generation, generic asset FormData/JSON generation, direct asset job status lookup, a worker claim/result contract, active worker-id lease validation, expired lease recovery, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
 - Production env readiness now fails closed on missing/placeholder credentials, missing backend `INTERNAL_API_TOKEN`, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
 - Production env readiness accepts comma-separated public `CORS_ORIGIN` values and validates each origin independently.
 - CI is configured to run `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container. This does not replace the need to confirm the first hosted Actions run.

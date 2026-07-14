@@ -69,7 +69,7 @@
 
 | ID | Item | Status |
 |---|---|---|
-| TBD-CONTRACT-PD-001 | Asset generation backend가 `/api/assets/generate` 단일 endpoint를 유지할지, avatar-specific endpoint를 추가할지 결정 필요. | TBD-CONTRACT |
+| TBD-CONTRACT-PD-001 | Asset generation backend가 `/api/assets/generate` 단일 endpoint를 유지할지, avatar-specific endpoint를 추가할지 결정 필요. | RESOLVED: keep `/api/assets/generate` as the generic asset endpoint and add `/api/assets/avatar/generate` as the avatar-specific FormData/JSON endpoint used by the current client adapter primary path. |
 | TBD-CONTRACT-PD-002 | Asset job push event `asset_job:updated`를 backend Socket.IO worker가 언제/어떤 payload로 emit할지 결정 필요. | RESOLVED: `backend/src/socket/index.ts` broadcasts `asset_job:updated` from `apiRoutes.ts emitAssetJobUpdated`; direct REST job lookup exists at `/api/assets/generation-jobs/:jobId`. |
 | TBD-CONTRACT-PD-003 | nickname update가 local session만 바꾸는지 remote `users.nickname` update를 추가하는지 결정 필요. | TBD-CONTRACT |
 | TBD-CONTRACT-PD-004 | `design/tokens.json` schema와 Figma variable collection naming 결정 필요. | TBD-CONTRACT |

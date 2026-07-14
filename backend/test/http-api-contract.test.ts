@@ -160,6 +160,18 @@ describe("V2 HTTP API contract", () => {
 
     expect(rejectedItemResponse.body.error.code).toBe("ASSET_CATEGORY_NOT_ALLOWED");
 
+    const rejectedMultipartItemResponse = await request(app)
+      .post("/api/assets/generate")
+      .set("Authorization", `Bearer ${session.token}`)
+      .field("user_id", session.id)
+      .field("asset_type", "ITEM")
+      .field("name", "사용자 폼 아이템")
+      .field("attrs", "{}")
+      .attach("image", Buffer.from("item-image"), { filename: "item.png", contentType: "image/png" })
+      .expect(400);
+
+    expect(rejectedMultipartItemResponse.body.error.code).toBe("ASSET_CATEGORY_NOT_ALLOWED");
+
     const assetsWithSystemItemsResponse = await request(app)
       .get(`/api/assets?user_id=${encodeURIComponent(session.id)}`)
       .set("Authorization", `Bearer ${session.token}`)
@@ -174,6 +186,46 @@ describe("V2 HTTP API contract", () => {
         }),
       ]),
     );
+
+    const avatarUpload = Buffer.from("avatar-image");
+    const avatarFormResponse = await request(app)
+      .post("/api/assets/avatar/generate")
+      .set("Authorization", `Bearer ${session.token}`)
+      .field("user_id", session.id)
+      .field("user_prompt", "폼 업로드 아바타")
+      .field("name", "폼 아바타")
+      .field("attrs", JSON.stringify({ tone: "bright" }))
+      .field("width_cells", "")
+      .field("height_cells", "")
+      .attach("image", avatarUpload, { filename: "avatar.png", contentType: "image/png" })
+      .expect(202);
+
+    expect(avatarFormResponse.body.asset).toEqual(
+      expect.objectContaining({
+        category: "avatar",
+        name: "폼 아바타",
+        description: "폼 업로드 아바타",
+        attrs: { tone: "bright" },
+        widthCells: null,
+        heightCells: null,
+        sourceImageUrl: `data:image/png;base64,${avatarUpload.toString("base64")}`,
+        status: "queued",
+      }),
+    );
+    expect(avatarFormResponse.body.job.outputAssetId).toBe(avatarFormResponse.body.asset.id);
+
+    const avatarCategoryMismatchResponse = await request(app)
+      .post("/api/assets/avatar/generate")
+      .set("Authorization", `Bearer ${session.token}`)
+      .send({
+        user_id: session.id,
+        category: "platform",
+        name: "플랫폼",
+        image: "data:image/png;base64,AA==",
+      })
+      .expect(400);
+
+    expect(avatarCategoryMismatchResponse.body.error.code).toBe("ASSET_CATEGORY_MISMATCH");
 
     const avatarResponse = await request(app)
       .post("/api/assets/generate")

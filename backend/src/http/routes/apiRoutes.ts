@@ -1,10 +1,12 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 
 type AssetCategory = "avatar" | "platform" | "obstacle" | "monster" | "background" | "item";
 type AssetStatus = "queued" | "generating" | "ready" | "failed";
 type RoomPhase = "lobby" | "building" | "validating" | "merging" | "racing" | "finished";
+type AssetAttrs = Record<string, string | number | boolean | null>;
 
 interface UserSession {
   id: string;
@@ -133,6 +135,14 @@ type AssetJobUpdateListener = (job: AssetJobUpdatePayload) => void;
 const DEVICE_LINK_TTL_MS = 5 * 60 * 1000;
 const ACTION_REGEN_COOLDOWN_MS = 5 * 60 * 1000;
 const ASSET_JOB_LEASE_MS = 2 * 60 * 1000;
+const ASSET_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const assetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: ASSET_IMAGE_MAX_BYTES,
+    files: 1
+  }
+});
 export const RACE_MS_PER_LINE = 40 * 1000;
 export const FIRST_FINISH_COUNTDOWN_MS = 10 * 1000;
 export const LAST_DANCE_MS = 30 * 1000;
@@ -635,48 +645,12 @@ apiRoutes.post("/ai/jobs/:jobId/result", (req, res) => {
   res.json({ ok: true, job: toAssetJob(result.asset, result.sprite), asset: result.asset });
 });
 
-apiRoutes.post("/assets/generate", (req, res) => {
-  const body = parseBody(assetGenerateSchema, req.body, res);
+apiRoutes.post("/assets/avatar/generate", assetUpload.single("image"), (req, res) => {
+  handleAssetGenerate(req, res, "avatar");
+});
 
-  if (body === null) {
-    return;
-  }
-
-  const userId = body.userId ?? body.user_id ?? null;
-
-  if (body.category === "item") {
-    res.status(400).json({
-      ok: false,
-      error: {
-        code: "ASSET_CATEGORY_NOT_ALLOWED",
-        message: "item assets are system-provided and cannot be user-generated"
-      }
-    });
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const asset: Asset = {
-    id: crypto.randomUUID(),
-    creatorId: userId,
-    isSystem: false,
-    category: body.category,
-    name: body.name ?? (body.category === "avatar" ? "새 아바타" : "새 에셋"),
-    description: body.description ?? body.prompt ?? "",
-    attrs: body.attrs,
-    colliderType: inferColliderType(body.category, body.attrs),
-    widthCells: body.widthCells ?? body.width_cells ?? null,
-    heightCells: body.heightCells ?? body.height_cells ?? null,
-    sourceImageUrl: body.image,
-    remixOfId: body.remixOfId ?? body.remix_of_id ?? null,
-    status: "queued",
-    isPublic: true,
-    createdAt: now,
-    sprites: createSpriteJobs(body.category, now)
-  };
-
-  assets.set(asset.id, asset);
-  res.status(202).json({ ok: true, asset, job: toAssetJob(asset, null) });
+apiRoutes.post("/assets/generate", assetUpload.single("image"), (req, res) => {
+  handleAssetGenerate(req, res);
 });
 
 apiRoutes.post("/assets/:assetId/equip-avatar", (req, res) => {
@@ -1212,6 +1186,332 @@ function parseBody<T extends z.ZodTypeAny>(
     }
   });
   return null;
+}
+
+type AssetGenerateNormalizationError = {
+  ok: false;
+  status: number;
+  code: string;
+  message: string;
+  details?: unknown;
+};
+type AssetGenerateNormalizationResult = { ok: true; body: Record<string, unknown> } | AssetGenerateNormalizationError;
+
+function handleAssetGenerate(req: Request, res: Response, forcedCategory?: AssetCategory) {
+  const normalized = normalizeAssetGenerateRequest(req, forcedCategory);
+
+  if (!normalized.ok) {
+    res.status(normalized.status).json({
+      ok: false,
+      error: {
+        code: normalized.code,
+        message: normalized.message,
+        details: normalized.details
+      }
+    });
+    return;
+  }
+
+  const body = parseBody(assetGenerateSchema, normalized.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const userId = body.userId ?? body.user_id ?? null;
+
+  if (body.category === "item") {
+    res.status(400).json({
+      ok: false,
+      error: {
+        code: "ASSET_CATEGORY_NOT_ALLOWED",
+        message: "item assets are system-provided and cannot be user-generated"
+      }
+    });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const asset: Asset = {
+    id: crypto.randomUUID(),
+    creatorId: userId,
+    isSystem: false,
+    category: body.category,
+    name: body.name ?? (body.category === "avatar" ? "새 아바타" : "새 에셋"),
+    description: body.description ?? body.prompt ?? "",
+    attrs: body.attrs,
+    colliderType: inferColliderType(body.category, body.attrs),
+    widthCells: body.widthCells ?? body.width_cells ?? null,
+    heightCells: body.heightCells ?? body.height_cells ?? null,
+    sourceImageUrl: body.image,
+    remixOfId: body.remixOfId ?? body.remix_of_id ?? null,
+    status: "queued",
+    isPublic: true,
+    createdAt: now,
+    sprites: createSpriteJobs(body.category, now)
+  };
+
+  assets.set(asset.id, asset);
+  res.status(202).json({ ok: true, asset, job: toAssetJob(asset, null) });
+}
+
+function normalizeAssetGenerateRequest(req: Request, forcedCategory?: AssetCategory): AssetGenerateNormalizationResult {
+  const input = isRecord(req.body) ? req.body : {};
+  const normalized: Record<string, unknown> = { ...input };
+  const userId = readBodyString(input.userId) ?? readBodyString(input.user_id);
+  const userPrompt = readBodyString(input.user_prompt);
+  const rawCategory = readBodyString(input.category);
+  const rawAssetType = readBodyString(input.asset_type);
+  const category = normalizeAssetCategory(rawCategory) ?? normalizeBackendAssetType(rawAssetType);
+  const hasSubmittedCategory = rawCategory !== undefined || rawAssetType !== undefined;
+
+  if (hasSubmittedCategory && category === undefined) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_ASSET_CATEGORY",
+      message: "asset category did not match the API contract"
+    };
+  }
+
+  if (forcedCategory !== undefined && category !== undefined && category !== forcedCategory) {
+    return {
+      ok: false,
+      status: 400,
+      code: "ASSET_CATEGORY_MISMATCH",
+      message: "avatar generation endpoint only accepts avatar assets"
+    };
+  }
+
+  if (userId !== undefined) {
+    normalized.userId = userId;
+    normalized.user_id = userId;
+  }
+
+  if (userPrompt !== undefined && readBodyString(input.description) === undefined) {
+    normalized.description = userPrompt;
+  }
+
+  if (userPrompt !== undefined && readBodyString(input.prompt) === undefined) {
+    normalized.prompt = userPrompt;
+  }
+
+  normalized.category = forcedCategory ?? category ?? normalized.category;
+
+  const attrs = normalizeAssetAttrs(input.attrs);
+
+  if (!attrs.ok) {
+    return attrs;
+  }
+
+  if (attrs.hasValue) {
+    normalized.attrs = attrs.value;
+  }
+
+  const widthCells = normalizeNullableNumber(input.widthCells ?? input.width_cells);
+
+  if (!widthCells.ok) {
+    return widthCells;
+  }
+
+  if (widthCells.hasValue) {
+    normalized.widthCells = widthCells.value;
+    normalized.width_cells = widthCells.value;
+  }
+
+  const heightCells = normalizeNullableNumber(input.heightCells ?? input.height_cells);
+
+  if (!heightCells.ok) {
+    return heightCells;
+  }
+
+  if (heightCells.hasValue) {
+    normalized.heightCells = heightCells.value;
+    normalized.height_cells = heightCells.value;
+  }
+
+  const remixOfId = normalizeNullableString(input.remixOfId ?? input.remix_of_id);
+
+  if (remixOfId.hasValue) {
+    normalized.remixOfId = remixOfId.value;
+    normalized.remix_of_id = remixOfId.value;
+  }
+
+  if (req.file !== undefined) {
+    const image = imageUploadToDataUrl(req.file);
+
+    if (!image.ok) {
+      return image;
+    }
+
+    normalized.image = image.value;
+  }
+
+  return { ok: true, body: normalized };
+}
+
+type NormalizedValue<T> =
+  | { ok: true; hasValue: false }
+  | { ok: true; hasValue: true; value: T }
+  | AssetGenerateNormalizationError;
+
+function normalizeAssetAttrs(value: unknown): NormalizedValue<AssetAttrs> {
+  const scalar = readBodyScalar(value);
+
+  if (scalar === undefined) {
+    return { ok: true, hasValue: false };
+  }
+
+  if (typeof scalar === "string") {
+    const text = scalar.trim();
+
+    if (text.length === 0) {
+      return { ok: true, hasValue: true, value: {} };
+    }
+
+    try {
+      return validateAssetAttrs(JSON.parse(text));
+    } catch (error) {
+      return {
+        ok: false,
+        status: 400,
+        code: "INVALID_ASSET_ATTRS",
+        message: "asset attrs must be a JSON object",
+        details: error instanceof Error ? error.message : undefined
+      };
+    }
+  }
+
+  return validateAssetAttrs(scalar);
+}
+
+function validateAssetAttrs(value: unknown): NormalizedValue<AssetAttrs> {
+  const parsed = assetAttrsSchema.safeParse(value);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_ASSET_ATTRS",
+      message: "asset attrs did not match the API contract",
+      details: parsed.error.flatten()
+    };
+  }
+
+  return { ok: true, hasValue: true, value: parsed.data };
+}
+
+function normalizeNullableNumber(value: unknown): NormalizedValue<number | null> {
+  const scalar = readBodyScalar(value);
+
+  if (scalar === undefined) {
+    return { ok: true, hasValue: false };
+  }
+
+  if (typeof scalar === "number") {
+    return { ok: true, hasValue: true, value: scalar };
+  }
+
+  if (typeof scalar === "string") {
+    const text = scalar.trim();
+
+    if (text.length === 0) {
+      return { ok: true, hasValue: true, value: null };
+    }
+
+    const number = Number(text);
+
+    if (Number.isFinite(number)) {
+      return { ok: true, hasValue: true, value: number };
+    }
+  }
+
+  return {
+    ok: false,
+    status: 400,
+    code: "INVALID_ASSET_DIMENSION",
+    message: "asset dimensions must be numeric"
+  };
+}
+
+function normalizeNullableString(value: unknown): { hasValue: false } | { hasValue: true; value: string | null } {
+  const scalar = readBodyScalar(value);
+
+  if (scalar === undefined) {
+    return { hasValue: false };
+  }
+
+  if (typeof scalar !== "string") {
+    return { hasValue: false };
+  }
+
+  const text = scalar.trim();
+  return { hasValue: true, value: text.length > 0 ? text : null };
+}
+
+function imageUploadToDataUrl(file: Express.Multer.File): { ok: true; value: string } | AssetGenerateNormalizationError {
+  if (!file.mimetype.startsWith("image/")) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_ASSET_IMAGE",
+      message: "asset image upload must be an image"
+    };
+  }
+
+  return { ok: true, value: `data:${file.mimetype};base64,${file.buffer.toString("base64")}` };
+}
+
+function normalizeAssetCategory(value: string | undefined): AssetCategory | undefined {
+  const normalized = value?.trim().toLowerCase();
+
+  if (
+    normalized === "avatar" ||
+    normalized === "platform" ||
+    normalized === "obstacle" ||
+    normalized === "monster" ||
+    normalized === "background" ||
+    normalized === "item"
+  ) {
+    return normalized;
+  }
+
+  return undefined;
+}
+
+function normalizeBackendAssetType(value: string | undefined): AssetCategory | undefined {
+  switch (value?.trim().toUpperCase()) {
+    case "AVATAR":
+      return "avatar";
+    case "TERRAIN":
+    case "PLATFORM":
+      return "platform";
+    case "DEVICE":
+    case "OBSTACLE":
+      return "obstacle";
+    case "ENEMY":
+    case "MONSTER":
+      return "monster";
+    case "BACKGROUND":
+      return "background";
+    case "ITEM":
+      return "item";
+    default:
+      return undefined;
+  }
+}
+
+function readBodyString(value: unknown) {
+  const scalar = readBodyScalar(value);
+  return typeof scalar === "string" ? scalar : undefined;
+}
+
+function readBodyScalar(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toRoomSummary(room: RoomSummary) {

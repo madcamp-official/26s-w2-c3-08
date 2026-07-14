@@ -39,10 +39,10 @@
 | ID | C-003 |
 | 주제 | Asset 생성 API path 충돌 |
 | 문서 기준 | `docs/KJH/screen-design.md`는 아바타 생성 `[생성하기]`가 `POST /assets`라고 기록. `docs/LSJ/backend.md`는 `POST /assets/avatar/generate`, `POST /assets/generate`를 기록 |
-| 코드 기준 | frontend는 `/api/assets/avatar/generate`를 avatar primary로 시도하고 fallback `/api/assets/generate`를 사용. backend는 `/api/assets/generate`만 구현 |
-| 영향 | remote mode에서 avatar primary request는 404 후 fallback 될 수 있다. 오류 처리 UI가 원인을 알기 어렵다 |
-| 권장안 | V2 UI는 path를 알지 않게 하고 `client/src/net/api.ts` adapter action만 사용. Backend 최종 path는 `/api/assets/generate` 단일 또는 `/api/assets/avatar/generate` 추가 중 하나로 결정 |
-| 상태 | OPEN |
+| 코드 기준 | frontend는 `/api/assets/avatar/generate`를 avatar primary로 시도하고 fallback `/api/assets/generate`를 사용. backend는 `/api/assets/avatar/generate`와 `/api/assets/generate`를 모두 구현 |
+| 영향 | RESOLVED: avatar primary request no longer 404s; generic endpoint remains for compatibility |
+| 권장안 | V2 UI는 path를 알지 않게 하고 `client/src/net/api.ts` adapter action만 사용. Backend 최종 path는 avatar-specific `/api/assets/avatar/generate` plus generic `/api/assets/generate`로 확정 |
+| 상태 | RESOLVED |
 
 ## C-004
 
