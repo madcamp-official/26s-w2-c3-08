@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { env } from "../../config/env.js";
 
 type AssetCategory = "avatar" | "platform" | "obstacle" | "monster" | "background" | "item";
 type AssetStatus = "queued" | "generating" | "ready" | "failed";
@@ -121,8 +122,14 @@ interface DeviceLinkTicket {
   expiresAt: string;
 }
 
+interface AssetJobLease {
+  leasedBy: string;
+  leaseExpiresAtMs: number;
+}
+
 const DEVICE_LINK_TTL_MS = 5 * 60 * 1000;
 const ACTION_REGEN_COOLDOWN_MS = 5 * 60 * 1000;
+const ASSET_JOB_LEASE_MS = 2 * 60 * 1000;
 export const RACE_MS_PER_LINE = 40 * 1000;
 export const FIRST_FINISH_COUNTDOWN_MS = 10 * 1000;
 export const LAST_DANCE_MS = 30 * 1000;
@@ -147,6 +154,7 @@ const segments = new Map<string, MapSegmentSnapshot>();
 const mergedMaps = new Map<string, MergedMap>();
 const racePlayerStates = new Map<string, Map<string, RacePlayerState>>();
 const deviceLinks = new Map<string, DeviceLinkTicket>();
+const assetJobLeases = new Map<string, AssetJobLease>();
 
 export function ensureApiRoomForRealtime(roomId: string, nickname?: string) {
   const existingRoom = rooms.get(roomId);
@@ -337,6 +345,18 @@ const assetGenerateSchema = z.object({
   height_cells: z.number().int().min(1).max(8).nullable().optional(),
   remixOfId: z.string().nullable().optional(),
   remix_of_id: z.string().nullable().optional()
+});
+
+const workerResultSchema = z.object({
+  status: z.enum(["ready", "failed"]),
+  sheetUrl: z.string().min(1).optional(),
+  sheet_url: z.string().min(1).optional(),
+  sourceImageUrl: z.string().min(1).optional(),
+  source_image_url: z.string().min(1).optional(),
+  errorCode: z.string().min(1).nullable().optional(),
+  error_code: z.string().min(1).nullable().optional(),
+  errorMessage: z.string().min(1).nullable().optional(),
+  error_message: z.string().min(1).nullable().optional()
 });
 
 const createRoomSchema = z.object({
@@ -538,6 +558,49 @@ apiRoutes.get("/asset-jobs", (req, res) => {
     ok: true,
     jobs: listAssetJobs(userId)
   });
+});
+
+apiRoutes.get("/ai/jobs/next", (req, res) => {
+  if (!requireWorker(req, res)) {
+    return;
+  }
+
+  const workerId = readHeaderString(req.headers["x-worker-id"]) ?? "gpu-worker";
+  const claimedJob = claimNextAssetJob(workerId);
+
+  if (claimedJob === null) {
+    res.status(204).send();
+    return;
+  }
+
+  res.json({ ok: true, job: toWorkerJob(claimedJob.asset, claimedJob.sprite) });
+});
+
+apiRoutes.post("/ai/jobs/:jobId/result", (req, res) => {
+  if (!requireWorker(req, res)) {
+    return;
+  }
+
+  const body = parseBody(workerResultSchema, req.body, res);
+
+  if (body === null) {
+    return;
+  }
+
+  const result = completeAssetJob(req.params.jobId, {
+    status: body.status,
+    sheetUrl: body.sheetUrl ?? body.sheet_url ?? null,
+    sourceImageUrl: body.sourceImageUrl ?? body.source_image_url ?? null,
+    errorCode: body.errorCode ?? body.error_code ?? null,
+    errorMessage: body.errorMessage ?? body.error_message ?? null
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ ok: false, error: { code: result.code, message: result.message } });
+    return;
+  }
+
+  res.json({ ok: true, job: toAssetJob(result.asset, result.sprite), asset: result.asset });
 });
 
 apiRoutes.post("/assets/generate", (req, res) => {
@@ -1149,6 +1212,41 @@ function readBearerToken(req: { headers: { authorization?: string | string[] } }
   return scheme?.toLowerCase() === "bearer" && token ? token : undefined;
 }
 
+function readHeaderString(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0]?.trim() || undefined;
+  }
+
+  return value?.trim() || undefined;
+}
+
+function requireWorker(
+  req: { headers: { authorization?: string | string[]; "x-worker-token"?: string | string[] } },
+  res: { status: (code: number) => { json: (body: unknown) => void } }
+) {
+  const expectedToken = env.WORKER_TOKEN ?? (env.NODE_ENV === "production" ? undefined : "dev-worker-token");
+
+  if (expectedToken === undefined) {
+    res.status(503).json({
+      ok: false,
+      error: { code: "WORKER_TOKEN_MISSING", message: "worker token is required" }
+    });
+    return false;
+  }
+
+  const providedToken = readBearerToken(req) ?? readHeaderString(req.headers["x-worker-token"]);
+
+  if (providedToken !== expectedToken) {
+    res.status(401).json({
+      ok: false,
+      error: { code: "WORKER_AUTHENTICATION_FAILED", message: "worker authentication failed" }
+    });
+    return false;
+  }
+
+  return true;
+}
+
 function getSessionByToken(token: string | undefined) {
   if (token === undefined) {
     return null;
@@ -1195,6 +1293,131 @@ function queueAssetGeneration(asset: Asset, now: Date) {
   }));
 }
 
+function claimNextAssetJob(workerId: string) {
+  const nowMs = Date.now();
+
+  for (const asset of assets.values()) {
+    if (asset.isSystem || asset.status === "ready" || asset.status === "failed") {
+      continue;
+    }
+
+    const wholeAssetJob = toAssetJob(asset, null);
+
+    if (isWholeAssetGenerationPending(asset) && canLeaseAssetJob(wholeAssetJob.id, nowMs)) {
+      asset.status = "generating";
+      assetJobLeases.set(wholeAssetJob.id, { leasedBy: workerId, leaseExpiresAtMs: nowMs + ASSET_JOB_LEASE_MS });
+      return { asset, sprite: null };
+    }
+
+    for (const sprite of asset.sprites) {
+      const spriteJob = toAssetJob(asset, sprite);
+
+      if ((sprite.status === "queued" || sprite.status === "generating") && canLeaseAssetJob(spriteJob.id, nowMs)) {
+        asset.status = "generating";
+        sprite.status = "generating";
+        sprite.lastRegenAt = new Date(nowMs).toISOString();
+        assetJobLeases.set(spriteJob.id, { leasedBy: workerId, leaseExpiresAtMs: nowMs + ASSET_JOB_LEASE_MS });
+        return { asset, sprite };
+      }
+    }
+  }
+
+  return null;
+}
+
+function completeAssetJob(
+  jobId: string,
+  payload: {
+    status: "ready" | "failed";
+    sheetUrl: string | null;
+    sourceImageUrl: string | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+  }
+) {
+  const target = resolveAssetJob(jobId);
+
+  if (target === null) {
+    return {
+      ok: false as const,
+      status: 404,
+      code: "ASSET_JOB_NOT_FOUND",
+      message: "asset job not found"
+    };
+  }
+
+  const { asset, sprite } = target;
+  const now = new Date().toISOString();
+  assetJobLeases.delete(jobId);
+
+  if (payload.status === "failed") {
+    if (sprite === null) {
+      asset.status = "failed";
+      asset.sprites = asset.sprites.map((candidateSprite) => ({
+        ...candidateSprite,
+        status: candidateSprite.status === "ready" ? "ready" : "failed"
+      }));
+    } else {
+      sprite.status = "failed";
+      sprite.lastRegenAt = now;
+      asset.status = "failed";
+    }
+
+    return { ok: true as const, asset, sprite };
+  }
+
+  const outputUrl = payload.sheetUrl ?? payload.sourceImageUrl ?? asset.sourceImageUrl;
+
+  if (payload.sourceImageUrl !== null) {
+    asset.sourceImageUrl = payload.sourceImageUrl;
+  }
+
+  if (sprite === null) {
+    asset.status = "ready";
+    asset.sprites = asset.sprites.map((candidateSprite) => ({
+      ...candidateSprite,
+      status: "ready",
+      sheetUrl: outputUrl,
+      frameCount: candidateSprite.action === "static" ? 1 : candidateSprite.frameCount ?? 8,
+      lastRegenAt: candidateSprite.lastRegenAt ?? now
+    }));
+  } else {
+    sprite.status = "ready";
+    sprite.sheetUrl = outputUrl;
+    sprite.frameCount = sprite.action === "static" ? 1 : sprite.frameCount ?? 8;
+    sprite.lastRegenAt = now;
+    asset.status = asset.sprites.every((candidateSprite) => candidateSprite.status === "ready") ? "ready" : "generating";
+  }
+
+  return { ok: true as const, asset, sprite };
+}
+
+function resolveAssetJob(jobId: string) {
+  for (const asset of assets.values()) {
+    if (toAssetJob(asset, null).id === jobId) {
+      return { asset, sprite: null };
+    }
+
+    for (const sprite of asset.sprites) {
+      if (toAssetJob(asset, sprite).id === jobId) {
+        return { asset, sprite };
+      }
+    }
+  }
+
+  return null;
+}
+
+function isWholeAssetGenerationPending(asset: Asset) {
+  return asset.status === "queued" || asset.sprites.every((sprite) => sprite.status !== "ready");
+}
+
+function canLeaseAssetJob(jobId: string, nowMs: number) {
+  const lease = assetJobLeases.get(jobId);
+
+  return lease === undefined || lease.leaseExpiresAtMs <= nowMs;
+}
+
 function listAssetJobs(userId: string | null) {
   return Array.from(assets.values())
     .filter((asset) => !asset.isSystem && (asset.isPublic || asset.creatorId === userId))
@@ -1224,6 +1447,27 @@ function toAssetJob(asset: Asset, sprite: AssetSprite | null) {
     error_message: status === "failed" ? "에셋 생성에 실패했어요." : null,
     updatedAtMs: Date.parse(updatedAt),
     updated_at_ms: Date.parse(updatedAt)
+  };
+}
+
+function toWorkerJob(asset: Asset, sprite: AssetSprite | null) {
+  const requestedActions = sprite === null ? asset.sprites.map((candidateSprite) => candidateSprite.action) : [sprite.action];
+
+  return {
+    ...toAssetJob(asset, sprite),
+    assetId: asset.id,
+    asset_id: asset.id,
+    category: asset.category,
+    name: asset.name,
+    description: asset.description,
+    image: asset.sourceImageUrl,
+    attrs: asset.attrs,
+    widthCells: asset.widthCells,
+    width_cells: asset.widthCells,
+    heightCells: asset.heightCells,
+    height_cells: asset.heightCells,
+    requestedActions,
+    requested_actions: requestedActions
   };
 }
 

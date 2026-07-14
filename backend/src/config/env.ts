@@ -9,7 +9,8 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   QWEN_BASE_URL: z.string().url().default("http://172.10.5.138:8001"),
   QWEN_API_TOKEN: z.string().optional(),
-  QWEN_TIMEOUT_MS: z.coerce.number().int().positive().default(45000)
+  QWEN_TIMEOUT_MS: z.coerce.number().int().positive().default(45000),
+  WORKER_TOKEN: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);

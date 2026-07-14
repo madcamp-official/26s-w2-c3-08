@@ -29,7 +29,7 @@ type Fetcher = typeof fetch
 
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   return {
-    serverUrl: env.SERVER_URL ?? 'http://localhost:2567',
+    serverUrl: env.SERVER_URL ?? 'http://localhost:3000',
     workerToken: env.WORKER_TOKEN ?? 'dev-worker-token',
     workerId: env.WORKER_ID ?? `gpu-worker-${process.pid}`,
     pollIntervalMs: readPositiveInteger(env.JOB_POLL_INTERVAL_MS, 2_000),

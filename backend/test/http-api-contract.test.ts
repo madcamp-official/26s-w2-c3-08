@@ -126,6 +126,40 @@ describe("V2 HTTP API contract", () => {
         }),
       ]),
     );
+
+    const claimedJobResponse = await request(app)
+      .get("/api/ai/jobs/next")
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "contract-worker")
+      .expect(200);
+
+    expect(claimedJobResponse.body.job).toEqual(
+      expect.objectContaining({
+        outputAssetId: avatar.id,
+        action: "idle",
+        requestedActions: ["idle"],
+      }),
+    );
+
+    const workerResultResponse = await request(app)
+      .post(`/api/ai/jobs/${encodeURIComponent(claimedJobResponse.body.job.id)}/result`)
+      .set("Authorization", "Bearer dev-worker-token")
+      .send({
+        status: "ready",
+        sheetUrl: "https://assets.example.test/avatar-idle.png",
+      })
+      .expect(200);
+
+    expect(workerResultResponse.body.job.status).toBe("ready");
+    expect(workerResultResponse.body.asset.status).toBe("ready");
+    expect(
+      workerResultResponse.body.asset.sprites.find((sprite: { action: string }) => sprite.action === "idle"),
+    ).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        sheetUrl: "https://assets.example.test/avatar-idle.png",
+      }),
+    );
   });
 
   it("supports remote room and game phase flow", async () => {
