@@ -360,6 +360,33 @@ export function setApiRoomRaceProgressFromRealtime(
   return toRaceResult(roomId);
 }
 
+export function finishApiRoomRaceFromRealtime(roomId: string, userId: string, finishTimeMs: number) {
+  const room = rooms.get(roomId);
+
+  if (room === undefined || !isRoomPlayer(roomId, userId)) {
+    return null;
+  }
+
+  const wasFirstFinisher = !hasAnyCurrentPlayerFinished(roomId);
+
+  applyPlayerRaceFinish(room, userId, finishTimeMs);
+
+  const allFinished = hasEveryCurrentPlayerFinished(roomId);
+
+  if (allFinished) {
+    setRoomPhase(room, "finished");
+  } else if (wasFirstFinisher) {
+    applyFirstFinishCountdown(room);
+  }
+
+  return {
+    room: toRoomSummary(room),
+    result: toRaceResult(roomId),
+    allFinished,
+    wasFirstFinisher
+  };
+}
+
 export function getApiRoomPhase(roomId: string): RoomPhase {
   return rooms.get(roomId)?.phase ?? "lobby";
 }
@@ -1181,22 +1208,14 @@ apiRoutes.post("/rooms/:roomId/race/finish", (req, res) => {
     return;
   }
 
-  const wasFirstFinisher = !hasAnyCurrentPlayerFinished(room.id);
+  const finishResult = finishApiRoomRaceFromRealtime(room.id, body.user_id, body.finish_time_ms);
 
-  setPlayerReady(room.id, body.user_id, true);
-  setPlayerRaceState(room.id, body.user_id, {
-    raceProgress: 100,
-    raceDistanceToGoal: 0,
-    raceFinishedAtMs: body.finish_time_ms
-  });
-
-  if (hasEveryCurrentPlayerFinished(room.id)) {
-    setRoomPhase(room, "finished");
-  } else if (wasFirstFinisher) {
-    applyFirstFinishCountdown(room);
+  if (finishResult === null) {
+    res.status(404).json({ ok: false, error: { code: "ROOM_PLAYER_NOT_FOUND", message: "room player not found" } });
+    return;
   }
 
-  res.json({ ok: true, result: toRaceResult(room.id), room: toRoomSummary(room) });
+  res.json({ ok: true, result: finishResult.result, room: finishResult.room });
 });
 
 apiRoutes.get("/rooms/:roomId/results", (req, res) => {
@@ -2134,6 +2153,15 @@ function setPlayerRaceState(roomId: string, userId: string, patch: Partial<RaceP
     raceFinishedAtMs
   });
   racePlayerStates.set(roomId, raceStates);
+}
+
+function applyPlayerRaceFinish(room: RoomSummary, userId: string, finishTimeMs: number) {
+  setPlayerReady(room.id, userId, true);
+  setPlayerRaceState(room.id, userId, {
+    raceProgress: 100,
+    raceDistanceToGoal: 0,
+    raceFinishedAtMs: finishTimeMs
+  });
 }
 
 function createDefaultRacePlayerState(): RacePlayerState {

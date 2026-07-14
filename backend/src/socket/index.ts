@@ -2,11 +2,10 @@ import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { env, parseCorsOrigins } from "../config/env.js";
 import {
-  FIRST_FINISH_COUNTDOWN_MS,
   adjustApiRoomPhaseEndsAtFromRealtime,
-  applyApiFirstFinishCountdown,
   applyApiLastDance,
   ensureApiRoomForRealtime,
+  finishApiRoomRaceFromRealtime,
   getApiRoomRaceDurationMs,
   getApiRoomPhase,
   joinApiRoomFromRealtime,
@@ -394,28 +393,41 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
-      const wasFirstFinisher = !hasAnyFinisher(room);
       const player = room.players.get(userId);
+      const apiFinish = finishApiRoomRaceFromRealtime(room.id, userId, payload.finishTimeMs);
 
-      if (player !== undefined) {
-        player.isReady = true;
-        player.raceProgress = 100;
-        player.raceFinishedAtMs =
-          player.raceFinishedAtMs === null
-            ? payload.finishTimeMs
-            : Math.min(player.raceFinishedAtMs, payload.finishTimeMs);
+      if (apiFinish === null || player === undefined) {
+        emitSocketError(socket, "ROOM_PLAYER_NOT_FOUND", "room player not found");
+        return;
       }
+
+      player.isReady = true;
+      player.raceProgress = 100;
+      player.raceFinishedAtMs =
+        player.raceFinishedAtMs === null
+          ? payload.finishTimeMs
+          : Math.min(player.raceFinishedAtMs, payload.finishTimeMs);
 
       io.to(room.id).emit("race:finished", {
         roomId: room.id,
         userId,
-        finishTimeMs: payload.finishTimeMs,
+        finishTimeMs: player.raceFinishedAtMs,
       });
 
-      if (Array.from(room.players.values()).every((roomPlayer) => roomPlayer.raceFinishedAtMs !== null)) {
-        startPhase(io, room, "finished");
-      } else if (wasFirstFinisher && !room.hasOvertime) {
-        applyFirstFinishCountdown(io, room);
+      if (apiFinish.room.phase === "finished") {
+        finishSocketRoomFromApi(io, room, apiFinish.result);
+        return;
+      }
+
+      if (apiFinish.room.phaseEndsAt !== room.phaseEndsAt && apiFinish.room.phaseEndsAt !== null) {
+        room.phaseEndsAt = apiFinish.room.phaseEndsAt;
+        io.to(room.id).emit("phase:changed", {
+          roomId: room.id,
+          phase: room.phase,
+          phaseEndsAt: room.phaseEndsAt,
+          isFinishCountdown: true,
+        });
+        io.to(room.id).emit("room:state", toRoomSnapshot(room));
       }
     });
 
@@ -557,19 +569,41 @@ function startPhase(io: Server, room: RoomState, phase: RoomPhase) {
   }
 }
 
-function applyFirstFinishCountdown(io: Server, room: RoomState) {
-  const countdownEndsAt = new Date(Date.now() + FIRST_FINISH_COUNTDOWN_MS).toISOString();
-
-  room.phaseEndsAt = countdownEndsAt;
-  applyApiFirstFinishCountdown(room.id);
+function finishSocketRoomFromApi(
+  io: Server,
+  room: RoomState,
+  result: NonNullable<ReturnType<typeof finishApiRoomRaceFromRealtime>>["result"]
+) {
+  clearRoomTimer(room);
+  room.phase = "finished";
+  room.phaseEndsAt = null;
+  syncSocketPlayersFromRaceResult(room, result);
 
   io.to(room.id).emit("phase:changed", {
     roomId: room.id,
     phase: room.phase,
     phaseEndsAt: room.phaseEndsAt,
-    isFinishCountdown: true,
   });
   io.to(room.id).emit("room:state", toRoomSnapshot(room));
+  io.to(room.id).emit("results:final", result);
+}
+
+function syncSocketPlayersFromRaceResult(
+  room: RoomState,
+  result: NonNullable<ReturnType<typeof finishApiRoomRaceFromRealtime>>["result"]
+) {
+  result.players.forEach((resultPlayer) => {
+    const player = room.players.get(resultPlayer.userId);
+
+    if (player === undefined) {
+      return;
+    }
+
+    player.isReady = resultPlayer.isReady;
+    player.validationCleared = resultPlayer.validationCleared;
+    player.raceProgress = resultPlayer.raceProgress;
+    player.raceFinishedAtMs = resultPlayer.raceFinishedAtMs;
+  });
 }
 
 function tickRoomTimer(io: Server, room: RoomState) {
