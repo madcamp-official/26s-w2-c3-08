@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const gitDir = resolve(repoRoot, '.git')
 const gitEnv = { ...process.env }
 
 delete gitEnv.GIT_DIR
@@ -12,7 +13,7 @@ delete gitEnv.GIT_OBJECT_DIRECTORY
 delete gitEnv.GIT_CEILING_DIRECTORIES
 delete gitEnv.GIT_ALTERNATE_OBJECT_DIRECTORIES
 
-execFileSync('git', ['-C', repoRoot, 'diff', '--check'], {
+execFileSync('git', [`--git-dir=${gitDir}`, `--work-tree=${repoRoot}`, 'diff', '--check'], {
   env: gitEnv,
   stdio: 'inherit',
 })
