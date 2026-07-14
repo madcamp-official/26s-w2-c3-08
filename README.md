@@ -62,6 +62,17 @@ git diff --check
 | `VITE_API_PROXY_TARGET` | `http://localhost:3000` | Vite 개발/프리뷰 서버의 `/api`, `/socket.io` 프록시 대상입니다. |
 | `VITE_SOCKET_IO_URL` | 현재 접속 origin 기반 | Socket.IO remote realtime 서버 주소입니다. 기본 개발 실행은 Vite `/socket.io` proxy를 통해 backend에 연결합니다. |
 | `VITE_ALLOWED_HOSTS` | unset | 추가 Vite allowed host 목록입니다. 쉼표로 구분합니다. |
+| `PORT` | `3000` | production-facing Express backend 포트입니다. |
+| `WORKER_TOKEN` | dev/test: `dev-worker-token`, production: required | GPU worker가 `/api/ai/jobs/*`를 claim/complete할 때 사용하는 bearer token입니다. production에서는 명시 값이 필요합니다. |
+| `SERVER_URL` | gpu-worker: `http://localhost:3000` | GPU worker가 polling할 backend base URL입니다. |
+| `GPU_WORKER_SIMULATE` | `false` | `true`일 때 GPU worker가 외부 이미지 생성기 없이 deterministic simulated result를 반환합니다. |
+| `COMFYUI_URL` | unset | 실제 sprite/image generation gateway URL입니다. `GPU_WORKER_SIMULATE=true`가 아니면 필요합니다. |
+| `COMFYUI_GENERATE_PATH` | `/v2/sprite-jobs/generate` | GPU worker가 generation gateway에 호출할 path입니다. |
+| `QWEN_BASE_URL` | `http://172.10.5.138:8001` | backend internal Qwen prompt refinement endpoint base URL입니다. |
+| `QWEN_API_TOKEN` | unset | Qwen prompt refinement token입니다. 실제 값은 배포 직전에 주입합니다. |
+| `QWEN_TIMEOUT_MS` | `45000` | Qwen 요청 timeout입니다. |
+
+실제 Qwen/WAN credentials, 이미지 저장소, 배포 환경 값은 production 배포 단계에서 주입한다. 현재 V2 production authority는 `backend/`이며, `server/`/Colyseus는 대체 transport와 AI/API 실험 검증용 workspace로 유지한다.
 
 ### 참고 문서
 
@@ -220,8 +231,8 @@ npm run check:v2
 |---|---|
 | 핵심 기술 | Vite, React, TypeScript, Phaser, Zustand |
 | 실행 환경 | Node.js, npm, Cloudflare Tunnel |
-| 데이터 저장 | V2 mock/localStorage, backend in-memory REST, GPU worker job polling scaffold |
-| 외부 API / 서비스 | backend Socket.IO 계약, BroadcastChannel local realtime, Qwen/WAN gateway scaffold |
+| 데이터 저장 | V2 mock/localStorage, backend in-memory REST, GPU worker job claim/result contract |
+| 외부 API / 서비스 | backend Socket.IO 계약, BroadcastChannel local realtime, Qwen prompt refinement, GPU generation gateway scaffold |
 | 기타 | `react-sketch-canvas`, Oxlint |
 
 ---

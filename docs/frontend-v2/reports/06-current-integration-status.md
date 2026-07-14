@@ -13,6 +13,8 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
+- GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
+- Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
 
 ## Evidence Collected
 
@@ -26,6 +28,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run test --prefix backend` | PASS |
 | `npm run typecheck --prefix backend` | PASS |
 | `npm run check:v2` | PASS |
+| `npm run check --prefix gpu-worker` | PASS |
 | `npm run test:lobby-room --workspace client` | PASS |
 | `npm run test:launcher-screenshots --workspace client` | PASS, 165 evidence screenshots |
 | `npm run test:accessibility --workspace client` | PASS |
@@ -37,6 +40,7 @@ Notes:
 - Vite still reports the known `assetRules` chunk-size warning; it does not fail the build.
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
+- Backend asset generation now has a worker claim/result contract covered by `backend/test/http-api-contract.test.ts`; the final production image generator and storage values are still deferred.
 
 ## Updated Blocker Status
 
@@ -51,6 +55,7 @@ Notes:
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
 | BLK-010 Visual screenshot coverage | Resolved for Launcher/Studio/Game State Gallery evidence | 165 Launcher screenshots and 114 Studio/Game screenshots pass |
 | BLK-011 Accessibility browser gates | Partially remediated | modal focus trap/restore, icon-only names, live regions, and Game canvas focus boundary pass in `test:accessibility`; full accessibility audit still needs broader screen coverage |
+| AI worker job contract | Resolved for backend/gpu-worker HTTP contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, backend contract test, gpu-worker self-test |
 
 ## Remaining Pre-Switch Risks
 
@@ -58,7 +63,8 @@ Notes:
 - Accessibility now has browser-level modal, icon label, live region, and Game canvas focus-boundary coverage. Broader keyboard-only flow and Studio/Game screen coverage still need expansion before default V2 switch.
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
-- Production AI asset generation still needs final Qwen/WAN credentials, image storage, and deployment environment values.
+- Production AI asset generation still needs final Qwen/WAN credentials, image storage, and deployment environment values. The backend/worker HTTP contract exists; final generator credentials and durable storage are not yet wired.
+- Backend Socket.IO still needs production asset job push emission from the final worker/storage path. Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for asset jobs.
 
 ## Next Recommended Work
 
