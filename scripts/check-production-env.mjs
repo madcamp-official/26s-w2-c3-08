@@ -321,14 +321,27 @@ function validateCrossService(selectedServices, serviceEnvs, checks, failures, w
       addCheck(checks, 'cross-service', 'CROSS-WORKER-TOKEN-001', 'worker token matches backend and gpu-worker')
     }
 
+    const backendStorageMode = readImageStorageMode(serviceEnvs.get('backend'))
     const workerStorageMode = readImageStorageMode(serviceEnvs.get('gpu-worker'))
     const backendPublicPath = readEnv(serviceEnvs.get('backend'), 'IMAGE_PUBLIC_PATH')
     const workerPublicBaseUrl = readEnv(serviceEnvs.get('gpu-worker'), 'IMAGE_PUBLIC_BASE_URL')
 
+    if ((workerStorageMode === 'local' || workerStorageMode === 'http-put') && backendStorageMode !== workerStorageMode) {
+      addFailure(
+        failures,
+        'cross-service',
+        'CROSS-STORAGE-MODE-001',
+        'IMAGE_STORAGE_MODE',
+        `backend and gpu-worker image storage modes must match (${backendStorageMode} != ${workerStorageMode})`,
+      )
+    } else if (workerStorageMode === 'local' || workerStorageMode === 'http-put') {
+      addCheck(checks, 'cross-service', 'CROSS-STORAGE-MODE-001', `image storage mode ${workerStorageMode} matches backend and gpu-worker`)
+    }
+
     if (workerStorageMode === 'local' && backendPublicPath && workerPublicBaseUrl) {
       const publicBaseUrl = parseUrl(workerPublicBaseUrl)
 
-      if (publicBaseUrl && !publicBaseUrl.pathname.startsWith(backendPublicPath)) {
+      if (publicBaseUrl && !pathMatchesPublicPath(publicBaseUrl.pathname, backendPublicPath)) {
         addWarning(warnings, 'cross-service', 'CROSS-STORAGE-001', 'IMAGE_PUBLIC_BASE_URL', `URL path does not start with backend IMAGE_PUBLIC_PATH ${backendPublicPath}; confirm CDN/proxy routing`)
       } else if (publicBaseUrl) {
         addCheck(checks, 'cross-service', 'CROSS-STORAGE-001', 'worker public image URL aligns with backend public path')
@@ -517,6 +530,14 @@ function parseUrl(value) {
   }
 }
 
+function pathMatchesPublicPath(urlPathname, publicPath) {
+  const normalizedPublicPath = publicPath.endsWith('/') && publicPath.length > 1
+    ? publicPath.slice(0, -1)
+    : publicPath
+
+  return urlPathname === normalizedPublicPath || urlPathname.startsWith(`${normalizedPublicPath}/`)
+}
+
 function addCheck(checks, service, id, message) {
   checks.push({ service, id, message })
 }
@@ -631,6 +652,34 @@ function runSelfTest() {
   })
   assert.equal(httpPutStorageMode.failures.length, 0)
 
+  const crossServiceStorageMismatch = runCrossServiceValidationForEnv({
+    backend: {
+      WORKER_TOKEN: 'worker-token-1234567890',
+      IMAGE_STORAGE_MODE: 'local',
+      IMAGE_PUBLIC_PATH: '/generated-assets',
+    },
+    worker: {
+      WORKER_TOKEN: 'worker-token-1234567890',
+      IMAGE_STORAGE_MODE: 'http-put',
+      IMAGE_PUBLIC_BASE_URL: 'https://cdn.madcamp-kaist.org/generated-assets',
+    },
+  })
+  assert.ok(crossServiceStorageMismatch.failures.some((failure) => failure.id === 'CROSS-STORAGE-MODE-001'))
+
+  const crossServiceLocalPathBoundary = runCrossServiceValidationForEnv({
+    backend: {
+      WORKER_TOKEN: 'worker-token-1234567890',
+      IMAGE_STORAGE_MODE: 'local',
+      IMAGE_PUBLIC_PATH: '/generated-assets',
+    },
+    worker: {
+      WORKER_TOKEN: 'worker-token-1234567890',
+      IMAGE_STORAGE_MODE: 'local',
+      IMAGE_PUBLIC_BASE_URL: 'https://relay.madcamp-kaist.org/generated-assets-v2',
+    },
+  })
+  assert.ok(crossServiceLocalPathBoundary.warnings.some((warning) => warning.id === 'CROSS-STORAGE-001'))
+
   const inlineStorageMode = checkProductionEnvForEnv({
     ...passingEnv,
     IMAGE_STORAGE_MODE: 'inline',
@@ -655,6 +704,25 @@ function checkProductionEnvForEnv(env) {
     envFile: null,
     serviceEnvFiles: new Map(),
   }))
+}
+
+function runCrossServiceValidationForEnv({ backend, worker }) {
+  const checks = []
+  const failures = []
+  const warnings = []
+
+  validateCrossService(
+    new Set(['backend', 'gpu-worker']),
+    new Map([
+      ['backend', backend],
+      ['gpu-worker', worker],
+    ]),
+    checks,
+    failures,
+    warnings,
+  )
+
+  return { checks, failures, warnings }
 }
 
 function withTemporaryProcessEnv(env, callback) {
