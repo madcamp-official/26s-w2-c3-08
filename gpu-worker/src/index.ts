@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
+type ImageStorageMode = 'inline' | 'local' | 'http-put'
+
 interface WorkerJob {
   id: string
   userId: string | null
@@ -35,7 +37,10 @@ interface WorkerConfig {
   gatewayUrl: string | null
   gatewayGeneratePath: string
   gatewayTimeoutMs: number
+  imageStorageMode: ImageStorageMode
   imageStorageDir: string | null
+  imageStorageUploadUrl: string | null
+  imageStorageUploadToken: string | null
   imagePublicBaseUrl: string | null
 }
 
@@ -59,7 +64,10 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     gatewayUrl: env.GENERATION_GATEWAY_URL ?? env.COMFYUI_URL ?? null,
     gatewayGeneratePath: env.GENERATION_GATEWAY_PATH ?? env.COMFYUI_GENERATE_PATH ?? '/v2/sprite-jobs/generate',
     gatewayTimeoutMs: readPositiveInteger(env.GENERATION_GATEWAY_TIMEOUT_MS ?? env.COMFYUI_TIMEOUT_MS, 10 * 60 * 1_000),
+    imageStorageMode: readImageStorageMode(env),
     imageStorageDir: env.IMAGE_STORAGE_DIR ?? null,
+    imageStorageUploadUrl: env.IMAGE_STORAGE_UPLOAD_URL ?? null,
+    imageStorageUploadToken: env.IMAGE_STORAGE_UPLOAD_TOKEN ?? null,
     imagePublicBaseUrl: env.IMAGE_PUBLIC_BASE_URL ?? null,
   }
 }
@@ -134,7 +142,7 @@ async function runJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher = f
     ? await executeGatewayJob(job, config, fetcher)
     : await executeWanPipelineJob(job, config, fetcher)
 
-  return persistGeneratedImages(job, result, config)
+  return persistGeneratedImages(job, result, config, fetcher)
 }
 
 async function executeWanPipelineJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
@@ -476,20 +484,34 @@ async function persistGeneratedImages(
   job: WorkerJob,
   result: ReturnType<typeof createFailedJobResult> | { status: 'ready'; sheetUrl: string; sourceImageUrl?: string },
   config: WorkerConfig,
+  fetcher: Fetcher,
 ) {
-  if (result.status === 'failed' || !config.imageStorageDir || !config.imagePublicBaseUrl) {
+  if (result.status === 'failed' || config.imageStorageMode === 'inline') {
     return result
+  }
+
+  if (!isBase64DataUrl(result.sheetUrl)) {
+    return result
+  }
+
+  if (!config.imagePublicBaseUrl) {
+    return createFailedJobResult('IMAGE_STORAGE_NOT_CONFIGURED', 'IMAGE_PUBLIC_BASE_URL is required when image storage is enabled.')
   }
 
   const storedSheetUrl = await persistDataUrl({
     dataUrl: result.sheetUrl,
+    mode: config.imageStorageMode,
     storageDir: config.imageStorageDir,
+    uploadUrl: config.imageStorageUploadUrl,
+    uploadToken: config.imageStorageUploadToken,
     publicBaseUrl: config.imagePublicBaseUrl,
     fileStem: createStoredImageStem(job, 'sheet'),
+    workerId: config.workerId,
+    fetcher,
   })
 
   if (!storedSheetUrl) {
-    return result
+    return createFailedJobResult('IMAGE_STORAGE_FAILED', 'Generated image could not be stored.')
   }
 
   return {
@@ -500,14 +522,24 @@ async function persistGeneratedImages(
 
 async function persistDataUrl({
   dataUrl,
+  mode,
   storageDir,
+  uploadUrl,
+  uploadToken,
   publicBaseUrl,
   fileStem,
+  workerId,
+  fetcher,
 }: {
   dataUrl: string
-  storageDir: string
+  mode: ImageStorageMode
+  storageDir: string | null
+  uploadUrl: string | null
+  uploadToken: string | null
   publicBaseUrl: string
   fileStem: string
+  workerId: string
+  fetcher: Fetcher
 }) {
   const parsed = parseDataUrl(dataUrl)
 
@@ -515,13 +547,87 @@ async function persistDataUrl({
     return null
   }
 
-  await mkdir(storageDir, { recursive: true })
-
   const filename = `${fileStem}.${mimeToExtension(parsed.mime)}`
-  const filePath = join(storageDir, filename)
 
-  await writeFile(filePath, parsed.buffer)
+  if (mode === 'local') {
+    if (!storageDir) {
+      return null
+    }
 
+    await mkdir(storageDir, { recursive: true })
+
+    const filePath = join(storageDir, filename)
+
+    await writeFile(filePath, parsed.buffer)
+
+    return createPublicImageUrl(publicBaseUrl, filename)
+  }
+
+  if (mode === 'http-put') {
+    if (!uploadUrl) {
+      return null
+    }
+
+    return uploadImageObject({
+      uploadUrl,
+      uploadToken,
+      publicBaseUrl,
+      filename,
+      mime: parsed.mime,
+      buffer: parsed.buffer,
+      workerId,
+      fetcher,
+    })
+  }
+
+  return null
+}
+
+async function uploadImageObject({
+  uploadUrl,
+  uploadToken,
+  publicBaseUrl,
+  filename,
+  mime,
+  buffer,
+  workerId,
+  fetcher,
+}: {
+  uploadUrl: string
+  uploadToken: string | null
+  publicBaseUrl: string
+  filename: string
+  mime: string
+  buffer: Buffer
+  workerId: string
+  fetcher: Fetcher
+}) {
+  const headers: Record<string, string> = {
+    'Content-Type': mime,
+    'x-worker-id': workerId,
+  }
+
+  if (uploadToken) {
+    headers.Authorization = `Bearer ${uploadToken}`
+  }
+
+  const response = await fetcher(`${trimTrailingSlash(uploadUrl)}/${encodeURIComponent(filename)}`, {
+    method: 'PUT',
+    headers,
+    body: buffer,
+  })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const body = await readJsonSafely(response)
+  const explicitUrl = readStringFromRecord(body, 'publicUrl') ?? readStringFromRecord(body, 'url')
+
+  return explicitUrl ?? createPublicImageUrl(publicBaseUrl, filename)
+}
+
+function createPublicImageUrl(publicBaseUrl: string, filename: string) {
   return `${trimTrailingSlash(publicBaseUrl)}/${encodeURIComponent(basename(filename))}`
 }
 
@@ -536,6 +642,10 @@ function parseDataUrl(value: string) {
     mime: match[1],
     buffer: Buffer.from(match[2], 'base64'),
   }
+}
+
+function isBase64DataUrl(value: string) {
+  return /^data:([^;,]+);base64,/u.test(value)
 }
 
 function createStoredImageStem(job: WorkerJob, suffix: string) {
@@ -567,6 +677,24 @@ function createHeaders(config: WorkerConfig) {
 
 function readGenerationMode(value: string | undefined): WorkerConfig['generationMode'] | null {
   return value === 'wan' || value === 'gateway' ? value : null
+}
+
+function readImageStorageMode(env: NodeJS.ProcessEnv): ImageStorageMode {
+  const explicitMode = env.IMAGE_STORAGE_MODE?.trim().toLowerCase()
+
+  if (explicitMode === 'inline' || explicitMode === 'local' || explicitMode === 'http-put') {
+    return explicitMode
+  }
+
+  if (env.IMAGE_STORAGE_UPLOAD_URL) {
+    return 'http-put'
+  }
+
+  if (env.IMAGE_STORAGE_DIR && env.IMAGE_PUBLIC_BASE_URL) {
+    return 'local'
+  }
+
+  return 'inline'
 }
 
 function dataUrlToBlob(value: string) {
@@ -663,6 +791,10 @@ function readNumber(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+function readStringFromRecord(value: unknown, key: string) {
+  return isRecord(value) ? readString(value[key]) : undefined
 }
 
 function readErrorMessage(value: unknown) {
@@ -778,7 +910,10 @@ async function selfTest() {
     gatewayUrl: null,
     gatewayGeneratePath: '/v2/sprite-jobs/generate',
     gatewayTimeoutMs: 1_000,
+    imageStorageMode: 'inline',
     imageStorageDir: null,
+    imageStorageUploadUrl: null,
+    imageStorageUploadToken: null,
     imagePublicBaseUrl: null,
   }, fetcher)
 
@@ -819,7 +954,10 @@ async function selfTest() {
     gatewayUrl: null,
     gatewayGeneratePath: '/v2/sprite-jobs/generate',
     gatewayTimeoutMs: 1_000,
+    imageStorageMode: 'local',
     imageStorageDir: storageDir,
+    imageStorageUploadUrl: null,
+    imageStorageUploadToken: null,
     imagePublicBaseUrl: 'http://assets.test/generated',
   }, async (url, init) => {
     wanCalls.push({ url: String(url), init })
@@ -856,6 +994,124 @@ async function selfTest() {
   assert.equal((wanCalls[1].init?.headers as Record<string, string>).Authorization, 'Bearer wan-token')
   assert.match(String(wanCalls[1].init?.body), /green platform sprite/)
 
+  const uploadCalls: Array<{ url: string; init?: RequestInit }> = []
+  const uploadResult = await runJob({
+    id: 'job-upload-test',
+    userId: 'user-upload-test',
+    assetId: 'asset-upload-test',
+    category: 'background',
+    name: 'Upload Test',
+    description: 'http upload storage',
+    image: 'data:image/png;base64,AA==',
+    attrs: {},
+    widthCells: 4,
+    heightCells: 3,
+    action: 'static',
+    requestedActions: ['static'],
+  }, {
+    serverUrl: 'http://server.test',
+    workerToken: 'worker-token',
+    workerId: 'self-test-worker',
+    pollIntervalMs: 1,
+    simulate: false,
+    generationMode: 'gateway',
+    qwenBaseUrl: null,
+    qwenApiToken: null,
+    qwenTimeoutMs: 1_000,
+    wanBaseUrl: null,
+    wanApiToken: null,
+    wanGeneratePath: '/v1/sprites/generate',
+    wanTimeoutMs: 1_000,
+    gatewayUrl: 'http://gateway.test',
+    gatewayGeneratePath: '/v2/sprite-sheets',
+    gatewayTimeoutMs: 1_000,
+    imageStorageMode: 'http-put',
+    imageStorageDir: null,
+    imageStorageUploadUrl: 'http://upload.test/objects',
+    imageStorageUploadToken: 'upload-token',
+    imagePublicBaseUrl: 'https://cdn.test/generated',
+  }, async (url, init) => {
+    uploadCalls.push({ url: String(url), init })
+
+    if (String(url) === 'http://gateway.test/v2/sprite-sheets') {
+      return new Response(JSON.stringify({
+        sheetUrl: 'data:image/png;base64,cG5n',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    return new Response(JSON.stringify({
+      publicUrl: 'https://cdn.test/generated/job-upload-test-static-sheet.png',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+
+  assert.equal(uploadResult.status, 'ready')
+  assert.equal(uploadResult.sheetUrl, 'https://cdn.test/generated/job-upload-test-static-sheet.png')
+  assert.equal(uploadCalls[1].url, 'http://upload.test/objects/job-upload-test-static-sheet.png')
+  assert.equal((uploadCalls[1].init?.headers as Record<string, string>).Authorization, 'Bearer upload-token')
+  assert.equal((uploadCalls[1].init?.headers as Record<string, string>)['Content-Type'], 'image/png')
+
+  const uploadFailureResult = await runJob({
+    id: 'job-upload-failure-test',
+    userId: 'user-upload-test',
+    assetId: 'asset-upload-test',
+    category: 'background',
+    name: 'Upload Failure Test',
+    description: 'http upload storage failure',
+    image: 'data:image/png;base64,AA==',
+    attrs: {},
+    widthCells: 4,
+    heightCells: 3,
+    action: 'static',
+    requestedActions: ['static'],
+  }, {
+    serverUrl: 'http://server.test',
+    workerToken: 'worker-token',
+    workerId: 'self-test-worker',
+    pollIntervalMs: 1,
+    simulate: false,
+    generationMode: 'gateway',
+    qwenBaseUrl: null,
+    qwenApiToken: null,
+    qwenTimeoutMs: 1_000,
+    wanBaseUrl: null,
+    wanApiToken: null,
+    wanGeneratePath: '/v1/sprites/generate',
+    wanTimeoutMs: 1_000,
+    gatewayUrl: 'http://gateway.test',
+    gatewayGeneratePath: '/v2/sprite-sheets',
+    gatewayTimeoutMs: 1_000,
+    imageStorageMode: 'http-put',
+    imageStorageDir: null,
+    imageStorageUploadUrl: 'http://upload.test/objects',
+    imageStorageUploadToken: 'upload-token',
+    imagePublicBaseUrl: 'https://cdn.test/generated',
+  }, async (url) => {
+    if (String(url) === 'http://gateway.test/v2/sprite-sheets') {
+      return new Response(JSON.stringify({
+        sheetUrl: 'data:image/png;base64,cG5n',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    return new Response(JSON.stringify({
+      error: { code: 'UPLOAD_FAILED' },
+    }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+
+  assert.equal(uploadFailureResult.status, 'failed')
+  assert.equal(uploadFailureResult.errorCode, 'IMAGE_STORAGE_FAILED')
+
   const gatewayCalls: Array<{ url: string; init?: RequestInit }> = []
   const gatewayResult = await runJob({
     id: 'job-gateway-test',
@@ -887,7 +1143,10 @@ async function selfTest() {
     gatewayUrl: 'http://gateway.test',
     gatewayGeneratePath: '/v2/sprite-sheets',
     gatewayTimeoutMs: 1_000,
+    imageStorageMode: 'inline',
     imageStorageDir: null,
+    imageStorageUploadUrl: null,
+    imageStorageUploadToken: null,
     imagePublicBaseUrl: null,
   }, async (url, init) => {
     gatewayCalls.push({ url: String(url), init })

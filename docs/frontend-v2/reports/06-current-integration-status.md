@@ -16,7 +16,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
 - GPU worker generation mode defaults to Qwen prompt refinement followed by WAN sprite generation. A single internal generation gateway remains available only through explicit `GPU_WORKER_GENERATION_MODE=gateway`.
-- Generated image data URLs can be materialized into a shared local/static directory through `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_PATH`, and `IMAGE_PUBLIC_BASE_URL`.
+- Generated image data URLs can be materialized through `IMAGE_STORAGE_MODE=local` shared static storage or `IMAGE_STORAGE_MODE=http-put` object-storage gateway upload.
 - Production readiness for client/backend/gpu-worker environment values is checked by `npm run check:production-env`; `npm run check:v2` runs the checker self-test without requiring real secrets.
 - `.github/workflows/frontend-v2-browser-gates.yml` now defines pinned Playwright CI jobs for the aggregate V2 check and browser evidence suites.
 
@@ -47,7 +47,7 @@ Notes:
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
-- Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and a shared-directory image materialization path covered by contract self-tests. The final production credentials and storage values are still deferred.
+- Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
 - Production env readiness now fails closed on missing/placeholder credentials, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
 - CI is configured to run `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container. This does not replace the need to confirm the first hosted Actions run.
 
@@ -64,7 +64,7 @@ Notes:
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
 | BLK-010 Visual screenshot coverage | Resolved for Launcher/Studio/Game State Gallery evidence | 165 Launcher screenshots and 114 Studio/Game screenshots pass |
 | BLK-011 Accessibility browser gates | Substantially remediated | modal focus trap/restore, icon-only names, live regions, Game canvas focus boundary, and representative Launcher/Studio/Game State Gallery keyboard traversal pass in `test:accessibility`; full matrix/axe audit still remains optional hardening |
-| AI worker job contract | Resolved for backend/gpu-worker HTTP, Socket.IO update, Qwen/WAN request, and local image materialization contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
+| AI worker job contract | Resolved for backend/gpu-worker HTTP, Socket.IO update, Qwen/WAN request, local image materialization, and HTTP PUT upload contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
 
 ## Remaining Pre-Switch Risks
 
@@ -72,7 +72,7 @@ Notes:
 - Accessibility now has browser-level modal, icon label, live region, Game canvas focus-boundary, and representative Launcher/Studio/Game keyboard traversal coverage. Full matrix/axe audit remains useful hardening before or after default V2 switch.
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness, and V2 browser gates have a pinned CI workflow. Hosted CI results are still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
-- Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Shared-directory image storage is wired for local/shared-volume deployment; object storage credentials and URLs remain a deployment decision.
+- Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Generated image storage can use local/shared-volume deployment or an HTTP PUT object-storage gateway; actual storage credentials and URLs remain deployment inputs.
 - Production env values should be checked with `npm run check:production-env -- --client-env-file client/.env.production --backend-env-file backend/.env.production --gpu-worker-env-file gpu-worker/.env.production` before any default V2 entry switch.
 - Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for asset jobs.
 

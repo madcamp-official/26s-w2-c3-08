@@ -229,6 +229,8 @@ function validateClient(env, checks, failures, warnings) {
 
 function validateBackend(env, checks, failures, warnings) {
   const service = 'backend'
+  const imageStorageMode = readImageStorageMode(env)
+
   requireExactValue(env, service, 'NODE_ENV', 'production', checks, failures)
   requireOptionalPositiveInteger(env, service, 'PORT', checks, failures)
   requireHttpUrl(env, service, 'CORS_ORIGIN', { publicUrl: true }, checks, failures)
@@ -236,24 +238,31 @@ function validateBackend(env, checks, failures, warnings) {
   requireHttpUrl(env, service, 'QWEN_BASE_URL', { allowPrivate: true }, checks, failures)
   requireSecret(env, service, 'QWEN_API_TOKEN', { minLength: 16 }, checks, failures)
   requireOptionalPositiveInteger(env, service, 'QWEN_TIMEOUT_MS', checks, failures)
-  requireNonPlaceholder(env, service, 'IMAGE_STORAGE_DIR', checks, failures)
-  requirePublicPath(env, service, 'IMAGE_PUBLIC_PATH', checks, failures)
 
-  if (readEnv(env, 'IMAGE_STORAGE_DIR') && readEnv(env, 'IMAGE_PUBLIC_PATH')) {
-    addCheck(checks, service, 'BACKEND-STORAGE-001', 'generated asset static storage configured')
+  if (imageStorageMode === 'invalid') {
+    addFailure(failures, service, 'BACKEND-STORAGE-MODE-001', 'IMAGE_STORAGE_MODE', 'must be inline, local, or http-put')
+  } else if (imageStorageMode === 'local') {
+    requireNonPlaceholder(env, service, 'IMAGE_STORAGE_DIR', checks, failures)
+    requirePublicPath(env, service, 'IMAGE_PUBLIC_PATH', checks, failures)
+
+    if (readEnv(env, 'IMAGE_STORAGE_DIR') && readEnv(env, 'IMAGE_PUBLIC_PATH')) {
+      addCheck(checks, service, 'BACKEND-STORAGE-001', 'generated asset static storage configured')
+    }
+  } else if (imageStorageMode === 'http-put') {
+    addCheck(checks, service, 'BACKEND-STORAGE-HTTP-001', 'object storage upload is handled by gpu-worker')
+  } else {
+    addWarning(warnings, service, 'BACKEND-STORAGE-002', 'IMAGE_STORAGE_MODE', 'backend static storage is not configured; gpu-worker must use http-put storage')
   }
 
   if (readEnv(env, 'CORS_ORIGIN')?.includes(',')) {
     addFailure(failures, service, 'BACKEND-CORS-001', 'CORS_ORIGIN', 'backend currently accepts one origin string; configure a single deployed client origin or update backend CORS parsing first')
   }
-
-  if (!readEnv(env, 'IMAGE_STORAGE_DIR')) {
-    addWarning(warnings, service, 'BACKEND-STORAGE-002', 'IMAGE_STORAGE_DIR', 'missing storage dir would leave generated image data URLs in API state')
-  }
 }
 
 function validateGpuWorker(env, checks, failures, warnings) {
   const service = 'gpu-worker'
+  const imageStorageMode = readImageStorageMode(env)
+
   requireHttpUrl(env, service, 'SERVER_URL', { publicUrl: false }, checks, failures)
   requireSecret(env, service, 'WORKER_TOKEN', { minLength: 16 }, checks, failures)
   requireOptionalPositiveInteger(env, service, 'JOB_POLL_INTERVAL_MS', checks, failures)
@@ -287,8 +296,20 @@ function validateGpuWorker(env, checks, failures, warnings) {
     addWarning(warnings, service, 'GPU-GATEWAY-001', 'GPU_WORKER_GENERATION_MODE', 'gateway mode is compatibility-only; Qwen/WAN is the current production direction')
   }
 
-  requireNonPlaceholder(env, service, 'IMAGE_STORAGE_DIR', checks, failures)
-  requireHttpUrl(env, service, 'IMAGE_PUBLIC_BASE_URL', { publicUrl: true }, checks, failures)
+  if (imageStorageMode === 'invalid') {
+    addFailure(failures, service, 'GPU-STORAGE-MODE-001', 'IMAGE_STORAGE_MODE', 'must be inline, local, or http-put')
+  } else if (imageStorageMode === 'inline') {
+    addFailure(failures, service, 'GPU-STORAGE-MODE-001', 'IMAGE_STORAGE_MODE', 'must be local or http-put for production')
+  } else if (imageStorageMode === 'local') {
+    addCheck(checks, service, 'GPU-STORAGE-MODE-001', 'image storage mode local')
+    requireNonPlaceholder(env, service, 'IMAGE_STORAGE_DIR', checks, failures)
+    requireHttpUrl(env, service, 'IMAGE_PUBLIC_BASE_URL', { publicUrl: true }, checks, failures)
+  } else {
+    addCheck(checks, service, 'GPU-STORAGE-MODE-001', 'image storage mode http-put')
+    requireHttpUrl(env, service, 'IMAGE_STORAGE_UPLOAD_URL', { allowPrivate: true }, checks, failures)
+    requireSecret(env, service, 'IMAGE_STORAGE_UPLOAD_TOKEN', { minLength: 16 }, checks, failures)
+    requireHttpUrl(env, service, 'IMAGE_PUBLIC_BASE_URL', { publicUrl: true }, checks, failures)
+  }
 }
 
 function validateCrossService(selectedServices, serviceEnvs, checks, failures, warnings) {
@@ -302,10 +323,11 @@ function validateCrossService(selectedServices, serviceEnvs, checks, failures, w
       addCheck(checks, 'cross-service', 'CROSS-WORKER-TOKEN-001', 'worker token matches backend and gpu-worker')
     }
 
+    const workerStorageMode = readImageStorageMode(serviceEnvs.get('gpu-worker'))
     const backendPublicPath = readEnv(serviceEnvs.get('backend'), 'IMAGE_PUBLIC_PATH')
     const workerPublicBaseUrl = readEnv(serviceEnvs.get('gpu-worker'), 'IMAGE_PUBLIC_BASE_URL')
 
-    if (backendPublicPath && workerPublicBaseUrl) {
+    if (workerStorageMode === 'local' && backendPublicPath && workerPublicBaseUrl) {
       const publicBaseUrl = parseUrl(workerPublicBaseUrl)
 
       if (publicBaseUrl && !publicBaseUrl.pathname.startsWith(backendPublicPath)) {
@@ -315,6 +337,28 @@ function validateCrossService(selectedServices, serviceEnvs, checks, failures, w
       }
     }
   }
+}
+
+function readImageStorageMode(env) {
+  const explicitMode = readEnv(env, 'IMAGE_STORAGE_MODE')?.toLowerCase()
+
+  if (explicitMode === 'inline' || explicitMode === 'local' || explicitMode === 'http-put') {
+    return explicitMode
+  }
+
+  if (explicitMode) {
+    return 'invalid'
+  }
+
+  if (readEnv(env, 'IMAGE_STORAGE_UPLOAD_URL')) {
+    return 'http-put'
+  }
+
+  if (readEnv(env, 'IMAGE_STORAGE_DIR') || readEnv(env, 'IMAGE_PUBLIC_PATH')) {
+    return 'local'
+  }
+
+  return 'inline'
 }
 
 function requireExactValue(env, service, variableName, expected, checks, failures) {
@@ -505,6 +549,7 @@ function runSelfTest() {
     WAN_API_TOKEN: 'wan-token-1234567890',
     WAN_GENERATE_PATH: '/v1/sprites/generate',
     WAN_TIMEOUT_MS: '90000',
+    IMAGE_STORAGE_MODE: 'local',
     IMAGE_STORAGE_DIR: '/srv/relay/generated-assets',
     IMAGE_PUBLIC_PATH: '/generated-assets',
     IMAGE_PUBLIC_BASE_URL: 'https://relay.madcamp-kaist.org/generated-assets',
@@ -536,6 +581,26 @@ function runSelfTest() {
     WAN_API_TOKEN: '',
   })
   assert.equal(gatewayMode.failures.length, 0)
+
+  const httpPutStorageMode = checkProductionEnvForEnv({
+    ...passingEnv,
+    IMAGE_STORAGE_MODE: 'http-put',
+    IMAGE_STORAGE_DIR: '',
+    IMAGE_PUBLIC_PATH: '',
+    IMAGE_STORAGE_UPLOAD_URL: 'http://storage-gateway.internal/generated-assets',
+    IMAGE_STORAGE_UPLOAD_TOKEN: 'upload-token-1234567890',
+    IMAGE_PUBLIC_BASE_URL: 'https://cdn.madcamp-kaist.org/generated-assets',
+  })
+  assert.equal(httpPutStorageMode.failures.length, 0)
+
+  const inlineStorageMode = checkProductionEnvForEnv({
+    ...passingEnv,
+    IMAGE_STORAGE_MODE: 'inline',
+    IMAGE_STORAGE_DIR: '',
+    IMAGE_PUBLIC_PATH: '',
+    IMAGE_PUBLIC_BASE_URL: '',
+  })
+  assert.ok(inlineStorageMode.failures.some((failure) => failure.id === 'GPU-STORAGE-MODE-001'))
 
   const mockClient = checkProductionEnvForEnv({
     ...passingEnv,

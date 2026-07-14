@@ -85,8 +85,11 @@ npm run check:production-env -- \
 | `WAN_TIMEOUT_MS` | `90000` | WAN generation 요청 timeout입니다. |
 | `GENERATION_GATEWAY_URL` | unset | `GPU_WORKER_GENERATION_MODE=gateway`일 때 사용하는 단일 generation gateway URL입니다. |
 | `GENERATION_GATEWAY_PATH` | `/v2/sprite-jobs/generate` | gateway mode generation path입니다. |
+| `IMAGE_STORAGE_MODE` | inferred | `local`, `http-put`, `inline` 중 하나입니다. production worker는 `local` 또는 `http-put`만 통과합니다. |
 | `IMAGE_STORAGE_DIR` | unset | backend가 serve하고 gpu-worker가 쓸 shared generated image directory입니다. 설정하지 않으면 data URL을 그대로 반환합니다. |
 | `IMAGE_PUBLIC_PATH` | `/generated-assets` | backend static serving path입니다. |
+| `IMAGE_STORAGE_UPLOAD_URL` | unset | `IMAGE_STORAGE_MODE=http-put`일 때 worker가 PNG를 PUT 업로드할 internal object-storage gateway base URL입니다. |
+| `IMAGE_STORAGE_UPLOAD_TOKEN` | unset | `http-put` 업로드 gateway bearer token입니다. |
 | `IMAGE_PUBLIC_BASE_URL` | unset | gpu-worker가 저장된 파일을 public URL로 반환할 때 사용하는 base URL입니다. |
 
 실제 Qwen/WAN credentials, 이미지 저장소, 배포 환경 값은 production 배포 단계에서 주입한다. 현재 V2 production authority는 `backend/`이며, `server/`/Colyseus는 대체 transport와 AI/API 실험 검증용 workspace로 유지한다.
@@ -94,9 +97,14 @@ npm run check:production-env -- \
 `npm run check:production-env`는 다음 production readiness를 확인한다.
 
 - client: `VITE_DATA_MODE=remote`, `VITE_REALTIME_MODE=remote`, 선택적 `VITE_SOCKET_IO_URL`.
-- backend: `NODE_ENV=production`, public `CORS_ORIGIN`, real `WORKER_TOKEN`, Qwen token, generated image static path.
-- gpu-worker: backend `SERVER_URL`, backend와 동일한 `WORKER_TOKEN`, `GPU_WORKER_SIMULATE=false`, Qwen/WAN 또는 explicit gateway credentials, generated image public URL.
+- backend: `NODE_ENV=production`, public `CORS_ORIGIN`, real `WORKER_TOKEN`, Qwen token, local storage mode일 때 generated image static path.
+- gpu-worker: backend `SERVER_URL`, backend와 동일한 `WORKER_TOKEN`, `GPU_WORKER_SIMULATE=false`, Qwen/WAN 또는 explicit gateway credentials, `local` 또는 `http-put` generated image storage.
 - cross-service: backend/gpu-worker `WORKER_TOKEN` 일치와 generated image URL/path 정합성.
+
+Generated image storage는 두 production 경로를 지원한다.
+
+- `IMAGE_STORAGE_MODE=local`: backend와 gpu-worker가 같은 volume을 공유하고 backend가 `IMAGE_PUBLIC_PATH`로 serve한다.
+- `IMAGE_STORAGE_MODE=http-put`: gpu-worker가 `IMAGE_STORAGE_UPLOAD_URL/{filename}`으로 PNG binary를 PUT 업로드하고 `IMAGE_PUBLIC_BASE_URL/{filename}` 또는 upload 응답의 `publicUrl`을 asset URL로 기록한다.
 
 ### 참고 문서
 
