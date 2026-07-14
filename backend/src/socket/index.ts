@@ -12,6 +12,7 @@ import {
   leaveApiRoomFromRealtime,
   mergeApiRoomMap,
   onApiAssetJobUpdated,
+  setApiRoomReadyFromRealtime,
   setApiRoomPhase
 } from "../http/routes/apiRoutes.js";
 
@@ -175,7 +176,15 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
-      player.isReady = payload.isReady ?? payload.is_ready ?? false;
+      const isReady = payload.isReady ?? payload.is_ready ?? false;
+      const apiSnapshot = setApiRoomReadyFromRealtime(room.id, userId, isReady);
+
+      if (apiSnapshot === null) {
+        emitSocketError(socket, "ROOM_PLAYER_NOT_FOUND", "room player not found");
+        return;
+      }
+
+      player.isReady = isReady;
       io.to(room.id).emit("room:state", toRoomSnapshot(room));
     });
 

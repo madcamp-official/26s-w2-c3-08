@@ -274,6 +274,18 @@ export function leaveApiRoomFromRealtime(roomId: string, userId: string) {
   }
 }
 
+export function setApiRoomReadyFromRealtime(roomId: string, userId: string, isReady: boolean) {
+  const room = rooms.get(roomId);
+  const players = roomPlayers.get(roomId);
+
+  if (room === undefined || players === undefined || !players.has(userId)) {
+    return null;
+  }
+
+  setPlayerReady(roomId, userId, isReady);
+  return toRoomSnapshot(room);
+}
+
 export function setApiRoomPhase(roomId: string, phase: RoomPhase) {
   const room = rooms.get(roomId);
 
