@@ -147,6 +147,34 @@ describe("V2 HTTP API contract", () => {
 
     expect(nicknameResponse.body.session.nickname).toBe("새닉네임");
 
+    const rejectedItemResponse = await request(app)
+      .post("/api/assets/generate")
+      .set("Authorization", `Bearer ${session.token}`)
+      .send({
+        user_id: session.id,
+        category: "item",
+        name: "사용자 아이템",
+        image: "data:image/png;base64,AA==",
+      })
+      .expect(400);
+
+    expect(rejectedItemResponse.body.error.code).toBe("ASSET_CATEGORY_NOT_ALLOWED");
+
+    const assetsWithSystemItemsResponse = await request(app)
+      .get(`/api/assets?user_id=${encodeURIComponent(session.id)}`)
+      .set("Authorization", `Bearer ${session.token}`)
+      .expect(200);
+
+    expect(assetsWithSystemItemsResponse.body.assets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "system-item-speed",
+          category: "item",
+          isSystem: true,
+        }),
+      ]),
+    );
+
     const avatarResponse = await request(app)
       .post("/api/assets/generate")
       .set("Authorization", `Bearer ${session.token}`)

@@ -16,6 +16,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - Backend `/health` is a non-sensitive liveness endpoint, while `/ready` exposes sanitized readiness booleans/counts and returns `503` when production backend-required secrets are missing.
 - Backend-internal Qwen proxy routes under `/internal/qwen/*` require `INTERNAL_API_TOKEN` in production and accept `X-Backend-Internal-Token` or bearer auth.
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
+- User-generated `item` assets are rejected by `/api/assets/generate` with `ASSET_CATEGORY_NOT_ALLOWED`; backend system item seeds remain available for gameplay placement.
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
 - Worker completion now requires the active `x-worker-id` lease. Expired leases are recovered before claim/list refresh, and stale worker completions return typed `409` errors instead of overwriting a re-claimed job.
@@ -34,7 +35,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run lobby-room:check --workspace client` | PASS |
 | `npm run game:check --workspace client` | PASS |
 | `npm run flow:check --workspace client` | PASS |
-| `npm run test --prefix backend` | PASS, includes direct asset job status, worker lease rollover, and stale result rejection |
+| `npm run test --prefix backend` | PASS, includes user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, and stale result rejection |
 | `npm run typecheck --prefix backend` | PASS |
 | `npm run check:v2` | PASS |
 | `npm run check --prefix gpu-worker` | PASS |

@@ -159,7 +159,7 @@ These duplicates remain intentionally untouched to preserve legacy runtime behav
 | `client/src/store/appStore.ts` | `API_ASSET_POLL_INTERVAL_MS = 5000` | later move into an asset-job adapter/use case policy if polling is implemented |
 | `client/src/net/api.ts` | legacy DTO/request shapes and remote fallback behavior | later wrap behind ports and explicit config |
 | `client/src/net/realtime.ts` | legacy realtime status and BroadcastChannel fallback | later replace/wrap behind realtime ports and explicit config |
-| `backend/src/http/routes/apiRoutes.ts` | current asset generation schema allows all categories including `item` | backend user-created request contract still needs migration |
+| `backend/src/http/routes/apiRoutes.ts` | `/api/assets/generate` rejects user-generated `item` with `ASSET_CATEGORY_NOT_ALLOWED` and preserves system item seeds | keep global `item` domain support for system assets/gameplay only |
 | `backend/src/socket/index.ts` | Socket.IO runtime payloads are untyped at shared boundary | later bind to shared schemas after transport adapter work |
 
 ## Remaining Contract Gaps

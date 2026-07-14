@@ -643,6 +643,18 @@ apiRoutes.post("/assets/generate", (req, res) => {
   }
 
   const userId = body.userId ?? body.user_id ?? null;
+
+  if (body.category === "item") {
+    res.status(400).json({
+      ok: false,
+      error: {
+        code: "ASSET_CATEGORY_NOT_ALLOWED",
+        message: "item assets are system-provided and cannot be user-generated"
+      }
+    });
+    return;
+  }
+
   const now = new Date().toISOString();
   const asset: Asset = {
     id: crypto.randomUUID(),
@@ -2112,6 +2124,60 @@ function seedDefaults() {
       description: "기본 제공 장애물",
       attrs: { contactEffect: "damage", trigger: "always" },
       colliderType: "rect",
+      widthCells: 1,
+      heightCells: 1,
+      sourceImageUrl: "",
+      remixOfId: null,
+      status: "ready",
+      isPublic: false,
+      createdAt,
+      sprites: [{ action: "static", status: "ready", sheetUrl: null, frameCount: 1, lastRegenAt: null }]
+    },
+    {
+      id: "system-item-speed",
+      creatorId: null,
+      isSystem: true,
+      category: "item",
+      name: "가속 아이템",
+      description: "기본 제공 아이템. 레이스 보상 배치용",
+      attrs: { effect: "speed-boost" },
+      colliderType: "none",
+      widthCells: 1,
+      heightCells: 1,
+      sourceImageUrl: "",
+      remixOfId: null,
+      status: "ready",
+      isPublic: false,
+      createdAt,
+      sprites: [{ action: "static", status: "ready", sheetUrl: null, frameCount: 1, lastRegenAt: null }]
+    },
+    {
+      id: "system-item-giant-mushroom",
+      creatorId: null,
+      isSystem: true,
+      category: "item",
+      name: "거대버섯",
+      description: "몸집이 커지고 피해를 한 번 버티는 기본 아이템",
+      attrs: { effect: "giant-mushroom" },
+      colliderType: "none",
+      widthCells: 1,
+      heightCells: 1,
+      sourceImageUrl: "",
+      remixOfId: null,
+      status: "ready",
+      isPublic: false,
+      createdAt,
+      sprites: [{ action: "static", status: "ready", sheetUrl: null, frameCount: 1, lastRegenAt: null }]
+    },
+    {
+      id: "system-item-switch",
+      creatorId: null,
+      isSystem: true,
+      category: "item",
+      name: "ON/OFF 스위치",
+      description: "닿을 때마다 스위치 블록의 실체화 상태를 바꾸는 기본 장치",
+      attrs: { effect: "toggle-switch" },
+      colliderType: "none",
       widthCells: 1,
       heightCells: 1,
       sourceImageUrl: "",

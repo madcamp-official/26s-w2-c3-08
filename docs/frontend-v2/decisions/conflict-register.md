@@ -138,14 +138,14 @@
 | ID | C-009 |
 | 주제 | Item 제작/노출 범위 |
 | 문서 기준 | DECISION-V2-007 APPROVED. 사용자 제작 컴포넌트 카테고리는 `platform`, `obstacle`, `monster`, `background`. `item`은 V2 MVP에서 system-provided asset |
-| 코드 기준 | `AssetCategory`에는 `item`이 있고 `starterAssets`에는 system item이 있다. `AssetStudio` category는 item 제외. `Warehouse` component tab도 item 제외. `MapBuildPhase` asset shelf는 item category를 포함 |
-| 영향 | 사용자 제작 UI는 계약과 대체로 일치하지만, API/domain layer는 아직 user-generated `item`을 받을 수 있다 |
+| 코드 기준 | `AssetCategory`에는 `item`이 있고 `starterAssets`/backend seed에는 system item이 있다. `AssetStudio` category는 item 제외. `Warehouse` component tab도 item 제외. `MapBuildPhase` asset shelf는 item category를 포함 |
+| 영향 | 사용자 제작 UI와 backend creation endpoint 모두 user-generated `item`을 차단한다. 전역 domain/gameplay에서는 system item을 계속 허용한다 |
 | 계약 결정 | APPROVED: 전역 category에는 `item`이 존재 가능, system item은 Map Build shelf 사용 가능, user-created category는 4종만 허용 |
-| 레거시 런타임 불일치 | MIGRATION GAP: backend/API schema가 user asset creation의 `item`을 아직 거부하지 않음 |
+| 레거시 런타임 불일치 | RESOLVED: backend `/api/assets/generate` returns `ASSET_CATEGORY_NOT_ALLOWED` for user-generated `item` while preserving system item seeds |
 | 문서 typo/conflict | RESOLVED: `screen-design.md`와 `FINAL_PLAN.md`에 system-only item 정책 반영 |
-| V2 구현 | PLANNED: 사용자 asset creation endpoint에서 `item` 거부. 시스템 seed/internal flow는 계속 허용 |
+| V2 구현 | IMPLEMENTED: 사용자 asset creation endpoint에서 `item` 거부. 시스템 seed/internal flow는 계속 허용 |
 | 감사 근거 | [01-five-decision-implementation-audit.md](../reports/01-five-decision-implementation-audit.md#4-item은-system-only) |
-| 상태 | MIGRATION GAP |
+| 상태 | RESOLVED |
 
 ## C-010
 

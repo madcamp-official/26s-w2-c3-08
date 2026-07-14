@@ -9,7 +9,7 @@
 |---|---|---|---|
 | 768x1536 workspace buffer | `product-decisions.md`에서 APPROVED | 기존 `SketchBoard` 경로는 256x512 * 3 = 768x1536으로 동작 | PASS, V2 DrawingEngine 검증 필요 |
 | 24x10 cells / 32px snap | `product-decisions.md`, `screen-state-matrix.md`, `phaser-bridge.md`에 고정 | `App.tsx`와 `MapEditorCanvas.tsx`가 24x10, 32px 기준 | PASS |
-| item은 system-only | 계약상 user-created category에서 제외 | Studio/Warehouse UI는 제외, Map shelf는 item 포함, API/domain은 item 허용 | PARTIAL |
+| item은 system-only | 계약상 user-created category에서 제외 | Studio/Warehouse UI는 제외, Map shelf는 system item 포함, backend user creation은 item 거부 | PASS |
 | remote realtime은 Socket.IO 우선 | 계약상 Socket.IO backend 우선 | backend는 Socket.IO, frontend adapter는 Colyseus + BroadcastChannel | NOT IMPLEMENTED |
 | 일반 에셋 제출 후 Studio 유지 | 계약상 stay + toast + warehouse CTA | `appStore.submitAsset`은 non-avatar 제출 후 Warehouse로 이동 | NOT IMPLEMENTED |
 
@@ -87,7 +87,7 @@ PASS다. 현재 코드와 계약이 일치한다.
   - Warehouse: item hidden from user-created component filter.
   - Asset Studio: item/avatar not selectable as user-created category.
 
-### 코드 근거: UI는 대부분 일치
+### 코드 근거: UI/API가 일치
 
 - `client/src/App.tsx`:
   - `StudioCategory = Exclude<AssetCategory, 'avatar' | 'item'>`
@@ -98,22 +98,24 @@ PASS다. 현재 코드와 계약이 일치한다.
   - `system-item-speed`
   - `system-item-giant-mushroom`
   - `system-item-switch`
+- `backend/src/http/routes/apiRoutes.ts`:
+  - `/api/assets/generate`는 user-generated `item` 요청을 `ASSET_CATEGORY_NOT_ALLOWED`로 거부한다.
+  - backend default seed는 system item 3종을 유지한다.
 - `MapBuildPhase` asset shelf category에는 `item`이 포함된다. 이는 system-provided item을 배치 대상으로 노출하기 위한 흐름으로 계약과 양립 가능하다.
 
-### 남은 gap: API/domain은 아직 item 생성을 막지 않음
+### 닫힌 gap: API/domain user creation boundary
 
-- `client/src/types/domain.ts` `AssetCategory`에는 `item`이 포함된다.
-- `backend/src/http/routes/apiRoutes.ts` `AssetCategory`와 `assetGenerateSchema`에도 `item`이 포함된다.
-- 즉, 현재 UI는 item 제작을 막지만 API/domain layer는 item 생성을 받을 수 있다.
+- `client/src/types/domain.ts` `AssetCategory`에는 `item`이 계속 포함된다. 이는 system item과 gameplay placement를 위한 전역 domain 표현이다.
+- backend user creation route는 `item`을 명시적으로 거부하므로 user-created boundary는 계약을 만족한다.
 
 ### 판정
 
-PARTIAL이다.
+PASS다.
 
 - User-facing Studio/Warehouse 기준: PASS.
-- Service/API hardening 기준: NOT COMPLETE.
+- Service/API hardening 기준: PASS.
 
-V2 remote mode에서 이 결정을 완전히 만족하려면 backend asset generation schema가 user-generated `item`을 거부하거나, system-only 생성 경로를 별도 권한으로 분리해야 한다.
+V2 remote mode에서 이 결정은 현재 backend contract test로 검증된다.
 
 ## 5. Remote Realtime은 Socket.IO 우선
 
@@ -196,7 +198,7 @@ NOT IMPLEMENTED다.
 |---|---|---|
 | 768x1536 workspace buffer | PASS | V2 DrawingEngine 테스트 추가 |
 | 24x10 cells / 32px snap | PASS | Race projection과 editor snap 용어 계속 분리 |
-| item은 system-only | PARTIAL | backend/API에서 user-generated item 차단 |
+| item은 system-only | PASS | 완료: backend/API에서 user-generated item 차단, system item seed 보존 |
 | remote realtime은 Socket.IO 우선 | NOT IMPLEMENTED | frontend realtime adapter를 Socket.IO remote mode로 전환 |
 | 일반 에셋 제출 후 Studio 유지 | NOT IMPLEMENTED | `submitAsset`/Studio success flow 수정 및 toast CTA 추가 |
 
