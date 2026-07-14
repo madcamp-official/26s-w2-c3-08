@@ -1,0 +1,75 @@
+.bridge {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--spacing-2);
+}
+
+.status {
+  min-height: var(--spacing-10);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-game-hud-text);
+  background: var(--semantic-color-game-hud-surface);
+}
+
+.status strong,
+.status span {
+  overflow-wrap: anywhere;
+}
+
+.canvasFrame {
+  min-width: 0;
+  min-height: min(calc(var(--spacing-16) * 6), 62svh);
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.canvasFrame :global(canvas) {
+  max-width: 100%;
+  height: auto;
+  image-rendering: auto;
+}
+
+.canvasFrame :global(.phaser-map-host),
+.canvasFrame :global(.playtest-phaser-host),
+.canvasFrame :global(.race-phaser-host) {
+  max-width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.canvasFrame :global(.phaser-map-host) {
+  width: min(100%, 768px);
+  min-height: 320px;
+}
+
+.canvasFrame :global(.playtest-phaser-host),
+.canvasFrame :global(.race-phaser-host) {
+  width: min(100%, 768px);
+  min-height: 420px;
+}
+
+.duplicateNotice,
+.loadingNotice {
+  width: min(100%, calc(var(--spacing-16) * 8));
+  min-height: calc(var(--spacing-16) * 3);
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-4);
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+  color: var(--semantic-color-game-hud-text);
+  background: var(--semantic-color-game-hud-surface);
+}

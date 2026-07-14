@@ -1647,6 +1647,7 @@ function toRealtimeRoomPlayer(player: RoomPlayer): RealtimeRoomSnapshot['players
     userId: player.id,
     nickname: player.nickname,
     isHost: player.isHost,
+    isReady: player.isReady,
     validationCleared: player.validationCleared,
     raceProgress: player.raceProgress,
     raceFinishedAtMs: player.raceFinishedAtMs,

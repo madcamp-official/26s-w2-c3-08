@@ -50,6 +50,7 @@ const defaultRooms: RoomSummary[] = [
     maxPlayers: 4,
     phase: 'lobby',
     elapsedSeconds: 0,
+    phaseEndsAt: null,
   },
   {
     id: 'room-private-1',
@@ -61,6 +62,7 @@ const defaultRooms: RoomSummary[] = [
     maxPlayers: 4,
     phase: 'lobby',
     elapsedSeconds: 0,
+    phaseEndsAt: null,
   },
   {
     id: 'room-racing-1',
@@ -72,6 +74,7 @@ const defaultRooms: RoomSummary[] = [
     maxPlayers: 4,
     phase: 'racing',
     elapsedSeconds: 103,
+    phaseEndsAt: null,
   },
 ]
 
@@ -918,6 +921,7 @@ export async function createRoom(
     maxPlayers: payload.maxPlayers,
     phase: 'lobby',
     elapsedSeconds: 0,
+    phaseEndsAt: null,
   }
 
   const rooms = [createdRoom, ...getMockRooms()]
@@ -1351,6 +1355,7 @@ function normalizeRoom(room: RoomSummary) {
     is_public?: boolean
     max_players?: number
     elapsed_seconds?: number
+    phase_ends_at?: string | null
   }
 
   return {
@@ -1369,6 +1374,7 @@ function normalizeRoom(room: RoomSummary) {
     maxPlayers: rawRoom.maxPlayers ?? rawRoom.max_players ?? 4,
     phase: normalizeRoomPhase(rawRoom.phase),
     elapsedSeconds: rawRoom.elapsedSeconds ?? rawRoom.elapsed_seconds ?? 0,
+    phaseEndsAt: rawRoom.phaseEndsAt ?? rawRoom.phase_ends_at ?? null,
   }
 }
 

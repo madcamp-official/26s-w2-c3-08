@@ -1,0 +1,116 @@
+.shell {
+  min-height: 720px;
+}
+
+.workspace,
+.workspaceMeta,
+.attributeForm,
+.sizeField,
+.opacityControl {
+  min-width: 0;
+}
+
+.workspace {
+  width: min(100%, 760px);
+  display: grid;
+  gap: var(--spacing-4);
+  place-items: center;
+}
+
+.workspaceMeta,
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+}
+
+.attributeForm {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.sizeField {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-studio-tool-surface);
+}
+
+.sizeField legend {
+  padding: 0 var(--spacing-1);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.sizeField label {
+  min-width: 0;
+  display: grid;
+  gap: var(--spacing-1);
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.sizeField input {
+  min-width: var(--spacing-16);
+  min-height: var(--spacing-10);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-text-primary);
+  background: var(--component-color-field-background);
+  font: inherit;
+  font-size: var(--typography-size-body);
+}
+
+.opacityControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-studio-tool-surface);
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.opacityControl input {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--semantic-color-action-primary-background);
+}
+
+.submitReason,
+.submitError {
+  margin: 0;
+  padding: var(--spacing-3);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.submitReason {
+  border: 1px solid var(--semantic-color-border-default);
+  color: var(--semantic-color-text-secondary);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.submitError {
+  border: 1px solid var(--semantic-color-action-danger-border);
+  color: var(--semantic-color-text-danger);
+  background: var(--primitive-color-danger-50);
+}
+
+.formActions {
+  justify-content: stretch;
+}
+
+.formActions > * {
+  flex: 1 1 180px;
+}

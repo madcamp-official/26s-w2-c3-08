@@ -69,6 +69,7 @@ export interface RoomSummary {
   maxPlayers: number
   phase: RoomPhase
   elapsedSeconds: number
+  phaseEndsAt: string | null
 }
 
 export interface RoomPlayer {
@@ -80,6 +81,7 @@ export interface RoomPlayer {
   raceProgress: number
   raceFinishedAtMs: number | null
   raceDistanceToGoal: number
+  raceRank?: number
 }
 
 export interface RacePositionSnapshot {

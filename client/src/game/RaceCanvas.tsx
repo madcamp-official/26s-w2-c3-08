@@ -38,6 +38,12 @@ import {
   type PlatformSurfaceEffect,
   type SlopeDirection,
 } from './assetRules'
+import { getLastDanceTopMarkers } from './raceLastDanceMarkers'
+import {
+  getDestroyedRaceSegmentIds,
+  getRaceLineGroundSpans,
+  getRaceLineSweepStep,
+} from './raceLineSweep'
 
 const WIDTH = 768
 const HEIGHT = 420
@@ -169,6 +175,14 @@ interface ProjectileRect {
   obstacleEffect: ObstacleContactEffect
 }
 
+interface RaceLineSweepGroundRect {
+  segmentId: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 class RaceScene extends Phaser.Scene {
   private players: RoomPlayer[] = []
   private currentUserId: string | null = null
@@ -219,6 +233,7 @@ class RaceScene extends Phaser.Scene {
   private racerStompFeedbackUntilMs = new Map<string, number>()
   private racerInteractionCooldowns = new Map<string, number>()
   private facingDirection: -1 | 1 = 1
+  private lastRaceLineSweepStep = 0
 
   constructor() {
     super('race')
@@ -254,6 +269,7 @@ class RaceScene extends Phaser.Scene {
 
     this.sceneTimeMs = time
     this.elapsedSeconds += dt
+    this.redrawRaceLineSweepWorldIfNeeded()
     this.ensureRacers()
     this.cleanupPlatformReactions(time)
     this.cleanupMonsterDefeats(time)
@@ -281,10 +297,11 @@ class RaceScene extends Phaser.Scene {
     this.currentUserId = currentUserId
     this.racePositions = racePositions
     const nextMergedMapId = mergedMap?.id ?? ''
+    const previousSweepStep = this.getRaceLineSweepStep()
     if (nextMergedMapId !== this.mergedMapId) {
       this.mergedMapId = nextMergedMapId
       this.mergedMap = mergedMap
-      this.elapsedSeconds = 0
+      this.elapsedSeconds = elapsedSeconds
       this.sceneTimeMs = 0
       this.platformReactionStates.clear()
       this.platformMovementStates.clear()
@@ -297,12 +314,14 @@ class RaceScene extends Phaser.Scene {
       this.racerStompFeedbackUntilMs.clear()
       this.racerInteractionCooldowns.clear()
       this.resetLocalPlayer()
+      this.lastRaceLineSweepStep = this.getRaceLineSweepStep()
       this.drawWorld()
     } else {
       this.mergedMap = mergedMap
+      this.elapsedSeconds = Math.max(this.elapsedSeconds, elapsedSeconds)
+      this.redrawRaceLineSweepWorldIfNeeded(previousSweepStep)
     }
     this.isExtended = isExtended
-    this.elapsedSeconds = elapsedSeconds
     this.onProgress = onProgress
     this.onFinish = onFinish
 
@@ -345,6 +364,7 @@ class RaceScene extends Phaser.Scene {
     graphics.fillRect(0, FLOOR_Y, worldWidth, 12)
 
     this.drawMergedMap(graphics)
+    this.drawRaceLineSweepGround(graphics)
     this.drawProjectiles(graphics)
 
     const goalX = this.getGoalX()
@@ -381,7 +401,7 @@ class RaceScene extends Phaser.Scene {
       return
     }
 
-    this.mergedMap.placements.forEach((placement) => {
+    this.getActiveMergedPlacements().forEach((placement) => {
       const platformKey = getMergedPlacementKey(placement)
 
       if (placement.assetCategory === 'item' && this.collectedItemKeys.has(platformKey)) {
@@ -465,16 +485,31 @@ class RaceScene extends Phaser.Scene {
     })
   }
 
+  private drawRaceLineSweepGround(graphics: Phaser.GameObjects.Graphics) {
+    this.getRaceLineSweepGroundRects().forEach((rect) => {
+      graphics.fillStyle(0x5f3a1a, 0.94)
+      graphics.fillRect(rect.x, rect.y, rect.width, rect.height)
+      graphics.fillStyle(0x43a047, 1)
+      graphics.fillRect(rect.x, rect.y, rect.width, 8)
+      graphics.lineStyle(2, 0x111827, 0.24)
+      graphics.strokeRect(rect.x, rect.y, rect.width, rect.height)
+    })
+  }
+
   private getCollisionRects() {
     if (this.mergedMap === null) {
       return []
     }
 
-    const placementRects = this.mergedMap.placements
+    const placementRects = this.getActiveMergedPlacements()
       .map((placement) => this.createCollisionRect(placement))
       .filter((rect): rect is CollisionRect => rect !== null)
 
-    return [...placementRects, ...this.getProjectileCollisionRects()]
+    return [
+      ...placementRects,
+      ...this.getRaceLineSweepGroundCollisionRects(),
+      ...this.getProjectileCollisionRects(),
+    ]
   }
 
   private createCollisionRect(placement: MergedMapPlacement): CollisionRect | null {
@@ -555,6 +590,83 @@ class RaceScene extends Phaser.Scene {
     }
   }
 
+  private getRaceLineSweepGroundCollisionRects(): CollisionRect[] {
+    return this.getRaceLineSweepGroundRects().map((rect) => ({
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      behavior: 'solid',
+      slopeDirection: undefined,
+      surfaceEffect: 'none',
+      platformKey: `sweep-ground:${rect.segmentId}`,
+      platformCollisionMode: 'solid',
+      platformReaction: 'none',
+      platformMovementMode: 'fixed',
+      itemKey: null,
+      itemEffect: 'none',
+      monsterKey: null,
+      obstacleEffect: 'none',
+      obstacleHitSurface: 'all',
+      monsterHealth: 1,
+      monsterStompReaction: 'harmful',
+    }))
+  }
+
+  private getRaceLineSweepGroundRects(): RaceLineSweepGroundRect[] {
+    if (this.mergedMap === null) {
+      return []
+    }
+
+    return getRaceLineGroundSpans(this.mergedMap, this.elapsedSeconds).map((span) => {
+      const startX = this.mapXToPixel(Math.min(span.start.x, span.end.x))
+      const endX = this.mapXToPixel(Math.max(span.start.x, span.end.x)) + MAP_CELL_X
+      const height = 24
+      const groundCellY = Math.max(span.start.y, span.end.y)
+
+      return {
+        segmentId: span.segmentId,
+        x: startX,
+        y: this.mapYToPixel(groundCellY, height),
+        width: Math.max(MAP_CELL_X, endX - startX),
+        height,
+      }
+    })
+  }
+
+  private getActiveMergedPlacements() {
+    if (this.mergedMap === null) {
+      return []
+    }
+
+    const destroyedSegmentIds = getDestroyedRaceSegmentIds(this.mergedMap, this.elapsedSeconds)
+
+    if (destroyedSegmentIds.size === 0) {
+      return this.mergedMap.placements
+    }
+
+    return this.mergedMap.placements.filter(
+      (placement) =>
+        placement.sourceSegmentId === 'connector' ||
+        !destroyedSegmentIds.has(placement.sourceSegmentId),
+    )
+  }
+
+  private getRaceLineSweepStep() {
+    return getRaceLineSweepStep(this.mergedMap, this.elapsedSeconds)
+  }
+
+  private redrawRaceLineSweepWorldIfNeeded(previousStep = this.lastRaceLineSweepStep) {
+    const nextStep = this.getRaceLineSweepStep()
+
+    if (nextStep === previousStep && nextStep === this.lastRaceLineSweepStep) {
+      return
+    }
+
+    this.lastRaceLineSweepStep = nextStep
+    this.drawWorld()
+  }
+
   private redrawDynamicWorld(time: number) {
     if (!this.hasDynamicWorld() || time - this.lastAnimatedWorldRedrawAt < 90) {
       return
@@ -575,11 +687,11 @@ class RaceScene extends Phaser.Scene {
   }
 
   private hasMovingMonsters() {
-    return this.mergedMap?.placements.some((placement) => isDynamicMonster(placement)) ?? false
+    return this.getActiveMergedPlacements().some((placement) => isDynamicMonster(placement))
   }
 
   private hasDynamicObstacles() {
-    return this.mergedMap?.placements.some((placement) => isDynamicObstacle(placement)) ?? false
+    return this.getActiveMergedPlacements().some((placement) => isDynamicObstacle(placement))
   }
 
   private drawProjectiles(graphics: Phaser.GameObjects.Graphics) {
@@ -622,7 +734,7 @@ class RaceScene extends Phaser.Scene {
     const playerCenterX = this.localState.x + this.getPlayerWidth() / 2
     const playerCenterY = this.localState.y + this.getPlayerHeight() / 2
 
-    return this.mergedMap.placements.flatMap((placement) => {
+    return this.getActiveMergedPlacements().flatMap((placement) => {
       const mode = getObstacleProjectileMode(placement)
 
       if (mode === 'none') {
@@ -667,7 +779,7 @@ class RaceScene extends Phaser.Scene {
   }
 
   private hasDynamicPlatforms() {
-    return this.mergedMap?.placements.some((placement) => isDynamicPlatform(placement)) ?? false
+    return this.getActiveMergedPlacements().some((placement) => isDynamicPlatform(placement))
   }
 
   private getPlatformStateForPlacement(
@@ -1185,25 +1297,36 @@ class RaceScene extends Phaser.Scene {
       return
     }
 
-    this.players.forEach((player, index) => {
-      const x = this.getPlayerWorldX(player)
-      const color = player.id === this.currentUserId ? 0x2563eb : getRacerColor(index)
-      const label = this.getOvertimeLabel(player.id)
+    const markers = getLastDanceTopMarkers(
+      this.players.map((player, index) => ({
+        playerId: player.id,
+        nickname: player.nickname,
+        progress: this.getProgressForPlayer(player),
+        x: this.getPlayerWorldX(player),
+        order: index,
+      })),
+    )
 
-      graphics.lineStyle(3, color, 0.76)
+    markers.forEach((marker, index) => {
+      const x = marker.x
+      const label = this.getOvertimeLabel(marker.playerId)
+
+      graphics.lineStyle(4, marker.color, 0.86)
       graphics.lineBetween(x, 42, x, FLOOR_Y + 56)
-      graphics.fillStyle(color, 0.94)
-      graphics.fillCircle(x, 48, 5)
+      graphics.fillStyle(marker.color, 0.96)
+      graphics.fillCircle(x, 48, 6)
+      graphics.fillStyle(0xffffff, 0.76)
+      graphics.fillCircle(x, 48, 2)
 
       label
         .setVisible(true)
-        .setText(`${player.nickname} ${Math.round(this.getProgressForPlayer(player))}%`)
+        .setText(`${marker.label} ${marker.nickname} ${Math.round(marker.progress)}%`)
         .setPosition(x + 8, 52 + index * 18)
-        .setColor(player.id === this.currentUserId ? '#1d4ed8' : '#111827')
+        .setColor(marker.textColor)
     })
 
     this.overtimeLabels.forEach((label, playerId) => {
-      if (!this.players.some((player) => player.id === playerId)) {
+      if (!markers.some((marker) => marker.playerId === playerId)) {
         label.setVisible(false)
       }
     })
@@ -1443,7 +1566,7 @@ class RaceScene extends Phaser.Scene {
     const playerWidth = this.getPlayerWidth()
     const previousTop = previousY
     const nextTop = this.localState.y
-    const bumpedPlatform = this.mergedMap.placements
+    const bumpedPlatform = this.getActiveMergedPlacements()
       .map((placement) => {
         const key = getMergedPlacementKey(placement)
 

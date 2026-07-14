@@ -1,0 +1,96 @@
+.timer,
+.budget,
+.ranking,
+.resultRow {
+  min-width: 0;
+}
+
+.timer {
+  min-height: var(--spacing-10);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-game-hud-text);
+  background: var(--semantic-color-game-hud-surface);
+}
+
+.timer strong {
+  font-family: var(--font-timer);
+  font-size: var(--typography-size-title-md);
+  line-height: var(--typography-line-height-tight);
+}
+
+.timer em,
+.budget span,
+.ranking small,
+.resultRow small {
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.timer[data-v2-state='warning'] {
+  border-color: var(--semantic-color-action-danger-border);
+}
+
+.budget {
+  display: grid;
+  gap: var(--spacing-1);
+  width: min(100%, calc(var(--spacing-16) * 5));
+}
+
+.budget span {
+  color: var(--semantic-color-game-hud-text);
+}
+
+.ranking {
+  display: grid;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ranking li,
+.resultRow {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-text-primary);
+  background: var(--semantic-color-game-panel);
+}
+
+.ranking li[data-v2-state='local'],
+.resultRow[data-v2-state='local'] {
+  border-color: var(--semantic-color-border-focus);
+}
+
+.resultRow {
+  grid-template-columns: var(--spacing-10) minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.resultRow strong {
+  min-width: var(--spacing-10);
+  min-height: var(--spacing-10);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-text-on-yellow);
+  background: var(--semantic-color-launcher-title-surface);
+}
+
+.resultRow span,
+.resultRow em {
+  overflow-wrap: anywhere;
+}
+
+.resultRow em {
+  font-style: normal;
+  font-weight: var(--typography-weight-bold);
+}

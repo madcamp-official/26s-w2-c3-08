@@ -1,0 +1,274 @@
+.shell {
+  min-height: 720px;
+}
+
+.layout {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 420px);
+  grid-template-rows: auto auto;
+  gap: var(--spacing-5);
+  align-items: stretch;
+}
+
+.hero,
+.summaryPanel,
+.avatarPanel {
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.hero {
+  min-height: calc(var(--spacing-16) * 4);
+  display: grid;
+  align-content: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-6);
+}
+
+.hero h2,
+.hero p,
+.summaryPanel h3,
+.avatarCopy h3,
+.avatarCopy p,
+.settingsSection h3,
+.issuedCode p {
+  margin: 0;
+}
+
+.hero h2 {
+  font-family: var(--font-display);
+  font-size: var(--typography-size-title-md);
+  line-height: var(--typography-line-height-tight);
+}
+
+.hero p,
+.avatarCopy p,
+.issuedCode p {
+  color: var(--semantic-color-text-secondary);
+}
+
+.hero h2,
+.hero p,
+.summaryPanel h3,
+.avatarCopy h3,
+.avatarCopy p,
+.issuedCode strong,
+.issuedCode p {
+  overflow-wrap: anywhere;
+}
+
+.eyebrow {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.ctaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+.avatarPanel {
+  grid-row: span 2;
+  width: 100%;
+  display: grid;
+  grid-template-rows: minmax(calc(var(--spacing-16) * 3), 1fr) auto;
+  gap: var(--spacing-4);
+  padding: var(--spacing-5);
+  overflow: hidden;
+  color: var(--semantic-color-text-primary);
+  font-family: var(--font-ui);
+  text-align: start;
+}
+
+.avatarPanel:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+}
+
+.avatarPreview {
+  position: relative;
+  display: grid;
+  place-items: end center;
+  overflow: hidden;
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel);
+}
+
+.avatarPreview::before {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--semantic-color-border-default) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--semantic-color-border-default) 1px, transparent 1px);
+  background-size: var(--spacing-8) var(--spacing-8);
+  content: '';
+  opacity: var(--opacity-overlay-subtle);
+  pointer-events: none;
+}
+
+.avatarPreview span {
+  width: var(--spacing-16);
+  height: calc(var(--spacing-16) * 2);
+  display: block;
+  position: relative;
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-full) var(--radius-full) var(--radius-sm) var(--radius-sm);
+  background: var(--semantic-color-action-primary-background);
+}
+
+.avatarPreview[data-state='generating'] span {
+  background: var(--semantic-color-status-generating);
+}
+
+.avatarPreview[data-state='failed'] span {
+  background: var(--semantic-color-status-error);
+}
+
+.avatarCopy {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.avatarCopy h3 {
+  font-size: var(--typography-size-title-sm);
+}
+
+.estimate {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-semibold);
+}
+
+.summaryPanel {
+  display: grid;
+  gap: var(--spacing-4);
+  padding: var(--spacing-5);
+  align-content: start;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-3);
+  margin: 0;
+}
+
+.summaryGrid div {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel);
+}
+
+.summaryGrid dt {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.summaryGrid dd {
+  margin: 0;
+  font-size: var(--typography-size-title-sm);
+  font-weight: var(--typography-weight-bold);
+}
+
+.settings {
+  min-width: 0;
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.settingsSection {
+  min-width: 0;
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.settingsSection h3 {
+  font-size: var(--typography-size-title-sm);
+}
+
+.volumeField {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: var(--spacing-3);
+  font-weight: var(--typography-weight-semibold);
+}
+
+.volumeField input {
+  width: 100%;
+  accent-color: var(--semantic-color-action-primary-background);
+}
+
+.volumeField input:focus-visible,
+.checkboxRow input:focus-visible {
+  outline: var(--effects-focus-outline-width) solid var(--semantic-color-focus-ring);
+  outline-offset: var(--effects-focus-outline-offset);
+}
+
+.volumeField output {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+  text-align: end;
+}
+
+.checkboxRow {
+  min-height: var(--spacing-10);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-weight: var(--typography-weight-semibold);
+}
+
+.deviceActions {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.issuedCode {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel);
+}
+
+.issuedCode span {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.issuedCode strong {
+  font-family: var(--font-timer);
+  font-size: var(--typography-size-title-sm);
+}
+
+@media (max-width: 900px) {
+  .layout,
+  .ctaGrid,
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .avatarPanel {
+    grid-row: auto;
+  }
+
+  .volumeField {
+    grid-template-columns: 1fr;
+  }
+}

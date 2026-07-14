@@ -1,0 +1,189 @@
+.shell {
+  min-height: 720px;
+}
+
+.screen,
+.layout,
+.roomList,
+.createPanel,
+.roomCard,
+.field,
+.optionGroup {
+  min-width: 0;
+}
+
+.screen {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--spacing-4);
+}
+
+.header h2,
+.header p,
+.createPanel h3,
+.roomCard h3,
+.roomCard p,
+.roomMeta,
+.roomMeta dd,
+.disabledReason,
+.errorText {
+  margin: 0;
+}
+
+.header h2 {
+  font-family: var(--font-display);
+  font-size: var(--typography-size-title-md);
+  line-height: var(--typography-line-height-tight);
+}
+
+.header p,
+.roomCard p,
+.disabledReason {
+  color: var(--semantic-color-text-secondary);
+}
+
+.eyebrow {
+  margin: 0 0 var(--spacing-1);
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: var(--spacing-4);
+  align-items: start;
+}
+
+.roomList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-3);
+}
+
+.roomCard,
+.createPanel {
+  display: grid;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-surface-panel);
+  box-shadow: var(--effects-shadow-panel);
+}
+
+.roomCard {
+  align-content: start;
+}
+
+.roomCard[data-v2-state='full'],
+.roomCard[data-v2-state='playing'] {
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.roomCardHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.roomCard h3,
+.createPanel h3 {
+  overflow-wrap: anywhere;
+  font-size: var(--typography-size-title-sm);
+  line-height: var(--typography-line-height-tight);
+}
+
+.roomMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-2);
+}
+
+.roomMeta div {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-sm);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.roomMeta dt,
+.field span,
+.optionGroup legend {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.roomMeta dd {
+  font-weight: var(--typography-weight-bold);
+}
+
+.disabledReason,
+.errorText {
+  min-height: var(--spacing-10);
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.disabledReason {
+  border: 1px solid var(--semantic-color-border-default);
+  background: var(--semantic-color-surface-panel-muted);
+}
+
+.errorText {
+  border: 1px solid var(--semantic-color-action-danger-border);
+  color: var(--semantic-color-text-danger);
+  background: var(--primitive-color-danger-50);
+}
+
+.field,
+.optionGroup {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.field input,
+.field select {
+  min-height: var(--spacing-10);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--semantic-color-text-primary);
+  background: var(--component-color-field-background);
+  font: inherit;
+}
+
+.optionGroup {
+  margin: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-sm);
+}
+
+.optionGroup label {
+  min-height: var(--spacing-10);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+@media (max-width: 980px) {
+  .header,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

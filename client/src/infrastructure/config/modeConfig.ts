@@ -100,7 +100,8 @@ function normalizeModeValue(value: string | undefined) {
 }
 
 function readImportMetaEnv(): ModeEnv {
-  const meta = import.meta as ImportMeta & { env?: ModeEnv }
-
-  return meta.env ?? {}
+  return {
+    VITE_DATA_MODE: import.meta.env.VITE_DATA_MODE,
+    VITE_REALTIME_MODE: import.meta.env.VITE_REALTIME_MODE,
+  }
 }

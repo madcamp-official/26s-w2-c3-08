@@ -17,6 +17,7 @@ export interface RealtimeRoomPlayer {
   userId: string
   nickname: string
   isHost: boolean
+  isReady: boolean
   validationCleared: boolean
   raceProgress: number
   raceFinishedAtMs: number | null
@@ -782,6 +783,11 @@ function normalizeRoomPlayer(payload: unknown): RealtimeRoomPlayer {
     userId,
     nickname: readString(value.nickname) ?? `player-${userId.slice(0, 4)}`,
     isHost: value.isHost === true || value.is_host === true,
+    isReady:
+      value.isReady === true ||
+      value.is_ready === true ||
+      value.isHost === true ||
+      value.is_host === true,
     validationCleared: value.validationCleared === true || value.validation_cleared === true,
     raceProgress,
     raceFinishedAtMs:
@@ -879,6 +885,7 @@ function normalizeRoomSummary(payload: unknown): RoomSummary {
     maxPlayers: readNumber(value.maxPlayers) ?? readNumber(value.max_players) ?? 4,
     phase: normalizePhase(value.phase),
     elapsedSeconds: readNumber(value.elapsedSeconds) ?? readNumber(value.elapsed_seconds) ?? 0,
+    phaseEndsAt: readString(value.phaseEndsAt) ?? readString(value.phase_ends_at) ?? null,
   }
 }
 
