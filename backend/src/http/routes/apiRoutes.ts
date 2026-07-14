@@ -2102,10 +2102,17 @@ function getRaceDurationMs(segmentCount: number) {
 function setPlayerRaceState(roomId: string, userId: string, patch: Partial<RacePlayerState>) {
   const raceStates = racePlayerStates.get(roomId) ?? new Map<string, RacePlayerState>();
   const currentState = raceStates.get(userId) ?? createDefaultRacePlayerState();
+  const raceFinishedAtMs =
+    patch.raceFinishedAtMs === undefined
+      ? currentState.raceFinishedAtMs
+      : patch.raceFinishedAtMs === null || currentState.raceFinishedAtMs === null
+        ? patch.raceFinishedAtMs
+        : Math.min(currentState.raceFinishedAtMs, patch.raceFinishedAtMs);
 
   raceStates.set(userId, {
     ...currentState,
-    ...patch
+    ...patch,
+    raceFinishedAtMs
   });
   racePlayerStates.set(roomId, raceStates);
 }

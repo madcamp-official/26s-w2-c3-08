@@ -665,6 +665,32 @@ describe("V2 HTTP API contract", () => {
     expect(hostFinishResponse.body.room.phase).toBe("racing");
     expect(hostFinishResponse.body.room.phaseEndsAt).toBe("2026-07-14T01:00:10.000Z");
 
+    const slowerDuplicateFinishResponse = await request(app)
+      .post(`/api/rooms/${room.id}/race/finish`)
+      .set("Authorization", `Bearer ${host.token}`)
+      .send({ user_id: host.id, finish_time_ms: 90_000 })
+      .expect(200);
+
+    expect(slowerDuplicateFinishResponse.body.room.phaseEndsAt).toBe("2026-07-14T01:00:10.000Z");
+    expect(slowerDuplicateFinishResponse.body.result.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: host.id, raceFinishedAtMs: 73_400 }),
+      ]),
+    );
+
+    const fasterDuplicateFinishResponse = await request(app)
+      .post(`/api/rooms/${room.id}/race/finish`)
+      .set("Authorization", `Bearer ${host.token}`)
+      .send({ user_id: host.id, finish_time_ms: 70_000 })
+      .expect(200);
+
+    expect(fasterDuplicateFinishResponse.body.room.phaseEndsAt).toBe("2026-07-14T01:00:10.000Z");
+    expect(fasterDuplicateFinishResponse.body.result.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: host.id, raceFinishedAtMs: 70_000 }),
+      ]),
+    );
+
     const guestFinishResponse = await request(app)
       .post(`/api/rooms/${room.id}/race/finish`)
       .set("Authorization", `Bearer ${guest.token}`)
@@ -685,7 +711,7 @@ describe("V2 HTTP API contract", () => {
     expect(resultsResponse.body.room.phase).toBe("finished");
     expect(resultsResponse.body.result.players).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ userId: host.id, raceFinishedAtMs: 73_400 }),
+        expect.objectContaining({ userId: host.id, raceFinishedAtMs: 70_000 }),
         expect.objectContaining({ userId: guest.id, raceFinishedAtMs: 81_250 }),
       ]),
     );
