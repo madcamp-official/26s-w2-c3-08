@@ -114,6 +114,12 @@ export interface GameRoomSnapshot {
 
 const mapBoardCols = 24
 const mapBoardRows = 10
+const raceResultPollIntervalMs = 250
+const raceResultPollTimeoutMs = 12_000
+const raceResultPollTimers = new WeakMap<
+  GamePhaseControllerRuntime,
+  ReturnType<typeof setInterval>
+>()
 
 export interface GameRoomPort {
   getRoomSnapshot(
@@ -289,6 +295,15 @@ export function createInitialGamePhaseControllerState(
 export async function bootGamePhaseController(runtime: GamePhaseControllerRuntime) {
   const session = runtime.sessionStoragePort.loadSession()
   let phaseSyncTimer: ReturnType<typeof setInterval> | null = null
+  let hostMergeRequested = false
+  const requestHostMerge = () => {
+    if (hostMergeRequested) {
+      return
+    }
+
+    hostMergeRequested = true
+    void mergeGameRoomMap(runtime)
+  }
 
   runtime.setState((state) => ({
     ...state,
@@ -322,6 +337,15 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
       runtime.setState((state) => applyRoomSnapshot(state, snapshot.players, snapshot.phaseEndsAt))
     },
     onPhaseChanged(payload) {
+      const currentState = runtime.getState()
+
+      if (
+        payload.phase !== 'finished' &&
+        (currentState.routeKind === 'results' || currentState.raceState === 'finish')
+      ) {
+        return
+      }
+
       routeToPhase(runtime.routePort, payload.roomId, payload.phase)
       runtime.setState((state) => ({
         ...state,
@@ -338,8 +362,12 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
             ? '라스트댄스 30초가 시작됐어요.'
             : payload.phase === 'racing' && payload.isFinishCountdown
               ? '1등 도착 · 10초 안에 골인하세요.'
-              : `${getPhaseLabel(payload.phase)} 단계로 이동합니다.`,
+            : `${getPhaseLabel(payload.phase)} 단계로 이동합니다.`,
       }))
+
+      if (payload.phase === 'merging' && isCurrentPlayerHost(currentState)) {
+        requestHostMerge()
+      }
     },
     onTimerTick(payload) {
       runtime.setState((state) => ({
@@ -388,21 +416,11 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
       }))
     },
     onResultsFinal(result) {
+      runtime.routePort.navigateResults(result.roomId)
       runtime.setState((state) => ({
-        ...state,
-        players: result.players.map((player) => ({
-          id: player.userId,
-          nickname: player.nickname,
-          isHost: player.isHost,
-        isReady: true,
-        validationCleared: player.validationCleared,
-        raceProgress: player.raceProgress,
-        raceFinishedAtMs: player.raceFinishedAtMs,
-        raceDistanceToGoal: player.raceDistanceToGoal,
-        raceRank: player.rank,
-      })),
-      resultsState: 'winner',
-      staleResults: false,
+        ...applyRaceResult(state, result),
+        raceState: 'finish',
+        message: '최종 결과를 받았어요.',
       }))
     },
   })
@@ -467,7 +485,7 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
   }
 
   if (runtime.getState().routeKind === 'merging' && isCurrentPlayerHost(runtime.getState())) {
-    void mergeGameRoomMap(runtime)
+    requestHostMerge()
   }
 
   if (runtime.getState().routeKind === 'merging' && !isCurrentPlayerHost(runtime.getState())) {
@@ -498,6 +516,7 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
         clearInterval(phaseSyncTimer)
       }
 
+      clearRaceResultPolling(runtime)
       unsubscribe()
       runtime.roomRealtime.disconnect()
     },
@@ -1050,10 +1069,62 @@ export async function finishGameRace(runtime: GamePhaseControllerRuntime) {
   }))
 
   if (result.value.roomPhase === 'finished') {
+    clearRaceResultPolling(runtime)
     runtime.routePort.navigateResults(state.roomId)
+  } else {
+    startRaceResultPolling(runtime)
   }
 
   return { ok: true, result: result.value }
+}
+
+function startRaceResultPolling(runtime: GamePhaseControllerRuntime) {
+  if (runtime.dataMode !== 'remote' || raceResultPollTimers.has(runtime)) {
+    return
+  }
+
+  const startedAt = Date.now()
+  const poll = () => {
+    if (Date.now() - startedAt > raceResultPollTimeoutMs) {
+      clearRaceResultPolling(runtime)
+      return
+    }
+
+    const state = runtime.getState()
+
+    if (state.routeKind !== 'race' && state.routeKind !== 'results') {
+      clearRaceResultPolling(runtime)
+      return
+    }
+
+    void loadGameRaceResults(runtime).then((pollResult) => {
+      if (!pollResult.ok) {
+        return
+      }
+
+      clearRaceResultPolling(runtime)
+      runtime.routePort.navigateResults(runtime.getState().roomId)
+      runtime.setState((current) => ({
+        ...current,
+        raceState: 'finish',
+        message: '최종 결과를 받았어요.',
+      }))
+    })
+  }
+
+  raceResultPollTimers.set(runtime, setInterval(poll, raceResultPollIntervalMs))
+  poll()
+}
+
+function clearRaceResultPolling(runtime: GamePhaseControllerRuntime) {
+  const timer = raceResultPollTimers.get(runtime)
+
+  if (timer === undefined) {
+    return
+  }
+
+  clearInterval(timer)
+  raceResultPollTimers.delete(runtime)
 }
 
 function applyRaceResult(state: GamePhaseControllerState, result: RaceResult): GamePhaseControllerState {

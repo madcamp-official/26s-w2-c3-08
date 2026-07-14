@@ -2,7 +2,7 @@
 
 Date: 2026-07-14
 
-Scope: post-remediation status snapshot for the current uncommitted Frontend V2 worktree. This report records the integration evidence after `socket.io-client@4.8.3` was approved and added to the `client` workspace.
+Scope: post-remediation status snapshot for the committed Frontend V2 branch. This report records the integration evidence after `socket.io-client@4.8.3` was approved and added to the `client` workspace.
 
 ## Current Runtime Direction
 
@@ -12,6 +12,7 @@ Scope: post-remediation status snapshot for the current uncommitted Frontend V2 
 - Remote realtime uses the backend Socket.IO contract through `socket.io-client@4.8.3`.
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
+- `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
 
 ## Evidence Collected
 
@@ -34,7 +35,8 @@ Scope: post-remediation status snapshot for the current uncommitted Frontend V2 
 Notes:
 
 - Vite still reports the known `assetRules` chunk-size warning; it does not fail the build.
-- The remote browser test logged a transient Vite `/socket.io` proxy `ECONNRESET` after the passing flow; the test completed successfully.
+- The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
+- Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 
 ## Updated Blocker Status
 
@@ -55,12 +57,12 @@ Notes:
 - Visual evidence now covers Launcher, Studio, and Game State Gallery matrices at 1280x720, 1440x900, and 1920x1080. Golden/baseline approval is still a separate product review step.
 - Accessibility now has browser-level modal, icon label, live region, and Game canvas focus-boundary coverage. Broader keyboard-only flow and Studio/Game screen coverage still need expansion before default V2 switch.
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
-- `backend/` is the V2 remote realtime authority, while `server/` remains a Colyseus/AI experiment workspace. Final deployment docs should state which service is production-facing.
-- `madcamp2.pdf` is currently an untracked source artifact. Decide whether to commit it or keep it outside the repo.
+- `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
+- Production AI asset generation still needs final Qwen/WAN credentials, image storage, and deployment environment values.
 
 ## Next Recommended Work
 
 1. Expand browser accessibility coverage to full keyboard-only Launcher/Studio/Game flows.
 2. Confirm drawing browser acceptance in CI/pinned environment and then update `drawing-engine-adr` status if it passes there.
-3. Decide the final deployment authority between `backend/` and `server/` before default entry switch.
+3. Add deployment documentation for the `backend/` production authority and required AI/storage environment variables before default entry switch.
 4. Review and approve visual evidence before creating or updating golden baselines.

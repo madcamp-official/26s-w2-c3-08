@@ -211,6 +211,134 @@ async function testRealtimeRaceTimerSignals({
   bootResult.dispose()
 }
 
+async function testRealtimeResultsFinalRoutesAndIgnoresLateRaceCountdown({
+  bootGamePhaseController,
+  createInitialGamePhaseControllerState,
+}) {
+  const runtime = createRuntime(createInitialGamePhaseControllerState, {
+    routeState: { kind: 'race', roomId: 'room-flow', mergedMapId: 'merged-flow' },
+    roomSnapshot: {
+      roomId: 'room-flow',
+      phase: 'racing',
+      phaseEndsAt: new Date(Date.now() + 80_000).toISOString(),
+      players: [],
+    },
+  })
+
+  const bootResult = await bootGamePhaseController(runtime)
+
+  assert.equal(bootResult.reason, 'connected')
+  assert.ok(runtime.roomHandlers)
+
+  runtime.roomHandlers.onResultsFinal(createRaceResult('finished'))
+
+  assert.equal(runtime.state.raceState, 'finish')
+  assert.equal(runtime.state.players[0].raceRank, 1)
+  assert.deepEqual(runtime.routeChanges.at(-1), ['results', 'room-flow'])
+
+  runtime.roomHandlers.onPhaseChanged({
+    roomId: 'room-flow',
+    phase: 'racing',
+    phaseEndsAt: new Date(Date.now() + 10_000).toISOString(),
+    isFinishCountdown: true,
+  })
+
+  assert.equal(runtime.state.raceState, 'finish')
+  assert.deepEqual(runtime.routeChanges.at(-1), ['results', 'room-flow'])
+
+  bootResult.dispose()
+}
+
+async function testRealtimeMergingPhaseTriggersHostMergeOnce({
+  bootGamePhaseController,
+  createInitialGamePhaseControllerState,
+}) {
+  const runtime = createRuntime(createInitialGamePhaseControllerState, {
+    routeState: { kind: 'validation', roomId: 'room-flow', segmentId: 'segment-flow' },
+    roomSnapshot: {
+      roomId: 'room-flow',
+      phase: 'validating',
+      phaseEndsAt: new Date(Date.now() + 80_000).toISOString(),
+      players: [
+        {
+          userId: 'user-a',
+          nickname: '릴레이러',
+          isHost: true,
+          isReady: false,
+        },
+        {
+          userId: 'user-b',
+          nickname: '게스트',
+          isHost: false,
+          isReady: false,
+        },
+      ],
+    },
+  })
+
+  const bootResult = await bootGamePhaseController(runtime)
+
+  assert.equal(bootResult.reason, 'connected')
+  assert.ok(runtime.roomHandlers)
+
+  runtime.roomHandlers.onPhaseChanged({
+    roomId: 'room-flow',
+    phase: 'merging',
+    phaseEndsAt: new Date(Date.now() + 30_000).toISOString(),
+  })
+  runtime.roomHandlers.onPhaseChanged({
+    roomId: 'room-flow',
+    phase: 'merging',
+    phaseEndsAt: new Date(Date.now() + 30_000).toISOString(),
+  })
+
+  await flushMicrotasks()
+
+  assert.equal(runtime.calls.mergeRoomMap, 1)
+  assert.deepEqual(runtime.routeChanges.at(-1), ['race', 'room-flow', 'merged-flow'])
+
+  bootResult.dispose()
+}
+
+async function testRemoteFirstFinisherPollsFinalResults({
+  createInitialGamePhaseControllerState,
+  finishGameRace,
+}) {
+  const runtime = createRuntime(createInitialGamePhaseControllerState, {
+    dataMode: 'remote',
+    routeState: { kind: 'race', roomId: 'room-flow', mergedMapId: 'merged-flow' },
+  })
+
+  runtime.state.session = session
+  runtime.state.currentUserId = session.id
+  runtime.roomPort.finishRaceResult = createRaceResult('racing')
+  runtime.roomPort.getRaceResults = async () => {
+    runtime.calls.getRaceResults += 1
+
+    return runtime.calls.getRaceResults < 2
+      ? {
+          ok: false,
+          error: {
+            kind: 'not_found',
+            message: '아직 레이스 결과가 없어요.',
+            retryable: true,
+          },
+        }
+      : { ok: true, value: createRaceResult('finished') }
+  }
+
+  const finishResult = await finishGameRace(runtime)
+
+  assert.equal(finishResult.ok, true)
+  assert.equal(runtime.state.raceState, 'playerFinished')
+
+  await waitUntil(() => runtime.routeChanges.some((change) => change[0] === 'results'))
+
+  assert.equal(runtime.state.raceState, 'finish')
+  assert.ok(runtime.calls.getRaceResults >= 2)
+  assert.deepEqual(runtime.routeChanges.at(-1), ['results', 'room-flow'])
+}
+
 function testRaceLineSweepRules({
   getDestroyedRaceSegmentIds,
   getRaceLineGroundSpans,
@@ -401,7 +529,7 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
   const routeState = options.routeState ?? { kind: 'mapBuild', roomId: 'room-flow' }
   const fixture = createMapBuildFixture()
   const runtime = {
-    dataMode: 'mock',
+    dataMode: options.dataMode ?? 'mock',
     state: createInitialGamePhaseControllerState(routeState, fixture),
     calls: {
       getRoomSnapshot: 0,
@@ -409,6 +537,7 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
       validateMapSegment: 0,
       mergeRoomMap: 0,
       finishRace: 0,
+      getRaceResults: 0,
     },
     routeChanges: [],
     realtime: {
@@ -490,6 +619,7 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
         return { ok: true, value: runtime.roomPort.finishRaceResult }
       },
       async getRaceResults() {
+        runtime.calls.getRaceResults += 1
         return { ok: true, value: createRaceResult('finished') }
       },
     },
@@ -597,6 +727,9 @@ await testBootSnapshotRoutesToServerPhase(core)
 await testMapBuildToResultsFlow(core)
 await testServerRaceRankIsPreserved(core)
 await testRealtimeRaceTimerSignals(core)
+await testRealtimeResultsFinalRoutesAndIgnoresLateRaceCountdown(core)
+await testRealtimeMergingPhaseTriggersHostMergeOnce(core)
+await testRemoteFirstFinisherPollsFinalResults(core)
 testRaceLineSweepRules(raceLineSweep)
 testLastDanceMarkers(raceLastDanceMarkers)
 
@@ -617,4 +750,30 @@ async function importTypeScriptModule(source) {
 
 function read(path) {
   return readFileSync(join(repoRoot, path), 'utf8')
+}
+
+function flushMicrotasks() {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+function waitUntil(predicate, timeoutMs = 1_500) {
+  const startedAt = Date.now()
+
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      if (predicate()) {
+        resolve()
+        return
+      }
+
+      if (Date.now() - startedAt > timeoutMs) {
+        reject(new Error('condition was not met before timeout'))
+        return
+      }
+
+      setTimeout(tick, 25)
+    }
+
+    tick()
+  })
 }
