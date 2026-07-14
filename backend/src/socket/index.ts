@@ -3,6 +3,7 @@ import { Server, type Socket } from "socket.io";
 import { env, parseCorsOrigins } from "../config/env.js";
 import {
   FIRST_FINISH_COUNTDOWN_MS,
+  adjustApiRoomPhaseEndsAtFromRealtime,
   applyApiFirstFinishCountdown,
   applyApiLastDance,
   ensureApiRoomForRealtime,
@@ -265,8 +266,14 @@ export function attachSocketServer(httpServer: HttpServer) {
         return;
       }
 
-      const nextEndsAt = new Date(new Date(room.phaseEndsAt).getTime() + deltaSec * 1000);
-      room.phaseEndsAt = nextEndsAt.toISOString();
+      const apiRoom = adjustApiRoomPhaseEndsAtFromRealtime(room.id, room.phase, deltaSec);
+
+      if (apiRoom === null) {
+        emitSocketError(socket, "ROOM_PHASE_NOT_SYNCED", "room timer could not be updated");
+        return;
+      }
+
+      room.phaseEndsAt = apiRoom.phaseEndsAt;
       io.to(room.id).emit("time_vote:updated", {
         roomId: room.id,
         phase: room.phase,

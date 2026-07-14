@@ -297,6 +297,23 @@ export function setApiRoomPhase(roomId: string, phase: RoomPhase, durationOverri
   return toRoomSummary(room);
 }
 
+export function adjustApiRoomPhaseEndsAtFromRealtime(roomId: string, phase: RoomPhase, deltaSec: number) {
+  const room = rooms.get(roomId);
+
+  if (room === undefined || room.phase !== phase || room.phaseEndsAt === null) {
+    return null;
+  }
+
+  const currentEndsAtMs = Date.parse(room.phaseEndsAt);
+
+  if (Number.isNaN(currentEndsAtMs)) {
+    return null;
+  }
+
+  room.phaseEndsAt = new Date(currentEndsAtMs + deltaSec * 1000).toISOString();
+  return toRoomSummary(room);
+}
+
 export function getApiRoomRaceDurationMs(roomId: string) {
   return getRaceDurationMs(mergedMaps.get(roomId)?.segments.length ?? 1);
 }

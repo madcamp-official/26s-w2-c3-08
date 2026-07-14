@@ -12,7 +12,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - V2 remote session restore validates persisted tokens through backend `/api/session/validate`; invalid tokens clear the V2 session instead of falling back to mock.
 - Remote realtime uses the backend Socket.IO contract through `socket.io-client@4.8.3`.
 - Socket.IO `room:ready` now persists readiness into the backend API room snapshot, so REST refetch/reconnect observes the same ready state.
-- Socket.IO phase advances now persist the same `phaseEndsAt` into the backend API room snapshot, so REST refetch/reconnect observes the same timer metadata.
+- Socket.IO phase advances and applied time-vote timer deltas now persist the same `phaseEndsAt` into the backend API room snapshot, so REST refetch/reconnect observes the same timer metadata.
 - BroadcastChannel remains allowed only for explicit `VITE_REALTIME_MODE=local` development/testing paths.
 - Remote data/realtime failures must surface typed errors or offline/reconnecting states; they must not silently switch to mock data or local realtime.
 - Backend HTTP and Socket.IO now share the same comma-separated `CORS_ORIGIN` parser for single-origin and multi-origin deployments.
@@ -39,7 +39,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run lobby-room:check --workspace client` | PASS |
 | `npm run game:check --workspace client` | PASS |
 | `npm run flow:check --workspace client` | PASS, includes remote session create/validate and Login-to-Results adapter flow |
-| `npm run test --prefix backend` | PASS, includes remote nickname update, sprite regeneration, avatar-specific FormData generation, category mismatch rejection, user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, and stale result rejection |
+| `npm run test --prefix backend` | PASS, includes remote nickname update, sprite regeneration, avatar-specific FormData generation, category mismatch rejection, user-generated item rejection, system item seed preservation, direct asset job status, worker lease rollover, stale result rejection, and realtime timer persistence |
 | `npm run typecheck --prefix backend` | PASS |
 | `npm run check:v2` | PASS |
 | `npm run check --prefix gpu-worker` | PASS |

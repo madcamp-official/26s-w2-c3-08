@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  adjustApiRoomPhaseEndsAtFromRealtime,
   joinApiRoomFromRealtime,
   setApiRoomPhase,
   setApiRoomReadyFromRealtime,
@@ -84,6 +85,26 @@ describe("Socket.IO realtime contract", () => {
 
     expect(room?.phase).toBe("racing");
     expect(room?.phaseEndsAt).toBe("2026-07-14T02:01:20.000Z");
+  });
+
+  it("persists realtime time vote updates into API room phase snapshots", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-14T02:00:00.000Z"));
+
+    const roomId = `socket-time-vote-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    joinApiRoomFromRealtime(roomId, `${roomId}-host`, "Host");
+    joinApiRoomFromRealtime(roomId, `${roomId}-guest`, "Guest");
+    setApiRoomPhase(roomId, "building", 180_000);
+
+    const extendedRoom = adjustApiRoomPhaseEndsAtFromRealtime(roomId, "building", 15);
+
+    expect(extendedRoom?.phase).toBe("building");
+    expect(extendedRoom?.phaseEndsAt).toBe("2026-07-14T02:03:15.000Z");
+
+    const reducedRoom = adjustApiRoomPhaseEndsAtFromRealtime(roomId, "building", -15);
+
+    expect(reducedRoom?.phaseEndsAt).toBe("2026-07-14T02:03:00.000Z");
+    expect(adjustApiRoomPhaseEndsAtFromRealtime(roomId, "validating", 15)).toBeNull();
   });
 
   it("does not bypass REST late-join policy from realtime joins", () => {
