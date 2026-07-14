@@ -210,12 +210,12 @@ Flow:
 1. Add or update a State Gallery case.
 2. Render it through `ui-v2.html`.
 3. Capture screenshots in the viewport matrix.
-4. Compare against committed baselines.
-5. Review diffs for layout overlap, clipped text, canvas visibility, focus states, and state semantics.
-6. Approve baseline updates only with the product/design reviewer named in the task or PR.
+4. Store first-run captures as evidence screenshots under `client/test-results/**/evidence`.
+5. Review evidence for layout overlap, clipped text, canvas visibility, focus states, and state semantics.
+6. Create or update golden baselines only after the product/design reviewer approves the evidence.
 7. Block V2 completion if any required screen state lacks screenshot coverage.
 
-Recommended baseline path is `client/tests/visual/v2-baselines/**`, but the final baseline storage path and approval owner remain open product decisions from `TBD-CONTRACT-PD-005`.
+Evidence screenshot paths and the viewport matrix are implemented. Golden/baseline storage and approval owner remain a product review step before default switch.
 
 ## 9. Gates
 
@@ -290,32 +290,56 @@ Rules:
 
 ## 11. Current Client Notes
 
-Current `client/package.json` scripts:
+Current `client/package.json` scripts include:
 
 - `dev`
 - `build`
 - `lint`
 - `smoke`
+- `tokens:generate`
+- `tokens:check`
+- `primitives:check`
+- `core:check`
+- `shells:check`
+- `studio:check`
+- `login:check`
+- `main:check`
+- `warehouse:check`
+- `avatar-studio:check`
+- `asset-studio:check`
+- `routes:check`
+- `flow:check`
+- `lobby-room:check`
+- `game:check`
+- `realtime:check`
+- `launcher:check`
+- `browser-env:check`
+- `test:launcher-screenshots`
+- `test:lobby-room`
+- `test:remote-v2-browser`
+- `test:accessibility`
+- `test:studio-game-screenshots`
 - `test:drawing-browser`
 - `preview`
 
-There is currently no `test` or `e2e` script in `client/package.json`. The required future gates should add explicit scripts before V2 completion.
-
-Current client structure is legacy-centered:
+Current client structure keeps legacy runnable while V2 uses an independent entry:
 
 - `client/src/main.tsx` imports `./App.tsx`;
+- `client/ui-v2.html` imports `client/src/ui-v2-main.tsx`;
+- `client/src/app/AppV2.tsx` owns the V2 prototype route surface;
 - `client/src/App.tsx` contains login, main, warehouse, studios, lobby, room phases, drawing UI, and React HUD;
 - `client/src/App.css` contains broad legacy styling;
 - `client/src/game/**` is protected gameplay code;
-- `client/src/infrastructure/config/modeConfig.ts` already defines the target `VITE_DATA_MODE` and `VITE_REALTIME_MODE` parsing foundation.
+- `client/src/infrastructure/config/modeConfig.ts` defines `VITE_DATA_MODE` and `VITE_REALTIME_MODE`;
+- `client/src/infrastructure/realtime/socketIoRemoteAdapters.ts` uses backend Socket.IO in remote mode.
 
 ## 12. Open Decisions
 
 | ID | Decision needed |
 |---|---|
-| OPEN-UI-001 | Final screenshot baseline path and approval owner. |
-| OPEN-UI-002 | Final `design/tokens.json` schema and token generation command. |
-| OPEN-UI-003 | Whether V2 navigation is in-memory only or browser URL-backed. |
-| OPEN-UI-004 | Final remote asset job endpoint and backend `asset_job:updated` emit payload. |
-| OPEN-UI-005 | Remote nickname update contract for Settings. |
-| OPEN-UI-006 | Whether `lucide-react` or another icon source is approved as a production dependency. |
+| OPEN-UI-001 | Golden screenshot baseline storage and approval owner; evidence screenshots are implemented under `client/test-results/**/evidence`. |
+| RESOLVED-UI-002 | `design/tokens.json` schema and `scripts/generate-design-tokens.mjs` generation/check commands are implemented. |
+| RESOLVED-UI-003 | V2 navigation is browser hash URL-backed through `prototypeRouter`. |
+| RESOLVED-UI-004 | Remote asset job endpoints and `asset_job:updated` payload are implemented in `backend/` and V2 adapters. |
+| RESOLVED-UI-005 | Remote nickname update contract uses `/api/session/nickname`. |
+| OPEN-UI-006 | Whether `lucide-react` or another icon source is approved as a production dependency. Current V2 avoids adding an icon library. |

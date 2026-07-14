@@ -51,11 +51,11 @@
 | ID | C-004 |
 | 주제 | Realtime transport: Colyseus vs Socket.IO vs BroadcastChannel |
 | 문서 기준 | DECISION-V2-010 APPROVED. V2 MVP remote room/game realtime은 `backend/` Socket.IO 계약 우선. `server/` Colyseus는 대체 transport 후보. DECISION-V2-012에 따라 remote 실패 시 BroadcastChannel 자동 fallback 금지 |
-| 코드 기준 | frontend `client/src/net/realtime.ts`는 Colyseus SDK + BroadcastChannel fallback. `backend/src/socket/index.ts`는 Socket.IO. `server/src/rooms/MyRoom.ts`는 Colyseus scaffold |
-| 영향 | V2 remote contract와 legacy frontend adapter가 다르다. remote 실패가 local fallback으로 숨겨지면 production 오류를 발견하지 못한다 |
+| 코드 기준 | V2 entry uses `client/src/infrastructure/realtime/socketIoRemoteAdapters.ts` with `socket.io-client@4.8.3`; `backend/src/socket/index.ts` is the production-facing Socket.IO authority. Legacy `client/src/net/realtime.ts` still contains Colyseus SDK + BroadcastChannel fallback until legacy removal. `server/src/rooms/MyRoom.ts` remains Colyseus scaffold |
+| 영향 | V2 remote contract is implemented without automatic local fallback. Legacy root remains a known migration gap and must not be used as production evidence for V2 remote mode |
 | 계약 결정 | APPROVED: remote는 Socket.IO 우선, BroadcastChannel은 `VITE_REALTIME_MODE=local` 전용 |
-| 레거시 런타임 불일치 | MIGRATION GAP: frontend는 아직 Colyseus + BroadcastChannel fallback 구조 |
-| V2 구현 | PLANNED: Socket.IO remote adapter, typed offline/reconnecting state, transport-independent port 적용 |
+| 레거시 런타임 불일치 | MIGRATION GAP: legacy frontend still contains Colyseus + BroadcastChannel fallback structure until final removal |
+| V2 구현 | RESOLVED for V2 entry: Socket.IO remote adapter, typed offline/reconnecting state, and transport-independent ports are implemented and checked by `realtime:check`, remote browser flow, and `check:v2` |
 | 감사 근거 | [01-five-decision-implementation-audit.md](../reports/01-five-decision-implementation-audit.md#5-remote-realtime은-socketio-우선) |
 | 상태 | MIGRATION GAP |
 
@@ -66,12 +66,12 @@
 | ID | C-016 |
 | 주제 | Data/Realtime mode default와 remote fallback 정책 |
 | 문서 기준 | DECISION-V2-011/012 APPROVED. `VITE_DATA_MODE=mock|remote`, `VITE_REALTIME_MODE=local|remote`. remote 실패 시 Mock 또는 BroadcastChannel/local realtime으로 자동 fallback하지 않는다. Phase 2A acceptance 기준에 따라 development/test missing env는 `mock/local`, production missing env는 startup `ConfigurationError` |
-| 코드 기준 | `client/src/infrastructure/config/modeConfig.ts`는 missing development/test env를 `mock/local`로 해석하고, missing production env와 invalid value를 `ConfigurationError`로 처리한다. legacy `client/src/net/api.ts`는 아직 `VITE_REMOTE_API`, legacy `client/src/net/realtime.ts`는 아직 `VITE_LOCAL_REALTIME`와 Colyseus/local path를 사용한다 |
-| 영향 | 문서의 production default TBD/remote 권장 표현은 해소됨. legacy adapter가 새 mode config를 사용하기 전까지 remote 지원을 완료로 주장할 수 없다 |
+| 코드 기준 | V2 controllers select mock/remote ports through `client/src/infrastructure/config/modeConfig.ts`; missing production env and invalid values become `ConfigurationError`. Legacy `client/src/net/api.ts` still uses legacy env names and fallback semantics until removal |
+| 영향 | V2 entry has explicit data/realtime mode behavior. Legacy adapter differences remain isolated and must not be treated as V2 production behavior |
 | 계약 결정 | APPROVED: explicit mode only, production missing env is configuration error, remote mode has no Mock/local automatic fallback |
-| 레거시 런타임 불일치 | MIGRATION GAP: existing API/realtime adapters still use legacy env names and fallback semantics |
+| 레거시 런타임 불일치 | MIGRATION GAP: legacy root adapters still use legacy env names and fallback semantics |
 | 문서 typo/conflict | RESOLVED: `data-mode-policy.md` production default/TBD 표현을 실제 `modeConfig.ts` 정책으로 정정 |
-| V2 구현 | PLANNED: G1 Data/Realtime Mode Adapter에서 legacy API/realtime adapters를 `modeConfig.ts`와 port/adapter 구조에 연결 |
+| V2 구현 | RESOLVED for V2 entry: remote data/realtime ports surface typed errors without selecting mock/local fallback; legacy adapter conversion is deferred to final removal |
 | 감사 근거 | [02-phase-2a-shared-contract-foundation.md](../reports/02-phase-2a-shared-contract-foundation.md#added-explicit-mode-config) |
 | 상태 | MIGRATION GAP |
 
@@ -82,10 +82,10 @@
 | ID | C-005 |
 | 주제 | DB/ORM 방향과 실제 서버 패키지 분리 |
 | 문서 기준 | KJH architecture는 MySQL 언급, tech-stack은 PostgreSQL + Prisma 권장, LSJ backend는 PostgreSQL + Prisma |
-| 코드 기준 | `backend/package.json`은 Prisma 6 + Socket.IO backend, `server/package.json`은 Prisma 7 + Colyseus scaffold. Root workspace는 `backend` 제외 |
-| 영향 | DB schema/source of truth가 둘로 갈릴 수 있고 root workspace build가 backend를 검증하지 않는다 |
-| 권장안 | Phase 1 전에 backend와 server 중 배포 대상 service를 결정하고 root workspace 포함 여부를 결정 |
-| 상태 | OPEN |
+| 코드 기준 | `backend/package.json` is the production-facing Express REST + Socket.IO service. `server/package.json` remains the Colyseus experiment workspace. Root `check:v2` explicitly validates backend tests/typecheck/build and server tests |
+| 영향 | Production service direction is no longer ambiguous for V2: deploy `backend/` as the authority; keep `server/` only as legacy/experiment until a future explicit transport decision |
+| 권장안 | Use `backend/` for production REST/realtime deployment. Do not promote `server/`/Colyseus without a separate production-hardening decision and V2 adapter work |
+| 상태 | APPROVED |
 
 ## C-006
 
@@ -178,12 +178,12 @@
 | ID | C-012 |
 | 주제 | 에셋 스튜디오 `[만들기]` 후 이동 동작 |
 | 문서 기준 | DECISION-V2-005 APPROVED. 일반 에셋 생성 후 Asset Studio에 머문다. 성공 toast `에셋 생성을 요청했어요.`와 `창고에서 진행 상황 보기` CTA 제공. canvas/form/attrs/source state 유지. `[새 에셋 만들기]`에서만 초기화 |
-| 코드 기준 | `appStore.submitAsset`은 avatar면 `view: 'main'`, non-avatar면 `view: 'warehouse'`, `warehouseTab: 'component'` |
-| 영향 | 제품 결정은 확정됐지만 legacy runtime은 non-avatar submit 후 Warehouse로 이동한다 |
+| 코드 기준 | V2 `assetStudioControllerCore` keeps the user in Asset Studio, preserves canvas/form/source state, shows `에셋 생성을 요청했어요.`, and provides `창고에서 진행 상황 보기`. Legacy `appStore.submitAsset` still navigates non-avatar submissions to Warehouse |
+| 영향 | V2 product behavior is implemented. Legacy runtime remains intentionally unchanged until final root switch/removal |
 | 계약 결정 | APPROVED: non-avatar submit success stays in Asset Studio with toast/CTA and preserved state |
-| 레거시 런타임 불일치 | MIGRATION GAP: current `appStore.submitAsset` still navigates non-avatar success to Warehouse |
+| 레거시 런타임 불일치 | MIGRATION GAP: legacy `appStore.submitAsset` still navigates non-avatar success to Warehouse |
 | 문서 typo/conflict | RESOLVED: `screen-design.md`의 미확정 질문을 확정 항목으로 변경 |
-| V2 구현 | PLANNED: `submitComponentAsset` controller/store success flow, toast CTA, dirty/content hash duplicate block 구현 |
+| V2 구현 | RESOLVED for V2 entry: `asset-studio:check`, flow checks, and State Gallery cover submit stay, toast CTA, and dirty/unchanged blocking |
 | 감사 근거 | [01-five-decision-implementation-audit.md](../reports/01-five-decision-implementation-audit.md#6-일반-에셋-제출-후-studio-유지) |
 | 상태 | MIGRATION GAP |
 
@@ -208,12 +208,12 @@
 | ID | C-014 |
 | 주제 | Qwen/WAN pipeline과 current asset generation mock |
 | 문서 기준 | `ai-pipeline.md`와 `docs/LSJ/backend.md`는 Qwen/WAN/ComfyUI 비동기 job을 중요 계약으로 기록. DECISION-V2-009 APPROVED: Asset job 상태는 push 우선, asset job에 한해서만 bounded polling fallback 허용 |
-| 코드 기준 | frontend `createAsset`는 `/api/assets/generate`를 호출하고 backend `apiRoutes`는 in-memory asset을 생성한 뒤 2초/8초 mock progression으로 ready 처리. Qwen route는 `/internal/qwen/refine`에 별도 존재 |
-| 영향 | UI progress는 동작하지만 실제 AI pipeline 상태와 job status contract가 불완전. backend Socket.IO는 아직 `asset_job:updated`를 emit하지 않고 job status route도 없음 |
+| 코드 기준 | Backend exposes `/api/assets/avatar/generate`, `/api/assets/generate`, `/api/assets/generation-jobs/:jobId`, `/api/asset-jobs`, `/api/ai/jobs/next`, and `/api/ai/jobs/:jobId/result`. `backend/src/socket/index.ts` emits `asset_job:updated`; `gpu-worker/src/index.ts` runs Qwen prompt refinement, WAN sprite generation, and generated image materialization through local or HTTP PUT storage modes |
+| 영향 | Asset job push, bounded polling, worker claim/result, and Qwen/WAN worker paths are implemented. Final production credentials/storage/deployment values remain external inputs |
 | 계약 결정 | APPROVED: Socket push 우선, bounded polling fallback은 Asset job 전용 |
-| 레거시 런타임 불일치 | MIGRATION GAP: current backend job push/route 없음, frontend는 list refresh/mock progression 중심 |
-| V2 구현 | PLANNED: polling interval, 최대 지속시간, 중단 조건은 `data-mode-policy.md`/`realtime-contract.md`를 따른다. Qwen/WAN 상세는 adapter contract 확정 전 노출하지 않음 |
-| 상태 | MIGRATION GAP |
+| 레거시 런타임 불일치 | 없음 for V2 entry; legacy/demo mock progression can remain until default switch |
+| V2 구현 | RESOLVED for backend/gpu-worker contract tests: job push, direct job lookup, worker lease validation, stale completion rejection, Qwen/WAN request mapping, and image storage modes are covered |
+| 상태 | RESOLVED |
 
 ## C-015
 

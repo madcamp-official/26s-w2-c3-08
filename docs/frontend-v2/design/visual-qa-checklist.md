@@ -91,11 +91,13 @@ For each viewport:
 
 - [ ] State Gallery case id is stable.
 - [ ] Screenshot filename includes screen, state, and viewport.
+- [ ] Evidence screenshot is generated under `client/test-results/**/evidence`.
+- [ ] Automated snapshot update is not used before reviewer approval.
 - [ ] Diff is reviewed against copy deck and component contracts.
 - [ ] Baseline update is approved by the product/design reviewer.
 - [ ] Any unresolved visual decision is recorded as an open decision.
 
-Recommended baseline path remains open pending product approval from `TBD-CONTRACT-PD-005`.
+Evidence screenshot paths and the viewport matrix are implemented. Golden/baseline storage and approval owner remain a product review step before default switch.
 
 ## 9. Command Gates
 
@@ -107,7 +109,11 @@ For frontend implementation waves, run every existing command from the repositor
 
 - [ ] `npm run lint --workspace client -- --quiet`
 - [ ] `npm run smoke --workspace client`
+- [ ] `npm run check:v2:client`
 - [ ] `npm run build --workspace client`
+- [ ] `npm run test --prefix backend`
+- [ ] `npm run typecheck --prefix backend`
+- [ ] `npm run build --prefix backend`
 - [ ] `git diff --check`
 
 When `test` and `e2e` scripts are added to `client/package.json`, they become required gates:
