@@ -554,7 +554,7 @@ apiRoutes.post("/device-link-codes/consume", (req, res) => {
 
 apiRoutes.get("/assets", (req, res) => {
   const userId = typeof req.query.user_id === "string" ? req.query.user_id : null;
-  updateAssetGenerationStates();
+  refreshAssetJobRuntimeState();
   const visibleAssets = Array.from(assets.values()).filter(
     (asset) => asset.isSystem || asset.isPublic || asset.creatorId === userId
   );
@@ -564,7 +564,7 @@ apiRoutes.get("/assets", (req, res) => {
 
 apiRoutes.get("/asset-jobs", (req, res) => {
   const userId = typeof req.query.user_id === "string" ? req.query.user_id : null;
-  updateAssetGenerationStates();
+  refreshAssetJobRuntimeState();
 
   res.json({
     ok: true,
@@ -599,7 +599,8 @@ apiRoutes.post("/ai/jobs/:jobId/result", (req, res) => {
     return;
   }
 
-  const result = completeAssetJob(req.params.jobId, {
+  const workerId = readHeaderString(req.headers["x-worker-id"]) ?? "gpu-worker";
+  const result = completeAssetJob(req.params.jobId, workerId, {
     status: body.status,
     sheetUrl: body.sheetUrl ?? body.sheet_url ?? null,
     sourceImageUrl: body.sourceImageUrl ?? body.source_image_url ?? null,
@@ -668,7 +669,7 @@ apiRoutes.post("/assets/:assetId/equip-avatar", (req, res) => {
     return;
   }
 
-  updateAssetGenerationStates();
+  refreshAssetJobRuntimeState();
 
   if (asset.status !== "ready") {
     res.status(409).json({ ok: false, error: { code: "ASSET_NOT_READY", message: "avatar asset is not ready" } });
@@ -736,7 +737,7 @@ apiRoutes.post("/assets/:assetId/sprites/:action/regenerate", (req, res) => {
     return;
   }
 
-  updateAssetGenerationStates();
+  refreshAssetJobRuntimeState();
 
   if (asset.status !== "ready") {
     res.status(409).json({ ok: false, error: { code: "ASSET_NOT_READY", message: "asset is not ready" } });
@@ -1307,6 +1308,7 @@ function queueAssetGeneration(asset: Asset, now: Date) {
 
 function claimNextAssetJob(workerId: string) {
   const nowMs = Date.now();
+  recoverExpiredAssetJobLeases(nowMs);
 
   for (const asset of assets.values()) {
     if (asset.isSystem || asset.status === "ready" || asset.status === "failed") {
@@ -1341,6 +1343,7 @@ function claimNextAssetJob(workerId: string) {
 
 function completeAssetJob(
   jobId: string,
+  workerId: string,
   payload: {
     status: "ready" | "failed";
     sheetUrl: string | null;
@@ -1358,6 +1361,12 @@ function completeAssetJob(
       code: "ASSET_JOB_NOT_FOUND",
       message: "asset job not found"
     };
+  }
+
+  const leaseResult = validateAssetJobLease(jobId, workerId, Date.now());
+
+  if (!leaseResult.ok) {
+    return leaseResult;
   }
 
   const { asset, sprite } = target;
@@ -1432,6 +1441,78 @@ function canLeaseAssetJob(jobId: string, nowMs: number) {
   const lease = assetJobLeases.get(jobId);
 
   return lease === undefined || lease.leaseExpiresAtMs <= nowMs;
+}
+
+function validateAssetJobLease(jobId: string, workerId: string, nowMs: number) {
+  const lease = assetJobLeases.get(jobId);
+
+  if (lease === undefined) {
+    return {
+      ok: false as const,
+      status: 409,
+      code: "ASSET_JOB_LEASE_REQUIRED",
+      message: "asset job is not actively leased"
+    };
+  }
+
+  if (lease.leaseExpiresAtMs <= nowMs) {
+    assetJobLeases.delete(jobId);
+    return {
+      ok: false as const,
+      status: 409,
+      code: "ASSET_JOB_LEASE_EXPIRED",
+      message: "asset job lease expired"
+    };
+  }
+
+  if (lease.leasedBy !== workerId) {
+    return {
+      ok: false as const,
+      status: 409,
+      code: "ASSET_JOB_LEASE_MISMATCH",
+      message: "asset job lease belongs to another worker"
+    };
+  }
+
+  return { ok: true as const };
+}
+
+function recoverExpiredAssetJobLeases(nowMs: number) {
+  for (const [jobId, lease] of assetJobLeases.entries()) {
+    if (lease.leaseExpiresAtMs > nowMs) {
+      continue;
+    }
+
+    assetJobLeases.delete(jobId);
+    const target = resolveAssetJob(jobId);
+
+    if (target === null) {
+      continue;
+    }
+
+    const { asset, sprite } = target;
+
+    if (sprite === null) {
+      if (asset.status === "generating" && isWholeAssetGenerationPending(asset)) {
+        asset.status = "queued";
+        emitAssetJobUpdated(asset, null);
+      }
+
+      continue;
+    }
+
+    if (sprite.status === "generating") {
+      sprite.status = "queued";
+      asset.status = asset.sprites.every((candidateSprite) => candidateSprite.status === "ready") ? "ready" : "generating";
+      emitAssetJobUpdated(asset, sprite);
+    }
+  }
+}
+
+function refreshAssetJobRuntimeState() {
+  const nowMs = Date.now();
+  recoverExpiredAssetJobLeases(nowMs);
+  updateAssetGenerationStates(nowMs);
 }
 
 function emitAssetJobUpdated(asset: Asset, sprite: AssetSprite | null) {
@@ -1890,8 +1971,10 @@ function inferColliderType(
   return "rect";
 }
 
-function updateAssetGenerationStates() {
-  const now = Date.now();
+function updateAssetGenerationStates(now = Date.now()) {
+  if (env.NODE_ENV === "production") {
+    return;
+  }
 
   assets.forEach((asset) => {
     if (asset.isSystem || asset.status === "ready" || asset.status === "failed") {

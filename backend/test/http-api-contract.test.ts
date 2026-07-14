@@ -269,6 +269,7 @@ describe("V2 HTTP API contract", () => {
     const workerResultResponse = await request(app)
       .post(`/api/ai/jobs/${encodeURIComponent(claimedJobResponse.body.job.id)}/result`)
       .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "contract-worker")
       .send({
         status: "ready",
         sheetUrl: "https://assets.example.test/avatar-idle.png",
@@ -295,6 +296,85 @@ describe("V2 HTTP API contract", () => {
       ]),
     );
     unsubscribePushedJobs();
+  });
+
+  it("rejects stale asset worker results after lease rollover", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-14T00:10:00.000Z"));
+
+    const app = createApp();
+    const sessionResponse = await request(app)
+      .post("/api/session")
+      .send({ nickname: "작업자" })
+      .expect(200);
+    const session = sessionResponse.body.session;
+    const assetResponse = await request(app)
+      .post("/api/assets/generate")
+      .set("Authorization", `Bearer ${session.token}`)
+      .send({
+        user_id: session.id,
+        category: "platform",
+        name: "리스 테스트 플랫폼",
+        image: "data:image/png;base64,AA==",
+      })
+      .expect(202);
+
+    const firstClaimResponse = await request(app)
+      .get("/api/ai/jobs/next")
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "worker-a")
+      .expect(200);
+    const jobId = firstClaimResponse.body.job.id;
+
+    expect(firstClaimResponse.body.job.outputAssetId).toBe(assetResponse.body.asset.id);
+
+    const mismatchedResultResponse = await request(app)
+      .post(`/api/ai/jobs/${encodeURIComponent(jobId)}/result`)
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "worker-b")
+      .send({
+        status: "ready",
+        sheetUrl: "https://assets.example.test/stale-platform.png",
+      })
+      .expect(409);
+
+    expect(mismatchedResultResponse.body.error.code).toBe("ASSET_JOB_LEASE_MISMATCH");
+
+    vi.setSystemTime(new Date("2026-07-14T00:12:01.000Z"));
+
+    const secondClaimResponse = await request(app)
+      .get("/api/ai/jobs/next")
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "worker-b")
+      .expect(200);
+
+    expect(secondClaimResponse.body.job.id).toBe(jobId);
+    expect(secondClaimResponse.body.job.outputAssetId).toBe(assetResponse.body.asset.id);
+
+    const staleResultResponse = await request(app)
+      .post(`/api/ai/jobs/${encodeURIComponent(jobId)}/result`)
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "worker-a")
+      .send({
+        status: "ready",
+        sheetUrl: "https://assets.example.test/late-platform.png",
+      })
+      .expect(409);
+
+    expect(staleResultResponse.body.error.code).toBe("ASSET_JOB_LEASE_MISMATCH");
+
+    const validResultResponse = await request(app)
+      .post(`/api/ai/jobs/${encodeURIComponent(jobId)}/result`)
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "worker-b")
+      .send({
+        status: "ready",
+        sheetUrl: "https://assets.example.test/platform.png",
+      })
+      .expect(200);
+
+    expect(validResultResponse.body.job.status).toBe("ready");
+    expect(validResultResponse.body.asset.status).toBe("ready");
   });
 
   it("supports remote room and game phase flow", async () => {

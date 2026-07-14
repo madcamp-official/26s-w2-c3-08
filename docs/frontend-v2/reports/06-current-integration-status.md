@@ -18,6 +18,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - `backend/` is the V2 production-facing REST and Socket.IO authority. `server/`/Colyseus remains a supporting experiment workspace for alternate transport and AI/API validation.
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
+- Worker completion now requires the active `x-worker-id` lease. Expired leases are recovered before claim/list refresh, and stale worker completions return typed `409` errors instead of overwriting a re-claimed job.
 - GPU worker generation mode defaults to Qwen prompt refinement followed by WAN sprite generation. A single internal generation gateway remains available only through explicit `GPU_WORKER_GENERATION_MODE=gateway`.
 - Generated image data URLs can be materialized through `IMAGE_STORAGE_MODE=local` shared static storage or `IMAGE_STORAGE_MODE=http-put` object-storage gateway upload.
 - Production readiness for client/backend/gpu-worker environment values is checked by `npm run check:production-env`; `npm run check:v2` runs the checker self-test without requiring real secrets.
@@ -32,7 +33,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 | `npm run lobby-room:check --workspace client` | PASS |
 | `npm run game:check --workspace client` | PASS |
 | `npm run flow:check --workspace client` | PASS |
-| `npm run test --prefix backend` | PASS |
+| `npm run test --prefix backend` | PASS, includes worker lease rollover and stale result rejection |
 | `npm run typecheck --prefix backend` | PASS |
 | `npm run check:v2` | PASS |
 | `npm run check --prefix gpu-worker` | PASS |
@@ -50,7 +51,7 @@ Notes:
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
-- Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
+- Backend asset generation now has a worker claim/result contract, active worker-id lease validation, expired lease recovery, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
 - Production env readiness now fails closed on missing/placeholder credentials, missing backend `INTERNAL_API_TOKEN`, localhost public URLs, backend/gpu-worker worker token mismatch, and `GPU_WORKER_SIMULATE=true`.
 - Production env readiness accepts comma-separated public `CORS_ORIGIN` values and validates each origin independently.
 - CI is configured to run `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container. This does not replace the need to confirm the first hosted Actions run.
@@ -68,7 +69,7 @@ Notes:
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
 | BLK-010 Visual screenshot coverage | Resolved for Launcher/Studio/Game State Gallery evidence | 165 Launcher screenshots and 114 Studio/Game screenshots pass |
 | BLK-011 Accessibility browser gates | Substantially remediated | modal focus trap/restore, icon-only names, live regions, Game canvas focus boundary, and representative Launcher/Studio/Game State Gallery keyboard traversal pass in `test:accessibility`; full matrix/axe audit still remains optional hardening |
-| AI worker job contract | Resolved for backend/gpu-worker HTTP, Socket.IO update, Qwen/WAN request, local image materialization, and HTTP PUT upload contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
+| AI worker job contract | Resolved for backend/gpu-worker HTTP, worker lease rollover, Socket.IO update, Qwen/WAN request, local image materialization, and HTTP PUT upload contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
 
 ## Remaining Pre-Switch Risks
 
