@@ -241,7 +241,14 @@ export function attachSocketServer(httpServer: HttpServer) {
       const userId = payload.userId ?? socket.data.userId;
       const player = userId === undefined ? undefined : room.players.get(userId);
 
-      if (player !== undefined) {
+      if (player !== undefined && userId !== undefined) {
+        const apiSnapshot = setApiRoomReadyFromRealtime(room.id, userId, true);
+
+        if (apiSnapshot === null) {
+          emitSocketError(socket, "ROOM_PLAYER_NOT_FOUND", "room player not found");
+          return;
+        }
+
         player.isReady = true;
       }
 

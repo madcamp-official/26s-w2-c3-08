@@ -51,7 +51,7 @@ TBD-CONTRACT:
 | `game.racePositionReceived` | `race:position` | same as above | backend broadcast | other clients | emitting client through backend | stale if no update; no replay required | idempotent latest by `userId` | `backend socket.to(...).emit`, `realtime.ts onRacePosition` |
 | `game.raceFinished` | client emits `race:finish`; server emits `race:finished` | `{ roomId, userId, finishTimeMs }` | client/backend | room clients | backend should keep minimum finish time | if disconnected after finish, results final should include finish | idempotent by min finish time | `backend race:finish`, `appStore.recordRaceFinish` |
 | `game.overtimeChanged` | `phase:changed` with `isOvertime: true` | `{ roomId, phase:'racing', phaseEndsAt, isOvertime:true }` | backend timer | room clients | backend timer | latest phase snapshot wins | idempotent by phaseEndsAt | `backend tickRoomTimer`, `RacePhase isRaceOvertime` |
-| `game.phaseReady` | `phase:ready` | `{ roomId, userId, phase }` | client | backend/clients | backend phase readiness `TBD-CONTRACT` | no replay requirement | idempotent by `(userId,phase)` | `readyRealtimePhase`; backend currently echoes `phase:ready` |
+| `game.phaseReady` | `phase:ready` | `{ roomId, userId, phase }` | client | backend/clients | backend room readiness and API room snapshot | reconnect can refetch REST room snapshot with the ready flag applied | idempotent by `(userId,phase)` | `readyRealtimePhase`, backend `phase:ready`, `setApiRoomReadyFromRealtime`, backend socket contract test |
 
 TBD-CONTRACT:
 

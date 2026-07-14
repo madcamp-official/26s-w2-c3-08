@@ -27,6 +27,12 @@ describe("Socket.IO realtime contract", () => {
     expect(source).toMatch(/io\.to\(room\.id\)\.emit\("room:state", toRoomSnapshot\(room\)\);/);
   });
 
+  it("persists phase-ready changes into API room snapshots", () => {
+    expect(source).toMatch(/socket\.on\("phase:ready"/);
+    expect(source).toMatch(/setApiRoomReadyFromRealtime\(room\.id, userId, true\);/);
+    expect(source).toMatch(/ROOM_PLAYER_NOT_FOUND/);
+  });
+
   it("persists realtime ready changes into API room snapshots", () => {
     const roomId = `socket-ready-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     joinApiRoomFromRealtime(roomId, `${roomId}-host`, "Host");
