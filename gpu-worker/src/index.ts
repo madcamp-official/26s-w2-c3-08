@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 
 interface WorkerJob {
   id: string
@@ -32,6 +35,8 @@ interface WorkerConfig {
   gatewayUrl: string | null
   gatewayGeneratePath: string
   gatewayTimeoutMs: number
+  imageStorageDir: string | null
+  imagePublicBaseUrl: string | null
 }
 
 type Fetcher = typeof fetch
@@ -54,6 +59,8 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     gatewayUrl: env.GENERATION_GATEWAY_URL ?? env.COMFYUI_URL ?? null,
     gatewayGeneratePath: env.GENERATION_GATEWAY_PATH ?? env.COMFYUI_GENERATE_PATH ?? '/v2/sprite-jobs/generate',
     gatewayTimeoutMs: readPositiveInteger(env.GENERATION_GATEWAY_TIMEOUT_MS ?? env.COMFYUI_TIMEOUT_MS, 10 * 60 * 1_000),
+    imageStorageDir: env.IMAGE_STORAGE_DIR ?? null,
+    imagePublicBaseUrl: env.IMAGE_PUBLIC_BASE_URL ?? null,
   }
 }
 
@@ -123,11 +130,11 @@ async function runJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher = f
     }
   }
 
-  if (config.generationMode === 'gateway') {
-    return executeGatewayJob(job, config, fetcher)
-  }
+  const result = config.generationMode === 'gateway'
+    ? await executeGatewayJob(job, config, fetcher)
+    : await executeWanPipelineJob(job, config, fetcher)
 
-  return executeWanPipelineJob(job, config, fetcher)
+  return persistGeneratedImages(job, result, config)
 }
 
 async function executeWanPipelineJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
@@ -465,6 +472,80 @@ function createFailedJobResult(errorCode: string, errorMessage: string) {
   }
 }
 
+async function persistGeneratedImages(
+  job: WorkerJob,
+  result: ReturnType<typeof createFailedJobResult> | { status: 'ready'; sheetUrl: string; sourceImageUrl?: string },
+  config: WorkerConfig,
+) {
+  if (result.status === 'failed' || !config.imageStorageDir || !config.imagePublicBaseUrl) {
+    return result
+  }
+
+  const storedSheetUrl = await persistDataUrl({
+    dataUrl: result.sheetUrl,
+    storageDir: config.imageStorageDir,
+    publicBaseUrl: config.imagePublicBaseUrl,
+    fileStem: createStoredImageStem(job, 'sheet'),
+  })
+
+  if (!storedSheetUrl) {
+    return result
+  }
+
+  return {
+    ...result,
+    sheetUrl: storedSheetUrl,
+  }
+}
+
+async function persistDataUrl({
+  dataUrl,
+  storageDir,
+  publicBaseUrl,
+  fileStem,
+}: {
+  dataUrl: string
+  storageDir: string
+  publicBaseUrl: string
+  fileStem: string
+}) {
+  const parsed = parseDataUrl(dataUrl)
+
+  if (!parsed) {
+    return null
+  }
+
+  await mkdir(storageDir, { recursive: true })
+
+  const filename = `${fileStem}.${mimeToExtension(parsed.mime)}`
+  const filePath = join(storageDir, filename)
+
+  await writeFile(filePath, parsed.buffer)
+
+  return `${trimTrailingSlash(publicBaseUrl)}/${encodeURIComponent(basename(filename))}`
+}
+
+function parseDataUrl(value: string) {
+  const match = /^data:([^;,]+);base64,(.+)$/u.exec(value)
+
+  if (!match) {
+    return null
+  }
+
+  return {
+    mime: match[1],
+    buffer: Buffer.from(match[2], 'base64'),
+  }
+}
+
+function createStoredImageStem(job: WorkerJob, suffix: string) {
+  return [job.id, job.action, suffix]
+    .filter(Boolean)
+    .join('-')
+    .replace(/[^a-zA-Z0-9._-]+/gu, '-')
+    .slice(0, 120)
+}
+
 function createSimulatedSheetUrl(job: WorkerJob) {
   const text = JSON.stringify({
     id: job.id,
@@ -697,6 +778,8 @@ async function selfTest() {
     gatewayUrl: null,
     gatewayGeneratePath: '/v2/sprite-jobs/generate',
     gatewayTimeoutMs: 1_000,
+    imageStorageDir: null,
+    imagePublicBaseUrl: null,
   }, fetcher)
 
   assert.equal(result.status, 'ready')
@@ -704,6 +787,7 @@ async function selfTest() {
   assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer worker-token')
   assert.match(String(calls[1].init?.body), /sheetUrl/)
 
+  const storageDir = await mkdtemp(join(tmpdir(), 'gpu-worker-self-test-'))
   const wanCalls: Array<{ url: string; init?: RequestInit }> = []
   const wanResult = await runJob({
     id: 'job-wan-test',
@@ -735,6 +819,8 @@ async function selfTest() {
     gatewayUrl: null,
     gatewayGeneratePath: '/v2/sprite-jobs/generate',
     gatewayTimeoutMs: 1_000,
+    imageStorageDir: storageDir,
+    imagePublicBaseUrl: 'http://assets.test/generated',
   }, async (url, init) => {
     wanCalls.push({ url: String(url), init })
 
@@ -754,7 +840,7 @@ async function selfTest() {
     }
 
     return new Response(JSON.stringify({
-      sheet_url: 'data:image/png;base64,wan-generated',
+      sheet_url: 'data:image/png;base64,cG5n',
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -762,6 +848,8 @@ async function selfTest() {
   })
 
   assert.equal(wanResult.status, 'ready')
+  assert.equal(wanResult.sheetUrl, 'http://assets.test/generated/job-wan-test-static-sheet.png')
+  assert.equal(await readFile(join(storageDir, 'job-wan-test-static-sheet.png'), 'utf8'), 'png')
   assert.equal(wanCalls[0].url, 'http://qwen.test/v1/prompts/refine')
   assert.equal((wanCalls[0].init?.headers as Record<string, string>)['X-Internal-Token'], 'qwen-token')
   assert.equal(wanCalls[1].url, 'http://wan.test/v1/sprites/generate')
@@ -799,6 +887,8 @@ async function selfTest() {
     gatewayUrl: 'http://gateway.test',
     gatewayGeneratePath: '/v2/sprite-sheets',
     gatewayTimeoutMs: 1_000,
+    imageStorageDir: null,
+    imagePublicBaseUrl: null,
   }, async (url, init) => {
     gatewayCalls.push({ url: String(url), init })
 
@@ -813,6 +903,7 @@ async function selfTest() {
   assert.equal(gatewayResult.status, 'ready')
   assert.equal(gatewayCalls[0].url, 'http://gateway.test/v2/sprite-sheets')
   assert.match(String(gatewayCalls[0].init?.body), /requestedActions/)
+  await rm(storageDir, { recursive: true, force: true })
   console.log('gpu-worker self-test passed')
 }
 

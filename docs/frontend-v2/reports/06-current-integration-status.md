@@ -16,6 +16,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - GPU asset workers now poll the backend authority through `/api/ai/jobs/next` and complete jobs through `/api/ai/jobs/:jobId/result`.
 - Worker authentication uses `WORKER_TOKEN`; development/test can use `dev-worker-token`, but production must provide an explicit secret.
 - GPU worker generation mode defaults to Qwen prompt refinement followed by WAN sprite generation. A single internal generation gateway remains available only through explicit `GPU_WORKER_GENERATION_MODE=gateway`.
+- Generated image data URLs can be materialized into a shared local/static directory through `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_PATH`, and `IMAGE_PUBLIC_BASE_URL`.
 
 ## Evidence Collected
 
@@ -41,7 +42,7 @@ Notes:
 - Vite still reports the known `assetRules` chunk-size warning; it does not fail the build.
 - The remote browser test can log transient Vite `/socket.io` proxy `ECONNRESET` messages while Playwright closes browser contexts; the test completed successfully.
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
-- Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, and a GPU worker Qwen/WAN generation path covered by contract self-tests. The final production credentials and storage values are still deferred.
+- Backend asset generation now has a worker claim/result contract, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and a shared-directory image materialization path covered by contract self-tests. The final production credentials and storage values are still deferred.
 
 ## Updated Blocker Status
 
@@ -56,7 +57,7 @@ Notes:
 | BLK-009 Full Login to Results E2E | Resolved for remote/remote path | `client/tests/remote-v2/remote-lobby-room.spec.ts` |
 | BLK-010 Visual screenshot coverage | Resolved for Launcher/Studio/Game State Gallery evidence | 165 Launcher screenshots and 114 Studio/Game screenshots pass |
 | BLK-011 Accessibility browser gates | Partially remediated | modal focus trap/restore, icon-only names, live regions, and Game canvas focus boundary pass in `test:accessibility`; full accessibility audit still needs broader screen coverage |
-| AI worker job contract | Resolved for backend/gpu-worker HTTP, Socket.IO update, and Qwen/WAN request contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
+| AI worker job contract | Resolved for backend/gpu-worker HTTP, Socket.IO update, Qwen/WAN request, and local image materialization contract | `/api/ai/jobs/next`, `/api/ai/jobs/:jobId/result`, `asset_job:updated`, backend contract test, gpu-worker self-test |
 
 ## Remaining Pre-Switch Risks
 
@@ -64,7 +65,7 @@ Notes:
 - Accessibility now has browser-level modal, icon label, live region, and Game canvas focus-boundary coverage. Broader keyboard-only flow and Studio/Game screen coverage still need expansion before default V2 switch.
 - Drawing browser acceptance now passes locally with the Playwright Chromium harness. CI/pinned-environment confirmation is still required before changing `drawing-engine-adr` to ACCEPTED.
 - `madcamp2.pdf` is intentionally kept outside commits through local Git exclude. It remains a source artifact for implementation reference, not a repository deliverable.
-- Production AI asset generation still needs final Qwen/WAN credentials, image storage, and deployment environment values. The backend/worker HTTP and Qwen/WAN request contracts exist; final credentials and durable storage are not yet wired.
+- Production AI asset generation still needs final Qwen/WAN credentials and deployment environment values. Shared-directory image storage is wired for local/shared-volume deployment; object storage credentials and URLs remain a deployment decision.
 - Current Warehouse remote updates use Socket.IO when available and bounded `/api/asset-jobs` polling for asset jobs.
 
 ## Next Recommended Work
