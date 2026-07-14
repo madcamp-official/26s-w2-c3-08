@@ -656,6 +656,38 @@ describe("V2 HTTP API contract", () => {
       ]),
     );
 
+    const lowerProgressResponse = await request(app)
+      .post(`/api/rooms/${room.id}/race/progress`)
+      .set("Authorization", `Bearer ${host.token}`)
+      .send({
+        user_id: host.id,
+        progress: 12,
+        race_distance_to_goal: 88,
+      })
+      .expect(200);
+
+    expect(lowerProgressResponse.body.result.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: host.id, raceProgress: 42, raceDistanceToGoal: 58 }),
+      ]),
+    );
+
+    const higherProgressResponse = await request(app)
+      .post(`/api/rooms/${room.id}/race/progress`)
+      .set("Authorization", `Bearer ${host.token}`)
+      .send({
+        user_id: host.id,
+        progress: 64,
+        race_distance_to_goal: 36,
+      })
+      .expect(200);
+
+    expect(higherProgressResponse.body.result.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: host.id, raceProgress: 64, raceDistanceToGoal: 36 }),
+      ]),
+    );
+
     const hostFinishResponse = await request(app)
       .post(`/api/rooms/${room.id}/race/finish`)
       .set("Authorization", `Bearer ${host.token}`)

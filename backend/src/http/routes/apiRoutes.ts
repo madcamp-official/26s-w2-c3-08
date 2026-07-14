@@ -2140,6 +2140,16 @@ function getRaceDurationMs(segmentCount: number) {
 function setPlayerRaceState(roomId: string, userId: string, patch: Partial<RacePlayerState>) {
   const raceStates = racePlayerStates.get(roomId) ?? new Map<string, RacePlayerState>();
   const currentState = raceStates.get(userId) ?? createDefaultRacePlayerState();
+  const raceProgress =
+    patch.raceProgress === undefined
+      ? currentState.raceProgress
+      : Math.max(currentState.raceProgress, patch.raceProgress);
+  const raceDistanceToGoal =
+    patch.raceDistanceToGoal === undefined
+      ? currentState.raceDistanceToGoal
+      : patch.raceProgress !== undefined && patch.raceProgress < currentState.raceProgress
+        ? currentState.raceDistanceToGoal
+        : patch.raceDistanceToGoal;
   const raceFinishedAtMs =
     patch.raceFinishedAtMs === undefined
       ? currentState.raceFinishedAtMs
@@ -2150,6 +2160,8 @@ function setPlayerRaceState(roomId: string, userId: string, patch: Partial<RaceP
   raceStates.set(userId, {
     ...currentState,
     ...patch,
+    raceProgress,
+    raceDistanceToGoal,
     raceFinishedAtMs
   });
   racePlayerStates.set(roomId, raceStates);

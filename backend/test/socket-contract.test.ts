@@ -131,6 +131,31 @@ describe("Socket.IO realtime contract", () => {
         }),
       ]),
     );
+
+    const lowerProgressSnapshot = setApiRoomRaceProgressFromRealtime(roomId, `${roomId}-guest`, 24, 76);
+
+    expect(lowerProgressSnapshot?.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: `${roomId}-guest`,
+          race_progress: 64,
+          race_distance_to_goal: 36,
+        }),
+      ]),
+    );
+
+    const higherProgressSnapshot = setApiRoomRaceProgressFromRealtime(roomId, `${roomId}-guest`, 82, 18);
+
+    expect(higherProgressSnapshot?.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: `${roomId}-guest`,
+          race_progress: 82,
+          race_distance_to_goal: 18,
+        }),
+      ]),
+    );
+
     expect(setApiRoomRaceProgressFromRealtime(roomId, `${roomId}-missing`, 64, 36)).toBeNull();
     expect(source).toMatch(/socket\.on\("race:position"/);
     expect(source).toMatch(/setApiRoomRaceProgressFromRealtime\(room\.id, userId, nextProgress, nextDistanceToGoal\);/);
