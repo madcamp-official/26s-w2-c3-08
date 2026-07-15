@@ -7,10 +7,9 @@ import { Period3, Power2, Range3, SizeCells, Speed3 } from "./presets.js";
 /** 접촉 판정 부위 — 접촉 효과가 대미지/즉사일 때만 의미 (md §2) */
 const HitZone = z.enum(["all", "except_top", "bottom_only"]); // 전체 / 상면 제외(밟기 가능) / 하면만(고드름)
 
-/** [택1] 접촉 효과 */
+/** [택1] 접촉 효과 — 즉사 제거(2026-07-14): HP 1/2 모델이라 모든 대미지가 사실상 치명, 별도 즉사 불필요 */
 const ContactEffect = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("damage"), zone: HitZone }),       // 대미지
-  z.object({ type: z.literal("instakill"), zone: HitZone }),    // 즉사
+  z.object({ type: z.literal("damage"), zone: HitZone }),       // 대미지 (HP -1 = 소형이면 사망)
   z.object({ type: z.literal("knockback"), power: Power2 }),    // 튕겨냄 — 무해 (범퍼)
   z.object({ type: z.literal("updraft") }),                     // 상승 기류 — 무해 (회오리)
 ]);

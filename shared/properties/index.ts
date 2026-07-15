@@ -5,5 +5,4 @@ import "./trampoline.js";
 import "./dash.js";
 import "./updraft.js";
 import "./damage.js";
-import "./instakill.js";
 import "./switchToggle.js";
