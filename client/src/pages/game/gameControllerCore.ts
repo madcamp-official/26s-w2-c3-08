@@ -338,6 +338,7 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
     },
     onPhaseChanged(payload) {
       const currentState = runtime.getState()
+      const shouldHydrateMergedMap = payload.phase === 'racing' && !currentState.mergedMap
 
       if (
         payload.phase !== 'finished' &&
@@ -367,6 +368,10 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
 
       if (payload.phase === 'merging' && isCurrentPlayerHost(currentState)) {
         requestHostMerge()
+      }
+
+      if (shouldHydrateMergedMap) {
+        void loadGameMergedMap(runtime)
       }
     },
     onTimerTick(payload) {
@@ -406,14 +411,30 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
       }))
     },
     onMapMerged(payload) {
-      runtime.setState((state) => ({
-        ...state,
-        mergingState: payload.usedFallback ? 'fallback' : 'validatedSegments',
-        mergeProgress: 100,
-        message: payload.usedFallback
-          ? '검증 성공 세그먼트가 없어 기본 세그먼트를 사용합니다.'
-          : '검증 성공 세그먼트를 병합했어요.',
-      }))
+      runtime.setState((state) => {
+        if (payload.roomId && payload.roomId !== state.roomId) {
+          return state
+        }
+
+        return {
+          ...state,
+          mergedMapId: payload.id,
+          mergingState: payload.usedFallback ? 'fallback' : 'validatedSegments',
+          mergeProgress: 100,
+          message: payload.usedFallback
+            ? '검증 성공 세그먼트가 없어 기본 세그먼트를 사용합니다.'
+            : '검증 성공 세그먼트를 병합했어요.',
+        }
+      })
+
+      const currentState = runtime.getState()
+      const shouldHydrateMergedMap =
+        (!payload.roomId || payload.roomId === currentState.roomId) &&
+        (!currentState.mergedMap || currentState.mergedMap.id !== payload.id)
+
+      if (shouldHydrateMergedMap) {
+        void loadGameMergedMap(runtime)
+      }
     },
     onResultsFinal(result) {
       runtime.routePort.navigateResults(result.roomId)

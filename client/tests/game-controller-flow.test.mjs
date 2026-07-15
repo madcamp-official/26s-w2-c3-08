@@ -300,6 +300,89 @@ async function testRealtimeMergingPhaseTriggersHostMergeOnce({
   bootResult.dispose()
 }
 
+async function testRealtimeMapMergedHydratesFullMergedMap({
+  bootGamePhaseController,
+  createInitialGamePhaseControllerState,
+}) {
+  const runtime = createRuntime(createInitialGamePhaseControllerState, {
+    routeState: { kind: 'merging', roomId: 'room-flow' },
+    roomSnapshot: {
+      roomId: 'room-flow',
+      phase: 'merging',
+      phaseEndsAt: new Date(Date.now() + 20_000).toISOString(),
+      players: [
+        {
+          userId: 'user-a',
+          nickname: '릴레이러',
+          isHost: false,
+          isReady: false,
+        },
+      ],
+    },
+  })
+
+  const bootResult = await bootGamePhaseController(runtime)
+
+  assert.equal(bootResult.reason, 'connected')
+  assert.ok(runtime.roomHandlers)
+  assert.equal(runtime.state.mergedMap, null)
+
+  runtime.roomHandlers.onMapMerged({
+    id: 'merged-flow',
+    roomId: 'room-flow',
+    usedFallback: false,
+    createdAt: '2026-07-14T00:04:00.000Z',
+  })
+
+  await waitUntil(() => runtime.calls.getMergedMap === 1 && runtime.state.mergedMap?.id === 'merged-flow')
+
+  assert.equal(runtime.state.mergedMapId, 'merged-flow')
+  assert.equal(runtime.state.message, '레이스 맵을 불러왔어요.')
+
+  bootResult.dispose()
+}
+
+async function testRealtimeRacingPhaseHydratesMissingMergedMap({
+  bootGamePhaseController,
+  createInitialGamePhaseControllerState,
+}) {
+  const runtime = createRuntime(createInitialGamePhaseControllerState, {
+    routeState: { kind: 'validation', roomId: 'room-flow', segmentId: 'segment-flow' },
+    roomSnapshot: {
+      roomId: 'room-flow',
+      phase: 'validating',
+      phaseEndsAt: new Date(Date.now() + 80_000).toISOString(),
+      players: [
+        {
+          userId: 'user-a',
+          nickname: '릴레이러',
+          isHost: false,
+          isReady: false,
+        },
+      ],
+    },
+  })
+
+  const bootResult = await bootGamePhaseController(runtime)
+
+  assert.equal(bootResult.reason, 'connected')
+  assert.ok(runtime.roomHandlers)
+  assert.equal(runtime.state.mergedMap, null)
+
+  runtime.roomHandlers.onPhaseChanged({
+    roomId: 'room-flow',
+    phase: 'racing',
+    phaseEndsAt: new Date(Date.now() + 120_000).toISOString(),
+  })
+
+  await waitUntil(() => runtime.calls.getMergedMap === 1 && runtime.state.mergedMap?.id === 'merged-flow')
+
+  assert.deepEqual(runtime.routeChanges.at(-1), ['race', 'room-flow', undefined])
+  assert.equal(runtime.state.mergedMapId, 'merged-flow')
+
+  bootResult.dispose()
+}
+
 async function testRemoteFirstFinisherPollsFinalResults({
   createInitialGamePhaseControllerState,
   finishGameRace,
@@ -536,6 +619,7 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
       saveMapSegment: 0,
       validateMapSegment: 0,
       mergeRoomMap: 0,
+      getMergedMap: 0,
       finishRace: 0,
       getRaceResults: 0,
     },
@@ -609,6 +693,7 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
         return { ok: true, value: mergedMap }
       },
       async getMergedMap() {
+        runtime.calls.getMergedMap += 1
         return { ok: true, value: mergedMap }
       },
       async saveRaceProgress() {
@@ -729,6 +814,8 @@ await testServerRaceRankIsPreserved(core)
 await testRealtimeRaceTimerSignals(core)
 await testRealtimeResultsFinalRoutesAndIgnoresLateRaceCountdown(core)
 await testRealtimeMergingPhaseTriggersHostMergeOnce(core)
+await testRealtimeMapMergedHydratesFullMergedMap(core)
+await testRealtimeRacingPhaseHydratesMissingMergedMap(core)
 await testRemoteFirstFinisherPollsFinalResults(core)
 testRaceLineSweepRules(raceLineSweep)
 testLastDanceMarkers(raceLastDanceMarkers)

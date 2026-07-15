@@ -54,7 +54,7 @@ test('remote V2 browser flow reaches results through REST and Socket.IO phases',
   await expectMountedPhaserBridge(pageA, 'playtest')
   await assertBridgeSurvivesResize(pageA, 'playtest', { width: 1920, height: 1080 })
 
-  const mergeResponsePromise = pageA.waitForResponse((response) =>
+  const mergeResponsePromise = waitForAnyPageResponse([pageA, pageB], (response) =>
     response.request().method() === 'POST' &&
     response.url().includes(`/api/rooms/${roomId}/merge`),
   )
@@ -184,6 +184,13 @@ async function finishRace(page: Page, roomId: string) {
   const response = await responsePromise
 
   expect(response.status()).toBe(200)
+}
+
+function waitForAnyPageResponse(
+  pages: Page[],
+  predicate: Parameters<Page['waitForResponse']>[0],
+) {
+  return Promise.race(pages.map((page) => page.waitForResponse(predicate)))
 }
 
 function escapeRegExp(value: string) {
