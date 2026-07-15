@@ -1,9 +1,14 @@
 // 방 멤버별 최종 라인 결정 — 본인이 이 방에서 테스트 통과시킨 최신 라인을 쓰되,
 // 없으면(라인 미완성) DB 전체 테스트 통과 라인 중 랜덤 대체 + 결손 유저 목록 반환(호출부가 통지).
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import type { LineWithPlacements } from "./loadLine.js";
 
 const LINE_INCLUDE = { placements: { include: { asset: true } } } as const;
+
+/** DB 라인 행(+placements+asset). shared/build의 LineRecord와 구조 호환 — mergeLines에 그대로 전달 가능 */
+export type LineWithPlacements = Prisma.MapLineGetPayload<{
+  include: { placements: { include: { asset: true } } };
+}>;
 
 export interface ResolvedLines {
   /** 병합에 쓸 라인 목록(순서는 아직 랜덤화 전 — 호출부가 셔플) */

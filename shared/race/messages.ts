@@ -18,6 +18,23 @@ export interface LineFallbackPayload {
   reason: "no_test_passed";
 }
 
+// ── 테스트 룸(testline) — 자기 라인 혼자 검증 ──
+/** 서버 → 클라(개별 send) */
+export const TESTLINE_MSG = {
+  /** 깃대 접촉 = 완주 확정(testPassedAt 기록됨) */
+  testPassed: "testPassed",
+  /** 추락사 — 이 좌표(px, 바닥-중앙)로 리스폰하라 */
+  respawnAt: "respawnAt",
+} as const;
+export interface TestPassedPayload { lineId: string }
+export interface RespawnAtPayload { x: number; y: number }
+
+/** joinOrCreate("testline", options) 계약 */
+export interface TestlineJoinOptions {
+  userToken: string;
+  lineId: string;
+}
+
 /** joinOrCreate("race", options) 계약 */
 export interface RaceJoinOptions {
   /** POST /api/session이 발급한 유저 토큰 (필수) */

@@ -16,7 +16,7 @@ import {
   type LineBounds, checkLineExit,
 } from "shared/parts";
 import { parseAttrs } from "shared/schemas";
-import { buildMonster } from "shared/build";
+import { buildMonster, type WorldDef, type CarryableDef } from "shared/build";
 import { compileRules, stepRules, type Ctx } from "shared/behavior";
 import {
   GameState, PlayerState, MonsterState, BlockState, ItemState, ProjectileState,
@@ -28,17 +28,8 @@ const FIXED_MS = 1000 / TUNING.world.tickRate;
 /** 경합 중재 (§60): 윈도우 동안 모아 도착 빠를수록 가중치 큰 랜덤 당첨 */
 interface Claim { itemId: string; sessionId: string; at: number }
 
-export interface CarryableDef { id: string; x: number; y: number }
-
-export interface WorldDef {
-  terrain: Terrain;
-  carryables?: CarryableDef[];
-  blocks: BlockSpec[];
-  monsters: MonsterSpec[];
-  items: ItemSpec[];
-  line: LineBounds;
-  spawn: { x: number; y: number };
-}
+// WorldDef/CarryableDef는 shared/build로 이동(클라 테스트 하네스와 공유) — 기존 import 경로 호환 re-export
+export type { WorldDef, CarryableDef } from "shared/build";
 
 export abstract class PhysicsRoom extends Room {
   state = new GameState();

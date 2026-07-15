@@ -12,7 +12,7 @@ import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
 import { RaceState, MemberState } from "../schema/RaceState.js";
 import { prisma } from "../../prisma.js";
 import { resolveMemberLines } from "../../game/resolveMemberLines.js";
-import { mergeLines } from "../../game/mergeLines.js";
+import { mergeLines } from "shared/build";
 
 function hashPassword(pw: string): string {
   const salt = randomBytes(16).toString("hex");
