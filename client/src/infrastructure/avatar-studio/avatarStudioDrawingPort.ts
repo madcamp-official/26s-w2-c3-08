@@ -10,6 +10,7 @@ import {
   type AvatarStudioDrawingPort,
   type AvatarStudioResult,
 } from '../../pages/avatar-studio/avatarStudioControllerCore'
+import type { AvatarStudioCanvasPoint } from '../../pages/avatar-studio/AvatarStudioScreen'
 
 export function createAvatarStudioDrawingPort(): AvatarStudioDrawingPort {
   let engine = createEngine()
@@ -17,6 +18,26 @@ export function createAvatarStudioDrawingPort(): AvatarStudioDrawingPort {
   return {
     getHash() {
       return engine.getSnapshot().hash
+    },
+    getVisibleImageData() {
+      return engine.exportVisibleImageData()
+    },
+    drawVisiblePoint(point, color, brushSize, opacity) {
+      return engine.drawPoint({
+        point: mapVisiblePoint(engine, point),
+        color,
+        brushSize,
+        opacity,
+      })
+    },
+    eraseVisiblePoint(point, brushSize) {
+      return engine.erasePoint({
+        point: mapVisiblePoint(engine, point),
+        brushSize,
+      })
+    },
+    sampleVisibleRgb(point) {
+      return engine.sampleRgb(mapVisiblePoint(engine, point))
     },
     reset() {
       engine.destroy()
@@ -89,6 +110,18 @@ export function createAvatarStudioDrawingPort(): AvatarStudioDrawingPort {
   }
 }
 
+function mapVisiblePoint(engine: DrawingEngineCore, point: AvatarStudioCanvasPoint) {
+  const dimensions = engine.getDimensions()
+
+  return visibleToWorkspacePixel(
+    {
+      x: clampInteger(Math.trunc(point.x), 0, dimensions.visibleWidth - 1),
+      y: clampInteger(Math.trunc(point.y), 0, dimensions.visibleHeight - 1),
+    },
+    dimensions,
+  )
+}
+
 function createEngine() {
   return createDrawingEngineCore({
     dimensions: AVATAR_DRAWING_DIMENSIONS,
@@ -127,6 +160,10 @@ function hashString(value: string) {
   }
 
   return hash
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
 }
 
 function createNonBrowserPngDataUrl(hash: string) {

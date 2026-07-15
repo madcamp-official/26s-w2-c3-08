@@ -293,6 +293,12 @@ export interface PaletteSwatchModel {
   id: string
   name: string
   value: string
+  rgb?: {
+    r: number
+    g: number
+    b: number
+  }
+  rgbHexRow?: number
   transparent?: boolean
 }
 

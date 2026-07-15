@@ -26,6 +26,8 @@ await testNameValidation(core)
 await testLoadedUnchangedBlocksSubmit(core)
 await testSubmitSuccessNavigatesMain(core)
 await testMissingSessionNavigatesLogin(core)
+await testDrawingCallbacksMutateCanvas(core)
+await testEyedropperSelectsNearestSwatch(core)
 
 assert.match(coreSource, /export interface AvatarStudioAssetPort/)
 assert.match(coreSource, /export interface AvatarStudioDrawingPort/)
@@ -55,15 +57,23 @@ assert.match(remotePortSource, /\/api\/assets\/generate/)
 assert.doesNotMatch(remotePortSource, /createMock|Mock fallback|relay\.mock/i)
 assert.match(drawingPortSource, /AVATAR_DRAWING_DIMENSIONS/)
 assert.match(drawingPortSource, /encodePngDataUrl/)
+assert.match(drawingPortSource, /drawVisiblePoint/)
+assert.match(drawingPortSource, /eraseVisiblePoint/)
+assert.match(drawingPortSource, /sampleVisibleRgb/)
 assert.match(drawingPortSource, /width: imageData\.width/)
 assert.match(drawingPortSource, /height: imageData\.height/)
 assert.match(screenSource, /AVATAR_VISIBLE_WIDTH/)
 assert.match(screenSource, /surface="paper"/)
 assert.match(screenSource, /showVisibleFrame=\{false\}/)
 assert.match(screenSource, /workspaceSize=\{\{ width: AVATAR_VISIBLE_WIDTH, height: AVATAR_VISIBLE_HEIGHT \}\}/)
+assert.match(screenSource, /data-v2-component="avatar-drawing-canvas"/)
+assert.match(screenSource, /data-v2-component="avatar-rgb-hex-palette"/)
+assert.match(coreSource, /getAvatarStudioPaletteSwatches/)
+assert.match(coreSource, /color\(srgb/)
 assert.match(screenSource, /onPaste=\{\(event\) => event\.preventDefault\(\)\}/)
 assert.match(packageSource, /avatar-studio:check/)
 assert.doesNotMatch(screenSource, /어두운 체커|밝은 체커|격자 끄기|격자 켜기/)
+assert.doesNotMatch(screenSource, /AvatarPaintPreview/)
 
 assert.doesNotMatch(
   screenSource,
@@ -136,6 +146,38 @@ async function testMissingSessionNavigatesLogin({ createInitialAvatarStudioContr
   assert.deepEqual(runtime.routeChanges, ['login'])
 }
 
+async function testDrawingCallbacksMutateCanvas({
+  createInitialAvatarStudioControllerState,
+  createAvatarStudioScreenProps,
+}) {
+  const runtime = createRuntime(createInitialAvatarStudioControllerState)
+  const props = createAvatarStudioScreenProps(runtime)
+
+  props.onDrawCanvasPoint({ x: 12, y: 24 })
+  assert.equal(runtime.drawingPort.drawCalls.length, 1)
+  assert.deepEqual(runtime.drawingPort.drawCalls[0].point, { x: 12, y: 24 })
+  assert.equal(runtime.state.drawingRevision, 1)
+
+  props.onEraseCanvasPoint({ x: 20, y: 30 })
+  assert.equal(runtime.drawingPort.eraseCalls.length, 1)
+  assert.deepEqual(runtime.drawingPort.eraseCalls[0], { x: 20, y: 30 })
+  assert.equal(runtime.state.drawingRevision, 2)
+}
+
+async function testEyedropperSelectsNearestSwatch({
+  createInitialAvatarStudioControllerState,
+  createAvatarStudioScreenProps,
+}) {
+  const runtime = createRuntime(createInitialAvatarStudioControllerState)
+  const props = createAvatarStudioScreenProps(runtime)
+
+  runtime.drawingPort.sampleColor = { r: 246, g: 190, b: 0 }
+  props.onSampleCanvasColor({ x: 8, y: 8 })
+
+  assert.equal(runtime.state.selectedSwatchId, 'yellow')
+  assert.deepEqual(runtime.drawingPort.sampleCalls[0], { x: 8, y: 8 })
+}
+
 function createRuntime(createInitialAvatarStudioControllerState, options = {}) {
   const session = options.session === undefined
     ? { id: 'user-1', nickname: '릴레이러', token: 'token', avatarAssetId: null }
@@ -178,8 +220,33 @@ function createRuntime(createInitialAvatarStudioControllerState, options = {}) {
     },
     drawingPort: {
       hash: 'initial-hash',
+      sampleColor: { r: 17, g: 24, b: 39 },
+      drawCalls: [],
+      eraseCalls: [],
+      sampleCalls: [],
       getHash() {
         return this.hash
+      },
+      getVisibleImageData() {
+        return {
+          width: 256,
+          height: 512,
+          data: new Uint8ClampedArray(256 * 512 * 4),
+        }
+      },
+      drawVisiblePoint(point, color, brushSize, opacity) {
+        this.hash = `draw-${point.x}-${point.y}`
+        this.drawCalls.push({ point, color, brushSize, opacity })
+        return true
+      },
+      eraseVisiblePoint(point) {
+        this.hash = `erase-${point.x}-${point.y}`
+        this.eraseCalls.push(point)
+        return true
+      },
+      sampleVisibleRgb(point) {
+        this.sampleCalls.push(point)
+        return this.sampleColor
       },
       reset() {
         this.hash = 'reset-hash'

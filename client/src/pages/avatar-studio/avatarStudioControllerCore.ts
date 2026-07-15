@@ -6,6 +6,8 @@ import type {
 } from '../../design-system/studio'
 import type { LoginDataMode, LoginSession, StoragePort } from '../login/loginControllerCore'
 import type {
+  AvatarStudioCanvasImage,
+  AvatarStudioCanvasPoint,
   AvatarStudioFormValue,
   AvatarStudioLayoutValue,
   AvatarStudioScreenProps,
@@ -22,17 +24,118 @@ const avatarStudioToolModels: ToolButtonProps['tool'][] = [
   { id: 'clear', label: '전체지우기' },
 ]
 
-const avatarStudioPaletteSwatches: PaletteSwatchModel[] = [
+export interface AvatarStudioRgb {
+  r: number
+  g: number
+  b: number
+}
+
+export interface AvatarStudioRgba extends AvatarStudioRgb {
+  a: number
+}
+
+const avatarStudioBaseSwatches: PaletteSwatchModel[] = [
   { id: 'transparent', name: '투명', value: 'transparent', transparent: true },
-  { id: 'ink', name: '잉크', value: 'var(--semantic-color-text-primary)' },
-  { id: 'yellow', name: '건설 노랑', value: 'var(--semantic-color-action-primary-background)' },
-  { id: 'sky', name: '하늘 파랑', value: 'var(--semantic-color-status-generating)' },
-  { id: 'green', name: '지형 초록', value: 'var(--semantic-color-status-success)' },
-  { id: 'danger', name: '위험 빨강', value: 'var(--semantic-color-status-error)' },
+  { id: 'ink', name: '잉크', value: 'var(--semantic-color-text-primary)', rgb: { r: 17, g: 24, b: 39 } },
+  {
+    id: 'yellow',
+    name: '건설 노랑',
+    value: 'var(--semantic-color-action-primary-background)',
+    rgb: { r: 246, g: 190, b: 0 },
+  },
+  {
+    id: 'sky',
+    name: '하늘 파랑',
+    value: 'var(--semantic-color-status-generating)',
+    rgb: { r: 37, g: 106, b: 168 },
+  },
+  {
+    id: 'green',
+    name: '지형 초록',
+    value: 'var(--semantic-color-status-success)',
+    rgb: { r: 35, g: 116, b: 39 },
+  },
+  {
+    id: 'danger',
+    name: '위험 빨강',
+    value: 'var(--semantic-color-status-error)',
+    rgb: { r: 229, g: 37, b: 33 },
+  },
 ]
 
 const avatarStudioRecentSwatchIds = ['ink', 'yellow', 'sky']
 const avatarStudioBrushSizePresets = [2, 4, 8]
+
+const avatarStudioRgbHexRows: AvatarStudioRgb[][] = [
+  [
+    { r: 255, g: 96, b: 96 },
+    { r: 255, g: 160, b: 80 },
+    { r: 255, g: 220, b: 80 },
+  ],
+  [
+    { r: 255, g: 96, b: 160 },
+    { r: 255, g: 128, b: 96 },
+    { r: 255, g: 196, b: 96 },
+    { r: 196, g: 232, b: 96 },
+  ],
+  [
+    { r: 220, g: 96, b: 255 },
+    { r: 255, g: 128, b: 196 },
+    { r: 255, g: 255, b: 255 },
+    { r: 160, g: 224, b: 96 },
+    { r: 80, g: 196, b: 120 },
+  ],
+  [
+    { r: 156, g: 112, b: 255 },
+    { r: 96, g: 160, b: 255 },
+    { r: 112, g: 216, b: 255 },
+    { r: 164, g: 180, b: 196 },
+    { r: 80, g: 216, b: 192 },
+  ],
+  [
+    { r: 96, g: 96, b: 220 },
+    { r: 80, g: 128, b: 196 },
+    { r: 40, g: 52, b: 76 },
+    { r: 64, g: 160, b: 172 },
+    { r: 48, g: 132, b: 96 },
+  ],
+  [
+    { r: 88, g: 64, b: 144 },
+    { r: 64, g: 92, b: 156 },
+    { r: 80, g: 96, b: 112 },
+    { r: 80, g: 132, b: 112 },
+  ],
+  [
+    { r: 32, g: 32, b: 40 },
+    { r: 120, g: 76, b: 48 },
+    { r: 232, g: 204, b: 164 },
+  ],
+]
+
+function createAvatarStudioRgbHexSwatches(): PaletteSwatchModel[] {
+  return avatarStudioRgbHexRows.flatMap((row, rowIndex) =>
+    row.map((rgb, columnIndex) => ({
+      id: `rgb-${rowIndex}-${columnIndex}`,
+      name: `RGB ${rgb.r} ${rgb.g} ${rgb.b}`,
+      value: createSrgbColor(rgb),
+      rgb,
+      rgbHexRow: rowIndex,
+    })),
+  )
+}
+
+function createSrgbColor(rgb: AvatarStudioRgb) {
+  return `color(srgb ${formatSrgbChannel(rgb.r)} ${formatSrgbChannel(rgb.g)} ${formatSrgbChannel(rgb.b)})`
+}
+
+function formatSrgbChannel(value: number) {
+  return (value / 255).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+const avatarStudioPaletteSwatches: PaletteSwatchModel[] = [
+  ...avatarStudioBaseSwatches,
+  ...createAvatarStudioRgbHexSwatches(),
+]
 
 export interface AvatarStudioControllerError {
   kind:
@@ -89,6 +192,15 @@ export interface AvatarStudioAssetPort {
 
 export interface AvatarStudioDrawingPort {
   getHash(): string
+  getVisibleImageData(): AvatarStudioCanvasImage
+  drawVisiblePoint(
+    point: AvatarStudioCanvasPoint,
+    color: AvatarStudioRgba,
+    brushSize: number,
+    opacity: number,
+  ): boolean
+  eraseVisiblePoint(point: AvatarStudioCanvasPoint, brushSize: number): boolean
+  sampleVisibleRgb(point: AvatarStudioCanvasPoint): AvatarStudioRgb | null
   reset(): AvatarStudioResult<{ hash: string }>
   loadAvatarSource(asset: AvatarStudioAssetRecord): AvatarStudioResult<{ hash: string }>
   exportPng(): AvatarStudioResult<{ image: string; hash: string; width: number; height: number }>
@@ -118,6 +230,7 @@ export interface AvatarStudioControllerState {
   opacity: number
   selectedSwatchId: string
   recentSwatchIds: string[]
+  drawingRevision: number
   checkerMode: 'light' | 'dark'
   gridVisible: boolean
   loadModalOpen: boolean
@@ -157,6 +270,10 @@ export function createDefaultAvatarStudioForm(): AvatarStudioFormValue {
   }
 }
 
+export function getAvatarStudioPaletteSwatches(): PaletteSwatchModel[] {
+  return avatarStudioPaletteSwatches
+}
+
 export function createDefaultAvatarStudioLayout(): AvatarStudioLayoutValue {
   return {
     leftCollapsed: false,
@@ -180,6 +297,7 @@ export function createInitialAvatarStudioControllerState(
     opacity: 1,
     selectedSwatchId: 'ink',
     recentSwatchIds: avatarStudioRecentSwatchIds,
+    drawingRevision: 0,
     checkerMode: 'light',
     gridVisible: true,
     loadModalOpen: false,
@@ -281,6 +399,7 @@ export function createAvatarStudioScreenProps(
     swatches: avatarStudioPaletteSwatches,
     selectedSwatchId: state.selectedSwatchId,
     recentSwatchIds: state.recentSwatchIds,
+    canvasImage: runtime.drawingPort.getVisibleImageData(),
     checkerMode: state.checkerMode,
     gridVisible: state.gridVisible,
     dirtyState,
@@ -317,6 +436,9 @@ export function createAvatarStudioCallbacks(
   | 'onBrushSizeChange'
   | 'onOpacityChange'
   | 'onSelectColor'
+  | 'onDrawCanvasPoint'
+  | 'onEraseCanvasPoint'
+  | 'onSampleCanvasColor'
   | 'onToggleCheckerMode'
   | 'onToggleGrid'
   | 'onUndo'
@@ -355,15 +477,20 @@ export function createAvatarStudioCallbacks(
     onBrushSizeChange: (brushSize) => setAvatarStudioBrushSize(runtime, brushSize),
     onOpacityChange: (opacity) => setAvatarStudioOpacity(runtime, opacity),
     onSelectColor: (swatchId) => selectAvatarStudioColor(runtime, swatchId),
+    onDrawCanvasPoint: (point) => drawAvatarStudioPoint(runtime, point),
+    onEraseCanvasPoint: (point) => eraseAvatarStudioPoint(runtime, point),
+    onSampleCanvasColor: (point) => sampleAvatarStudioColor(runtime, point),
     onToggleCheckerMode: () => toggleAvatarStudioChecker(runtime),
     onToggleGrid: () => toggleAvatarStudioGrid(runtime),
     onUndo: () => {
-      runtime.drawingPort.undo()
-      markAvatarStudioChanged(runtime)
+      if (runtime.drawingPort.undo()) {
+        markAvatarStudioChanged(runtime)
+      }
     },
     onRedo: () => {
-      runtime.drawingPort.redo()
-      markAvatarStudioChanged(runtime)
+      if (runtime.drawingPort.redo()) {
+        markAvatarStudioChanged(runtime)
+      }
     },
     onClear: () => clearAvatarStudioCanvas(runtime),
     onOpenLoadModal: () => openAvatarStudioLoadModal(runtime),
@@ -438,6 +565,7 @@ export function loadAvatarStudioSource(
     },
     loadModalOpen: false,
     viewState: 'loadedUnchanged',
+    drawingRevision: state.drawingRevision + 1,
     submitError: undefined,
     toastVisible: false,
   }))
@@ -524,6 +652,7 @@ export function resetAvatarStudio(runtime: AvatarStudioControllerRuntime) {
     viewState: resetResult.ok ? 'default' : 'submitFailed',
     loadedSource: undefined,
     lastSubmittedHash: undefined,
+    drawingRevision: state.drawingRevision + 1,
     submitError: resetResult.ok ? undefined : resetResult.error.message,
     toastVisible: false,
   }))
@@ -566,6 +695,7 @@ export function clearAvatarStudioCanvas(runtime: AvatarStudioControllerRuntime) 
   runtime.setState((state) => ({
     ...state,
     viewState: result.ok ? state.loadedSource ? 'loadedChanged' : 'default' : 'submitFailed',
+    drawingRevision: result.ok ? state.drawingRevision + 1 : state.drawingRevision,
     submitError: result.ok ? undefined : result.error.message,
     toastVisible: false,
   }))
@@ -631,6 +761,66 @@ function selectAvatarStudioColor(runtime: AvatarStudioControllerRuntime, swatchI
   }))
 }
 
+export function drawAvatarStudioPoint(
+  runtime: AvatarStudioControllerRuntime,
+  point: AvatarStudioCanvasPoint,
+) {
+  const state = runtime.getState()
+
+  if (state.viewState === 'submitting') {
+    return false
+  }
+
+  const color = resolveAvatarStudioSelectedColor(state.selectedSwatchId)
+  const changed = runtime.drawingPort.drawVisiblePoint(point, color, state.brushSize, state.opacity)
+
+  if (changed) {
+    markAvatarStudioChanged(runtime)
+  }
+
+  return changed
+}
+
+export function eraseAvatarStudioPoint(
+  runtime: AvatarStudioControllerRuntime,
+  point: AvatarStudioCanvasPoint,
+) {
+  const state = runtime.getState()
+
+  if (state.viewState === 'submitting') {
+    return false
+  }
+
+  const changed = runtime.drawingPort.eraseVisiblePoint(point, state.brushSize)
+
+  if (changed) {
+    markAvatarStudioChanged(runtime)
+  }
+
+  return changed
+}
+
+export function sampleAvatarStudioColor(
+  runtime: AvatarStudioControllerRuntime,
+  point: AvatarStudioCanvasPoint,
+) {
+  const sampledColor = runtime.drawingPort.sampleVisibleRgb(point)
+
+  if (!sampledColor) {
+    return { ok: false as const, reason: 'empty_pixel' as const }
+  }
+
+  const swatch = findNearestAvatarStudioSwatch(sampledColor)
+
+  if (!swatch) {
+    return { ok: false as const, reason: 'missing_swatch' as const }
+  }
+
+  selectAvatarStudioColor(runtime, swatch.id)
+
+  return { ok: true as const, swatchId: swatch.id }
+}
+
 function toggleAvatarStudioChecker(runtime: AvatarStudioControllerRuntime) {
   runtime.setState((state) => ({
     ...state,
@@ -649,6 +839,7 @@ function markAvatarStudioChanged(runtime: AvatarStudioControllerRuntime) {
   runtime.setState((state) => ({
     ...state,
     viewState: state.loadedSource ? 'loadedChanged' : 'default',
+    drawingRevision: state.drawingRevision + 1,
     submitError: undefined,
     toastVisible: false,
   }))
@@ -729,6 +920,49 @@ function deriveSubmitDisabledReason(
   }
 
   return undefined
+}
+
+function resolveAvatarStudioSelectedColor(swatchId: string): AvatarStudioRgba {
+  const swatch = getAvatarStudioSwatch(swatchId)
+
+  if (swatch?.transparent) {
+    return { r: 0, g: 0, b: 0, a: 0 }
+  }
+
+  const rgb = swatch?.rgb ?? getAvatarStudioSwatch('ink')?.rgb ?? { r: 17, g: 24, b: 39 }
+
+  return {
+    ...rgb,
+    a: 255,
+  }
+}
+
+function findNearestAvatarStudioSwatch(color: AvatarStudioRgb) {
+  return avatarStudioPaletteSwatches
+    .filter((swatch) => swatch.rgb !== undefined)
+    .reduce<PaletteSwatchModel | undefined>((nearest, swatch) => {
+      if (!swatch.rgb) {
+        return nearest
+      }
+
+      if (!nearest?.rgb) {
+        return swatch
+      }
+
+      return rgbDistance(color, swatch.rgb) < rgbDistance(color, nearest.rgb) ? swatch : nearest
+    }, undefined)
+}
+
+function getAvatarStudioSwatch(swatchId: string) {
+  return avatarStudioPaletteSwatches.find((swatch) => swatch.id === swatchId)
+}
+
+function rgbDistance(first: AvatarStudioRgb, second: AvatarStudioRgb) {
+  const red = first.r - second.r
+  const green = first.g - second.g
+  const blue = first.b - second.b
+
+  return red * red + green * green + blue * blue
 }
 
 function mapLoadableAvatars(

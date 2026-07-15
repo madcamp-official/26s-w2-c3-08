@@ -1,12 +1,13 @@
 import type { AssetLoadItem } from '../../design-system/studio'
 import type {
+  AvatarStudioCanvasImage,
   AvatarStudioFormValue,
   AvatarStudioLayoutValue,
   AvatarStudioScreenProps,
   AvatarStudioScreenState,
 } from '../../pages/avatar-studio/AvatarStudioScreen'
+import { getAvatarStudioPaletteSwatches } from '../../pages/avatar-studio/avatarStudioControllerCore'
 import {
-  paletteSwatches,
   recentPaletteSwatchIds,
   studioToolFixtures,
 } from '../studio/studioFixtures'
@@ -55,6 +56,8 @@ const defaultLayout: AvatarStudioLayoutValue = {
   rightPanelWidth: 320,
   resizing: null,
 }
+
+const fixtureCanvasImage = createFixtureCanvasImage()
 
 export const avatarStudioLoadFixtures: AssetLoadItem[] = [
   { id: 'mine-avatar-ready', name: '달리기 아바타', category: '아바타', status: 'ready' },
@@ -118,9 +121,10 @@ export function toAvatarStudioScreenProps(
     brushSize: 4,
     brushSizePresets: [2, 4, 8],
     opacity: 1,
-    swatches: paletteSwatches,
+    swatches: getAvatarStudioPaletteSwatches(),
     selectedSwatchId: 'ink',
     recentSwatchIds: recentPaletteSwatchIds,
+    canvasImage: fixtureCanvasImage,
     checkerMode: fixture.checkerMode ?? 'light',
     gridVisible: fixture.gridVisible ?? true,
     dirtyState: fixture.dirtyState ?? 'changed',
@@ -143,6 +147,9 @@ export function toAvatarStudioScreenProps(
     onBrushSizeChange: noop,
     onOpacityChange: noop,
     onSelectColor: noop,
+    onDrawCanvasPoint: noop,
+    onEraseCanvasPoint: noop,
+    onSampleCanvasColor: noop,
     onToggleCheckerMode: noop,
     onToggleGrid: noop,
     onUndo: noop,
@@ -181,4 +188,12 @@ function createFixture(
 
 function noop() {
   return undefined
+}
+
+function createFixtureCanvasImage(): AvatarStudioCanvasImage {
+  return {
+    width: 256,
+    height: 512,
+    data: new Uint8ClampedArray(256 * 512 * 4),
+  }
 }

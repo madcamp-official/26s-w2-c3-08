@@ -1,4 +1,10 @@
-import type { CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import {
   AVATAR_VISIBLE_HEIGHT,
   AVATAR_VISIBLE_WIDTH,
@@ -13,7 +19,6 @@ import {
   DirtyStateNotice,
   DrawingToolbar,
   DrawingViewport,
-  PaletteGrid,
   PanelResizeHandle,
   StudioPanel,
   type AssetLoadItem,
@@ -56,6 +61,17 @@ export interface AvatarStudioToast {
   message: string
 }
 
+export interface AvatarStudioCanvasPoint {
+  x: number
+  y: number
+}
+
+export interface AvatarStudioCanvasImage {
+  width: number
+  height: number
+  data: Uint8ClampedArray
+}
+
 export interface AvatarStudioScreenCallbacks {
   onGoMain: () => void
   onOpenWarehouse: () => void
@@ -68,6 +84,9 @@ export interface AvatarStudioScreenCallbacks {
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
   onSelectColor: (swatchId: string) => void
+  onDrawCanvasPoint: (point: AvatarStudioCanvasPoint) => void
+  onEraseCanvasPoint: (point: AvatarStudioCanvasPoint) => void
+  onSampleCanvasColor: (point: AvatarStudioCanvasPoint) => void
   onToggleCheckerMode: () => void
   onToggleGrid: () => void
   onUndo: () => void
@@ -96,6 +115,7 @@ export interface AvatarStudioScreenProps extends AvatarStudioScreenCallbacks {
   swatches: PaletteSwatchModel[]
   selectedSwatchId: string
   recentSwatchIds: string[]
+  canvasImage: AvatarStudioCanvasImage
   checkerMode: CheckerMode
   gridVisible: boolean
   dirtyState: 'blank' | 'unchanged' | 'changed' | 'submitted'
@@ -122,6 +142,7 @@ export function AvatarStudioScreen({
   swatches,
   selectedSwatchId,
   recentSwatchIds,
+  canvasImage,
   dirtyState,
   sourceAvatarName,
   submitDisabledReason,
@@ -142,6 +163,9 @@ export function AvatarStudioScreen({
   onBrushSizeChange,
   onOpacityChange,
   onSelectColor,
+  onDrawCanvasPoint,
+  onEraseCanvasPoint,
+  onSampleCanvasColor,
   onUndo,
   onRedo,
   onClear,
@@ -237,7 +261,17 @@ export function AvatarStudioScreen({
               status={submitting ? 'disabled' : activeTool === 'move' ? 'move' : dirtyState === 'blank' ? 'blank' : 'drawing'}
               toolLabel={getToolLabel(tools, activeTool)}
             >
-              <AvatarPaintPreview selectedSwatch={selectedSwatch} />
+              <AvatarDrawingCanvas
+                image={canvasImage}
+                activeTool={activeTool}
+                brushSize={brushSize}
+                disabled={submitting}
+                selectedSwatch={selectedSwatch}
+                toolLabel={getToolLabel(tools, activeTool)}
+                onDrawPoint={onDrawCanvasPoint}
+                onErasePoint={onEraseCanvasPoint}
+                onSampleColor={onSampleCanvasColor}
+              />
             </DrawingViewport>
           </section>
         }
@@ -434,7 +468,7 @@ function AvatarToolsPanel({
           />
         </label>
         <CurrentColor swatch={selectedSwatch} />
-        <PaletteGrid
+        <AvatarRgbHexPalette
           label="색상"
           swatches={swatches}
           selectedSwatchId={selectedSwatchId}
@@ -450,6 +484,260 @@ function AvatarToolsPanel({
         />
       </Stack>
     </StudioPanel>
+  )
+}
+
+function AvatarDrawingCanvas({
+  image,
+  activeTool,
+  brushSize,
+  disabled,
+  selectedSwatch,
+  toolLabel,
+  onDrawPoint,
+  onErasePoint,
+  onSampleColor,
+}: {
+  image: AvatarStudioCanvasImage
+  activeTool: StudioToolId
+  brushSize: number
+  disabled: boolean
+  selectedSwatch: PaletteSwatchModel
+  toolLabel: string
+  onDrawPoint: (point: AvatarStudioCanvasPoint) => void
+  onErasePoint: (point: AvatarStudioCanvasPoint) => void
+  onSampleColor: (point: AvatarStudioCanvasPoint) => void
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const pointerRef = useRef<{
+    id: number
+    lastPoint: AvatarStudioCanvasPoint
+  } | null>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+
+    if (!canvas || !context || typeof ImageData === 'undefined') {
+      return
+    }
+
+    canvas.width = image.width
+    canvas.height = image.height
+    context.clearRect(0, 0, image.width, image.height)
+    context.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0)
+  }, [image])
+
+  const emitPoint = useCallback(
+    (point: AvatarStudioCanvasPoint) => {
+      if (activeTool === 'eraser' || selectedSwatch.transparent) {
+        onErasePoint(point)
+        return
+      }
+
+      if (activeTool === 'pen') {
+        onDrawPoint(point)
+      }
+    },
+    [activeTool, onDrawPoint, onErasePoint, selectedSwatch.transparent],
+  )
+
+  const emitStroke = useCallback(
+    (from: AvatarStudioCanvasPoint, to: AvatarStudioCanvasPoint) => {
+      const distance = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))
+      const steps = Math.max(1, Math.ceil(distance / Math.max(1, brushSize / 2)))
+
+      for (let step = 1; step <= steps; step += 1) {
+        emitPoint({
+          x: Math.round(from.x + ((to.x - from.x) * step) / steps),
+          y: Math.round(from.y + ((to.y - from.y) * step) / steps),
+        })
+      }
+    },
+    [brushSize, emitPoint],
+  )
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (disabled) {
+      return
+    }
+
+    const point = getCanvasPoint(event, image)
+
+    if (!point) {
+      return
+    }
+
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+
+    if (activeTool === 'eyedropper') {
+      onSampleColor(point)
+      return
+    }
+
+    if (activeTool !== 'pen' && activeTool !== 'eraser') {
+      return
+    }
+
+    pointerRef.current = {
+      id: event.pointerId,
+      lastPoint: point,
+    }
+    emitPoint(point)
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const activePointer = pointerRef.current
+
+    if (disabled || !activePointer || activePointer.id !== event.pointerId) {
+      return
+    }
+
+    const point = getCanvasPoint(event, image)
+
+    if (!point) {
+      return
+    }
+
+    event.preventDefault()
+    emitStroke(activePointer.lastPoint, point)
+    pointerRef.current = {
+      ...activePointer,
+      lastPoint: point,
+    }
+  }
+
+  function handlePointerEnd(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (pointerRef.current?.id === event.pointerId) {
+      pointerRef.current = null
+    }
+  }
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className={styles.drawingCanvas}
+      width={image.width}
+      height={image.height}
+      role="img"
+      aria-label={`아바타 그림판, 현재 도구 ${toolLabel}, 현재 색상 ${selectedSwatch.name}`}
+      tabIndex={0}
+      data-v2-component="avatar-drawing-canvas"
+      data-v2-state={disabled ? 'disabled' : activeTool}
+      data-tool={activeTool}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onLostPointerCapture={handlePointerEnd}
+    />
+  )
+}
+
+function AvatarRgbHexPalette({
+  label,
+  swatches,
+  selectedSwatchId,
+  recentSwatchIds,
+  disabled,
+  onSelect,
+}: {
+  label: string
+  swatches: PaletteSwatchModel[]
+  selectedSwatchId: string
+  recentSwatchIds: string[]
+  disabled: boolean
+  onSelect: (swatchId: string) => void
+}) {
+  const baseSwatches = swatches.filter((swatch) => swatch.rgbHexRow === undefined)
+  const rgbRows = Array.from(
+    new Set(swatches.flatMap((swatch) => (swatch.rgbHexRow === undefined ? [] : [swatch.rgbHexRow]))),
+  )
+    .sort((first, second) => first - second)
+    .map((row) => swatches.filter((swatch) => swatch.rgbHexRow === row))
+
+  return (
+    <section
+      className={styles.rgbPalette}
+      aria-label={label}
+      data-v2-component="avatar-rgb-hex-palette"
+      data-v2-state={disabled ? 'disabled' : 'enabled'}
+    >
+      <div className={styles.paletteHeader}>
+        <strong>{label}</strong>
+        <span>RGB 직접 선택</span>
+      </div>
+      <div className={styles.baseSwatches} role="group" aria-label="기본 색상">
+        {baseSwatches.map((swatch) => (
+          <AvatarColorButton
+            key={swatch.id}
+            swatch={swatch}
+            selected={swatch.id === selectedSwatchId}
+            recent={recentSwatchIds.includes(swatch.id)}
+            disabled={disabled}
+            compact={false}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+      <div className={styles.rgbHexRows} role="group" aria-label="RGB 육각형 색상">
+        {rgbRows.map((row, rowIndex) => (
+          <div key={rowIndex} className={styles.rgbHexRow}>
+            {row.map((swatch) => (
+              <AvatarColorButton
+                key={swatch.id}
+                swatch={swatch}
+                selected={swatch.id === selectedSwatchId}
+                recent={recentSwatchIds.includes(swatch.id)}
+                disabled={disabled}
+                compact
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function AvatarColorButton({
+  swatch,
+  selected,
+  recent,
+  disabled,
+  compact,
+  onSelect,
+}: {
+  swatch: PaletteSwatchModel
+  selected: boolean
+  recent: boolean
+  disabled: boolean
+  compact: boolean
+  onSelect: (swatchId: string) => void
+}) {
+  const style = {
+    '--avatar-swatch-color': swatch.value,
+  } as CSSProperties
+  const state = disabled ? 'disabled' : selected ? 'selected' : recent ? 'recent' : 'idle'
+
+  return (
+    <button
+      className={styles.colorButton}
+      type="button"
+      aria-label={`${swatch.name}${selected ? ', 선택됨' : ''}${recent ? ', 최근 사용' : ''}`}
+      aria-pressed={selected}
+      disabled={disabled}
+      style={style}
+      data-v2-state={state}
+      data-compact={compact ? 'true' : 'false'}
+      data-transparent={swatch.transparent ? 'true' : undefined}
+      onClick={() => onSelect(swatch.id)}
+    >
+      <span aria-hidden="true" />
+      {selected ? <strong aria-hidden="true" /> : null}
+    </button>
   )
 }
 
@@ -469,34 +757,32 @@ function CurrentColor({ swatch }: { swatch: PaletteSwatchModel }) {
   )
 }
 
-function AvatarPaintPreview({ selectedSwatch }: { selectedSwatch: PaletteSwatchModel }) {
-  const style = {
-    '--avatar-paint-color': selectedSwatch.value,
-  } as CSSProperties
-
-  return (
-    <div
-      className={styles.paintPreview}
-      style={style}
-      data-transparent={selectedSwatch.transparent ? 'true' : 'false'}
-      aria-hidden="true"
-    >
-      <span data-part="head" />
-      <span data-part="body" />
-      <span data-part="arm-left" />
-      <span data-part="arm-right" />
-      <span data-part="leg-left" />
-      <span data-part="leg-right" />
-    </div>
-  )
-}
-
 function getSelectedSwatch(swatches: PaletteSwatchModel[], selectedSwatchId: string) {
   return swatches.find((swatch) => swatch.id === selectedSwatchId) ?? swatches[0] ?? {
     id: 'ink',
     name: '잉크',
     value: 'var(--semantic-color-text-primary)',
   }
+}
+
+function getCanvasPoint(
+  event: ReactPointerEvent<HTMLCanvasElement>,
+  image: AvatarStudioCanvasImage,
+): AvatarStudioCanvasPoint | null {
+  const rect = event.currentTarget.getBoundingClientRect()
+
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null
+  }
+
+  return {
+    x: clampInteger(Math.floor(((event.clientX - rect.left) / rect.width) * image.width), 0, image.width - 1),
+    y: clampInteger(Math.floor(((event.clientY - rect.top) / rect.height) * image.height), 0, image.height - 1),
+  }
+}
+
+function clampInteger(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
 }
 
 function getToolLabel(tools: ToolButtonProps['tool'][], activeTool: StudioToolId) {

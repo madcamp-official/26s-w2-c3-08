@@ -1,6 +1,8 @@
 .shell {
   --studio-left-panel-width: 280px;
   --studio-right-panel-width: 320px;
+  --studio-left-column-width: minmax(var(--spacing-16), var(--studio-left-panel-width));
+  --studio-right-column-width: minmax(var(--spacing-16), var(--studio-right-panel-width));
 
   position: relative;
   min-height: 720px;
@@ -54,7 +56,15 @@
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(var(--spacing-16), 280px) minmax(520px, 1fr) minmax(var(--spacing-16), 320px);
+  grid-template-columns: var(--studio-left-column-width) minmax(520px, 1fr) var(--studio-right-column-width);
+}
+
+.shell[data-left-panel-state='collapsed'] {
+  --studio-left-column-width: var(--spacing-16);
+}
+
+.shell[data-right-panel-state='collapsed'] {
+  --studio-right-column-width: var(--spacing-16);
 }
 
 .panel,
