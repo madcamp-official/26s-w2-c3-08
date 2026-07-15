@@ -7,7 +7,7 @@ import Phaser from "phaser";
 import type { ActionName } from "shared/actions";
 import { SPRITE_PADDING_PX } from "shared";
 import type { AssetManifest } from "./manifest.js";
-import { queueManifestLoad, textureKey, animKey, hasAnim } from "./load.js";
+import { queueManifestLoad, textureKey, sourceTextureKey, animKey, hasAnim } from "./load.js";
 import { getOutlines, type Point } from "./outline.js";
 
 export interface SpriteView {
@@ -15,16 +15,18 @@ export interface SpriteView {
   manifest: AssetManifest | null;
   sprite: Phaser.GameObjects.Sprite;
   lastAction: ActionName | null;
+  /** true면 ①액션시트가 아니라 ②원본 정지그림을 보여주는 중(패딩=0 확정, 애니메이션 없음). */
+  usingSource: boolean;
 }
 
 export function createSpriteView(scene: Phaser.Scene, depth: number): SpriteView {
   const sprite = scene.add.sprite(0, 0, "__DEFAULT").setVisible(false).setDepth(depth).setOrigin(0.5, 1);
-  return { key: null, manifest: null, sprite, lastAction: null };
+  return { key: null, manifest: null, sprite, lastAction: null, usingSource: false };
 }
 
 export function destroySpriteView(view: SpriteView): void {
   view.sprite.destroy();
-  view.key = null; view.manifest = null; view.lastAction = null;
+  view.key = null; view.manifest = null; view.lastAction = null; view.usingSource = false;
 }
 
 /** 이 뷰에 에셋을 배정 — 시트 로드를 큐에 올린다. 이미 같은 키면 중복 로드 안 함(load.ts가 가드). */
@@ -59,23 +61,48 @@ export function stepSpriteView(
   if (!view.key) { view.sprite.setVisible(false); return false; }
   const useAction: ActionName | null = hasAnim(scene, view.key, action) ? action
     : hasAnim(scene, view.key, "idle") ? "idle" : null;
-  if (!useAction) { view.sprite.setVisible(false); return false; }
-  if (view.lastAction !== useAction) {
-    view.sprite.play(animKey(view.key, useAction));
-    view.lastAction = useAction;
+
+  if (useAction) {
+    if (view.usingSource || view.lastAction !== useAction) {
+      view.sprite.play(animKey(view.key, useAction));
+      view.lastAction = useAction;
+      view.usingSource = false;
+    }
+    const fw = view.sprite.frame.cutWidth || 1, fh = view.sprite.frame.cutHeight || 1;
+    const { ch, pad } = contentMetrics(fw, fh);
+    // 콘텐츠(패딩 제외)를 히트박스에 맞추는 uniform 스케일. cw:ch == dispW:dispH라 한 축으로 계산해도
+    // 다른 축이 자동으로 맞음(찌그러짐 없음). 세로 기준(발끝 위치가 중요)으로 잡는다.
+    const scale = dispH / ch;
+    view.sprite.setFlipX(facing < 0);
+    // origin (0.5,1) = 프레임 바닥 앵커. 캐릭터 발은 프레임 바닥보다 pad(px)만큼 위 → 그만큼 아래로
+    // 내려 앵커를 이동해 발끝이 정확히 y에 오게 한다(패딩만큼 공중에 뜨는 것 방지). squash 포함.
+    view.sprite.setScale(scale, scale * squashSy);
+    view.sprite.setPosition(x, y + pad * scale * squashSy);
+    view.sprite.setVisible(true);
+    return true;
   }
-  const fw = view.sprite.frame.cutWidth || 1, fh = view.sprite.frame.cutHeight || 1;
-  const { cw, ch, pad } = contentMetrics(fw, fh);
-  // 콘텐츠(패딩 제외)를 히트박스에 맞추는 uniform 스케일. cw:ch == dispW:dispH라 한 축으로 계산해도
-  // 다른 축이 자동으로 맞음(찌그러짐 없음). 세로 기준(발끝 위치가 중요)으로 잡는다.
-  const scale = dispH / ch;
-  view.sprite.setFlipX(facing < 0);
-  // origin (0.5,1) = 프레임 바닥 앵커. 캐릭터 발은 프레임 바닥보다 pad(px)만큼 위 → 그만큼 아래로
-  // 내려 앵커를 이동해 발끝이 정확히 y에 오게 한다(패딩만큼 공중에 뜨는 것 방지). squash 포함.
-  view.sprite.setScale(scale, scale * squashSy);
-  view.sprite.setPosition(x, y + pad * scale * squashSy);
-  view.sprite.setVisible(true);
-  return true;
+
+  // ②원본 정지그림 폴백 — ①이 하나도 없을 때만. 패딩은 추정하지 않고 0으로 확정(원본은 항상
+  // bbox 타이트 크롭이라 여백이 없다는 게 설계상 보장됨 — §2026-07-16).
+  const srcKey = sourceTextureKey(view.key);
+  if (scene.textures.exists(srcKey)) {
+    if (!view.usingSource) {
+      view.sprite.anims.stop();
+      view.sprite.setTexture(srcKey, "0");
+      view.usingSource = true;
+      view.lastAction = null;
+    }
+    const fh = view.sprite.frame.cutHeight || 1;
+    const scale = dispH / fh;
+    view.sprite.setFlipX(facing < 0);
+    view.sprite.setScale(scale, scale * squashSy);
+    view.sprite.setPosition(x, y);   // pad=0 확정이라 발끝 보정 불필요
+    view.sprite.setVisible(true);
+    return true;
+  }
+
+  view.sprite.setVisible(false);
+  return false;
 }
 
 /**
@@ -87,7 +114,23 @@ export function getSpriteOutlineWorld(
   scene: Phaser.Scene, view: SpriteView,
   x: number, y: number, facing: 1 | -1, dispW: number, dispH: number, squashSy = 1,
 ): Point[] | null {
-  if (!view.key || !view.lastAction) return null;
+  if (!view.key) return null;
+  if (view.usingSource) {
+    // ②원본 — 1프레임 시트라 프레임 인덱스는 항상 0, 패딩도 항상 0(stepSpriteView와 동일 전제).
+    const tKey = sourceTextureKey(view.key);
+    const outlines = getOutlines(scene, tKey);
+    const poly = outlines[0];
+    if (!poly || poly.length < 3) return null;
+    const frame = scene.textures.get(tKey).frames["0"];
+    if (!frame) return null;
+    const fw = frame.cutWidth, fh = frame.cutHeight;
+    const scale = dispH / fh, sy = scale * squashSy;
+    return poly.map((p) => {
+      const lx = facing < 0 ? fw - p.x : p.x;
+      return { x: x + (lx - fw / 2) * scale, y: y + (p.y - fh) * sy };
+    });
+  }
+  if (!view.lastAction) return null;
   const tKey = textureKey(view.key, view.lastAction);
   const outlines = getOutlines(scene, tKey);
   if (outlines.length === 0) return null;

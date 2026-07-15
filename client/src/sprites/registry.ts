@@ -4,23 +4,24 @@
 import { HTTP_BASE } from "../net/rest.js";
 import type { AssetManifest } from "./manifest.js";
 
-/** 로컬 키 → 시스템 에셋 이름(server/src/seed/systemAssets.ts의 name과 일치해야 함) */
+/**
+ * 로컬 키 → 시스템 에셋 이름(server/src/seed/systemAssets.ts의 name과 일치해야 함).
+ * 2026-07-16: 76개 실그림 에셋(server/src/seed 별도 시드) 중 근접 매칭 7개로 갱신.
+ * spike/gate/platform/invincible/thwomp/chaser/shove/splitter는 대응 에셋 없음 → 매핑 없이 폴백 유지
+ * (거짓 매칭 금지 — 크기·의미가 안 맞는 걸 억지로 붙이지 않음).
+ */
 const SYSTEM_NAME: Record<string, string> = {
   // 아바타
-  avatar: "졸라맨",
-  // 몬스터 (TESTMAP asset명) — 시드에 없는 것(thwomp/chaser/shove/splitter)은 매핑 없음 → 폴백
-  goomba: "굼바",
-  spiky: "가시돌이",
-  // 아이템 (ItemKind) — 시드에 없는 것(invincible/hpUp 등)은 폴백
-  speed: "가속",
-  sizeUp: "거대버섯",
-  // 블록 (TESTMAP 블록 성격별) — 대응 시드 에셋
-  ground: "기본 땅",
-  platform: "반통과 발판",
-  spike: "가시",
-  spring: "트램펄린",
-  switch: "스위치",
-  gate: "스위치 발판",
+  avatar: "mario",
+  // 몬스터 (TESTMAP asset명) — goomba만 정확히 일치, spiky는 매핑 없음(가시돌이 성격과 안 맞음 → 폴백)
+  goomba: "goomba",
+  // 아이템 (ItemKind)
+  speed: "speed boost",
+  sizeUp: "giant mushroom",
+  // 블록 (TESTMAP 블록 성격별) — ground는 일반 블록 대표(물음표·파괴블록 등)라 brick block으로 대체
+  ground: "brick block",
+  spring: "spring",
+  switch: "switch block (on)",
 };
 
 const cache = new Map<string, Promise<AssetManifest | null>>();
@@ -35,7 +36,9 @@ export function fetchManifestByKey(localKey: string): Promise<AssetManifest | nu
       .then(async (res) => {
         if (!res.ok) return null;
         const m = (await res.json()) as AssetManifest;
-        return m.actions && Object.keys(m.actions).length > 0 ? m : null;
+        // ①액션시트 또는 ②원본 중 하나라도 있으면 통과 — 렌더 티어 판단은 stepSpriteView가 함.
+        const hasActions = m.actions && Object.keys(m.actions).length > 0;
+        return hasActions || m.sourceImage ? m : null;
       })
       .catch(() => null);
     cache.set(name, p);

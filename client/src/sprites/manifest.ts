@@ -11,10 +11,19 @@ export interface SpriteSheetInfo {
   frameH: number;
 }
 
+/** 원본 정지그림(패딩 없음, 폴백 ②) — 크기는 타일 수 기반으로 서버가 확정해 내려줌(추정 아님). */
+export interface SourceImageInfo {
+  url: string;
+  tilesW: number;
+  tilesH: number;
+}
+
 export interface AssetManifest {
   /** 캐시·텍스처 키 접두사로 쓰는 유일 식별자 (에셋 DB id 문자열). */
   key: string;
   category: string;
   /** 준비된 액션만 들어있다(생성 중/실패인 액션은 응답에서 빠짐) — 없는 액션은 폴백(§resolve). */
   actions: Partial<Record<ActionName, SpriteSheetInfo>>;
+  /** 액션 시트 준비 전 다리 역할(②). ①이 생기면 자동으로 안 쓰임(stepSpriteView가 먼저 확인). */
+  sourceImage: SourceImageInfo | null;
 }
