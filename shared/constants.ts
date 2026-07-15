@@ -31,6 +31,6 @@ export const GAME_RULES = {
   perLineSec: 30,             // 게임시간 = 라인수 × 30초 (2026-07-16: 40→30)
   finishCountdownSec: 10,     // 1등 도달 후 카운트다운
   lastDanceSec: 30,           // 1등 없이 종료 시 라스트댄스
-  sweepSec: 50,               // 첫 라인부터 순차 파괴 간격
+  sweepSec: 30,               // 첫 라인부터 순차 파괴 간격 (2026-07-16: 50→30)
   joinCutoffSec: 60,          // 남은 제작시간 이 미만이면 난입해도 제작 불가
 } as const;
