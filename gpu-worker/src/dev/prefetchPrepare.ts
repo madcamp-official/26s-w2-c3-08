@@ -3,7 +3,7 @@
 // 몬스터2(랜덤)+블록2(brick 고정1 + 랜덤1)+배경2(랜덤). 각 자산의 모든 액션(deriveActions)에
 // 대해 prepare()를 호출 — 액션마다 motionHint가 다르므로 프롬프트도 다 다르게 나온다.
 // 실행: npx tsx gpu-worker/src/dev/prefetchPrepare.ts  (VPN+SSH터널+ComfyUI 켜진 상태에서)
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { deriveActions } from "shared/actions";
@@ -60,21 +60,27 @@ async function main() {
   const health = await backend.healthCheck();
   console.log("[prefetch] ComfyUI healthCheck:", health, "(prepare 단계엔 불필요하지만 확인차)");
 
-  // ---- 검증 배치 8개 선정 ----
-  // ⚠️ background 카테고리 제외 — drawn 소스는 무조건 투명배경이어야 한다는 Stage1 정규화 전제가
-  // "화면 전체를 불투명하게 채우는" 배경 그림과 근본적으로 안 맞음(실측 확인, 2026-07-16).
-  // 크로마키 합성/제거 스테이지 전체를 배경 카테고리에 어떻게 적용할지 별도 설계 필요 — 지금은 보류.
-  // 대신 avatar/monster/block에서 2개 더 채워 8개를 유지한다.
-  const avatars = pickRandom(ASSETS.filter((a) => a.category === "avatar"), 3);
-  const monsters = pickRandom(ASSETS.filter((a) => a.category === "monster"), 3);
-  const brick = ASSETS.find((a) => a.id === "brick")!; // 아무 옵션 없는 기본 블록 — 고정 포함
-  const blockRandom = pickRandom(ASSETS.filter((a) => a.category === "block" && a.id !== "brick"), 1);
-  const batch = [...avatars, ...monsters, brick, ...blockRandom];
+  // ---- 대상 선정 ----
+  // ⚠️ background 카테고리 제외 — deriveActions=[]라 생성 잡 자체가 없음(shared/actions/derive.ts).
+  //    Asset.sourceImageUrl 그림이 그대로 최종 렌더에 쓰인다.
+  // --all: 배경 제외 전부(71개) / 기본: 검증용 랜덤 8개
+  const ALL = process.argv.includes("--all");
+  let batch;
+  if (ALL) {
+    batch = ASSETS.filter((a) => a.category !== "background");
+  } else {
+    const avatars = pickRandom(ASSETS.filter((a) => a.category === "avatar"), 3);
+    const monsters = pickRandom(ASSETS.filter((a) => a.category === "monster"), 3);
+    const brick = ASSETS.find((a) => a.id === "brick")!;
+    const blockRandom = pickRandom(ASSETS.filter((a) => a.category === "block" && a.id !== "brick"), 1);
+    batch = [...avatars, ...monsters, brick, ...blockRandom];
+  }
 
-  console.log("[prefetch] 검증 배치 8개:", batch.map((a) => `${a.id}(${a.category})`).join(", "));
+  console.log(`[prefetch] 대상 ${batch.length}개 (${ALL ? "전체" : "검증 배치"}):`, batch.map((a) => a.id).join(", "));
 
   const orch = new Orchestrator({ backend, server, gateway });
   const summary: Array<{ id: string; category: string; action: string; positive: string; negative: string }> = [];
+  const failed: string[] = [];
 
   for (const asset of batch) {
     const srcPath = path.join(ROOT, "asset-sources", asset.file);
@@ -109,11 +115,35 @@ async function main() {
         skipLeadFrames: spec.skipLeadFrames ?? 0,
       };
 
-      console.log(`[prefetch] ${asset.id} / ${action} — 게이트웨이 호출 중...`);
-      const prep = await orch.prepare(job);
+      // 이미 캐시된 잡은 스킵 — 재실행 시 게이트웨이 재호출 안 함(VPN 시간 절약)
+      const actionDir = path.join(assetDir, action);
+      if (existsSync(path.join(actionDir, "prep.json"))) {
+        console.log(`[prefetch] ${asset.id} / ${action} — 이미 캐시됨, 스킵`);
+        continue;
+      }
+
+      // 게이트웨이가 가끔 잘못된 JSON을 뱉음(7B 모델 결함, MODEL_OUTPUT_INVALID) — 최대 3회 재시도,
+      // 그래도 실패면 이 잡만 건너뛰고 계속(캐시 안 씀 → 재실행 시 다시 시도됨).
+      let prep;
+      let lastErr;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`[prefetch] ${asset.id} / ${action} — 게이트웨이 호출 중...${attempt > 1 ? ` (재시도 ${attempt})` : ""}`);
+          prep = await orch.prepare(job);
+          break;
+        } catch (e) {
+          lastErr = e;
+          // 외형 캐시가 오염될 수 있으니 재시도 전 비움(같은 asset 다음 액션이 나쁜 캐시 물지 않게)
+          (orch as unknown as { appearanceCache: Map<string, unknown> }).appearanceCache?.delete?.(asset.id);
+        }
+      }
+      if (!prep) {
+        console.error(`[prefetch] ✗ ${asset.id}/${action} 3회 실패, 건너뜀: ${(lastErr as Error)?.message}`);
+        failed.push(`${asset.id}/${action}`);
+        continue;
+      }
 
       // ComfyUI 없이도 나중에 그대로 재사용할 수 있게 직렬화(시작이미지 PNG는 별도 파일로)
-      const actionDir = path.join(assetDir, action);
       mkdirSync(actionDir, { recursive: true });
       writeFileSync(path.join(actionDir, "start-image.png"), prep.startImagePng);
       writeFileSync(
@@ -140,8 +170,9 @@ async function main() {
   }
 
   writeFileSync(path.join(OUT_DIR, "_summary.json"), JSON.stringify(summary, null, 2));
-  console.log(`\n[prefetch] 전체 완료 — ${summary.length}개 잡의 프롬프트/시작이미지 캐시됨: ${OUT_DIR}`);
-  console.log("[prefetch] 이제 VPN 없이 gpu-worker/src/dev/generateFromPrefetch.ts로 ComfyUI 생성만 이어서 하면 됨.");
+  console.log(`\n[prefetch] 완료 — 성공 ${summary.length}잡 캐시 / 실패 ${failed.length}잡: ${OUT_DIR}`);
+  if (failed.length) console.log(`[prefetch] 실패 목록(재실행하면 다시 시도): ${failed.join(", ")}`);
+  console.log("[prefetch] 이제 VPN 없이 ComfyUI 생성만 이어서 하면 됨.");
 }
 
 main().catch((e) => {
