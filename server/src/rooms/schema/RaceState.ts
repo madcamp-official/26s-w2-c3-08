@@ -8,11 +8,16 @@ export class MemberState extends Schema {
   @type("string") nickname = "";
   @type("boolean") isHost = false;
   @type("boolean") canBuild = true;   // 난입 컷(잔여 제작시간 < 60s) 시 false
+  @type("uint8") rank = 0;            // 0=미확정. 골 도달 순서 또는 라스트댄스 종료 시 거리순 배정
+  @type("uint32") finishMs = 0;       // 완주 소요시간(racing 시작 기준). rank=0이면 무의미
+  @type("number") bestX = 0;          // 진행 최고 x(px) — 체크포인트 리스폰·리타이어 순위 근거
 }
 
 export class RaceState extends GameState {
   @type("string") phase = "lobby";
   @type("number") phaseEndsAt = 0;
   @type("uint8") lineCount = 0;       // racing 진입 시 확정 — 게임시간 = lineCount × 40s
+  @type("uint8") sweepIndex = 0;      // 파괴된 라인 수(0부터 순차)
+  @type("number") goalX = 0;          // 골 x(px) — HUD 진행률용
   @type({ map: MemberState }) members = new MapSchema<MemberState>();
 }

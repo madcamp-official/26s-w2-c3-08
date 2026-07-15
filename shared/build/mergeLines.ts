@@ -21,6 +21,8 @@ export interface MergedMap {
   goalFlagTiles: FlagTile;
   /** 라인별 [시작, 끝] 깃발(병합 좌표) — 체크포인트·파괴 스윕용 */
   lineFlags: { start: FlagTile; end: FlagTile }[];
+  /** 라인별 가로 범위(타일, 병합 좌표) — 파괴 스윕 대상 판정용 */
+  lineRanges: { startX: number; endX: number }[];
   /** 이 아래(px)로 떨어지면 추락사 */
   fallY: number;
 }
@@ -40,6 +42,7 @@ export function mergeLines(lines: LineRecord[]): MergedMap {
   const monsters: WorldDef["monsters"] = [];
   const flagBases: ReturnType<typeof flagBaseRect>[] = [];
   const lineFlags: MergedMap["lineFlags"] = [];
+  const lineRanges: MergedMap["lineRanges"] = [];
   let startFlagTiles: FlagTile = { x: 0, y: 0 };
   let goalFlagTiles: FlagTile = { x: 0, y: 0 };
   let minY = Infinity, maxY = -Infinity;
@@ -56,6 +59,8 @@ export function mergeLines(lines: LineRecord[]): MergedMap {
     minY = Math.min(minY, loaded.startFlag.y, loaded.endFlag.y);
     maxY = Math.max(maxY, loaded.startFlag.y, loaded.endFlag.y);
     contentMaxY = Math.max(contentMaxY, loaded.contentMaxYTiles);
+
+    lineRanges.push({ startX: offsetX, endX: offsetX + loaded.tileLength });
 
     const next = lines[i + 1];
     offsetX += loaded.tileLength;
@@ -83,7 +88,7 @@ export function mergeLines(lines: LineRecord[]): MergedMap {
   };
 
   return {
-    worldDef, startFlagTiles, goalFlagTiles, lineFlags,
+    worldDef, startFlagTiles, goalFlagTiles, lineFlags, lineRanges,
     fallY: (contentMaxY + FALL_PAD_TILES) * T,
   };
 }

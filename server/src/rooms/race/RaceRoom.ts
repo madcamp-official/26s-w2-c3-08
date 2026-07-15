@@ -5,14 +5,19 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { Client } from "colyseus";
 import type { User } from "@prisma/client";
 import { GAME_RULES } from "shared";
+import { TUNING } from "shared/physics";
 import {
   type Phase, NEXT_PHASE, phaseDurationSec, RACE_MSG, RACE_S2C_MSG, type RaceJoinOptions,
+  flagpoleRect, overlapsFlagpole, sweepGroundSolids,
 } from "shared/race";
 import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
 import { RaceState, MemberState } from "../schema/RaceState.js";
 import { prisma } from "../../prisma.js";
 import { resolveMemberLines } from "../../game/resolveMemberLines.js";
-import { mergeLines } from "shared/build";
+import { mergeLines, type MergedMap } from "shared/build";
+
+const T = TUNING.world.tileSize;
+const RESPAWN_NOTIFY_COOLDOWN_MS = 1500;
 
 function hashPassword(pw: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -41,8 +46,9 @@ export class RaceRoom extends PhysicsRoom {
   private hostSessionId = "";
   private passwordHash: string | null = null;
   private transitioning = false;
-  /** racing 진입 시 확정되는 골 지점(타일) — 4단계 골 판정용 */
-  protected goalFlagTiles: { x: number; y: number } | null = null;
+  private merged: MergedMap | null = null;
+  private racingStartClock = 0;
+  private lastRespawnNotifyAt = new Map<string, number>();
 
   /** 2단계: 빈 월드(로비엔 물리 대상 없음). 3단계에서 racing 진입 시 병합맵으로 교체. */
   protected worldDef(): WorldDef {
@@ -93,10 +99,91 @@ export class RaceRoom extends PhysicsRoom {
   // ── 페이즈 엔진 ─────────────────────────────────────
   protected override fixedTick(): void {
     super.fixedTick();
+    if (this.state.phase === "racing" || this.state.phase === "lastdance") this.stepRaceProgress();
+
     if (!this.transitioning && this.state.phaseEndsAt > 0 && this.clock_ >= this.state.phaseEndsAt) {
-      const next = NEXT_PHASE[this.state.phase as Phase];
+      let next: Phase | undefined;
+      if (this.state.phase === "racing") {
+        // racing 종료 시 완주자 유무로 분기 (게임 규칙: 1등 없으면 라스트댄스)
+        const anyFinished = [...this.state.members.values()].some((m) => m.rank > 0);
+        next = anyFinished ? "finished" : "lastdance";
+      } else {
+        next = NEXT_PHASE[this.state.phase as Phase];
+      }
       if (next) void this.enterPhase(next);
     }
+  }
+
+  /** racing·lastdance 매틱: 진행도 추적, 골 판정+카운트다운, 추락 리스폰, 파괴 스윕 */
+  private stepRaceProgress(): void {
+    if (!this.merged) return;
+    const goalRect = flagpoleRect(this.merged.goalFlagTiles, T, true);
+    let allFinished = this.state.members.size > 0;
+
+    this.state.members.forEach((m, sessionId) => {
+      const p = this.state.players.get(sessionId);
+      if (!p) { allFinished = false; return; }
+      if (p.x > m.bestX) m.bestX = p.x;
+
+      if (m.rank === 0) {
+        allFinished = false;
+        if (!p.dead && overlapsFlagpole(p.x, p.y, p.w, p.h, goalRect)) {
+          const finishedCount = [...this.state.members.values()].filter((x) => x.rank > 0).length;
+          m.rank = finishedCount + 1;
+          m.finishMs = this.clock_ - this.racingStartClock;
+          if (m.rank === 1) {
+            // 1등 도달 → 10초 카운트다운(남은 시간이 이미 더 짧으면 그대로 둠)
+            this.state.phaseEndsAt = Math.min(this.state.phaseEndsAt, this.clock_ + GAME_RULES.finishCountdownSec * 1000);
+          }
+        }
+      }
+
+      if (p.y > this.merged!.fallY) {
+        const last = this.lastRespawnNotifyAt.get(sessionId) ?? 0;
+        if (this.clock_ - last >= RESPAWN_NOTIFY_COOLDOWN_MS) {
+          this.lastRespawnNotifyAt.set(sessionId, this.clock_);
+          const cp = this.checkpointFor(m.bestX);
+          this.clients.find((c) => c.sessionId === sessionId)?.send(RACE_S2C_MSG.respawnAt, cp);
+        }
+      }
+    });
+
+    if (allFinished) this.state.phaseEndsAt = this.clock_;   // 전원 완주 → 즉시 종료
+
+    // 파괴 스윕 — 라인당 sweepSec마다 순차
+    const dueIndex = Math.floor((this.clock_ - this.racingStartClock) / (GAME_RULES.sweepSec * 1000));
+    while (this.state.sweepIndex < dueIndex && this.state.sweepIndex < this.merged.lineFlags.length) {
+      this.performSweep(this.state.sweepIndex);
+    }
+  }
+
+  /** bestX가 지나온 라인 중 가장 최근 시작 깃발 좌표(px) — 체크포인트 리스폰 */
+  private checkpointFor(bestX: number): { x: number; y: number } {
+    let flag = this.merged!.startFlagTiles;
+    for (const lf of this.merged!.lineFlags) {
+      if (lf.start.x * T <= bestX) flag = lf.start; else break;
+    }
+    return { x: flag.x * T + T / 2, y: (flag.y + 1) * T };
+  }
+
+  /** 라인 index의 모든 블록·몬스터 파괴 + 시작·끝 깃발을 잇는 땅으로 대체 */
+  private performSweep(index: number): void {
+    if (!this.merged) return;
+    const range = this.merged.lineRanges[index];
+    const flags = this.merged.lineFlags[index];
+    if (!range || !flags) return;
+    const [xMin, xMax] = [range.startX * T, range.endX * T];
+
+    for (const [id, b] of [...this.blocksRt]) {
+      if (b.x >= xMin && b.x < xMax) { this.blocksRt.delete(id); this.state.blocks.delete(id); }
+    }
+    for (const [id, mo] of [...this.monstersRt]) {
+      if (mo.body.x >= xMin && mo.body.x < xMax) { this.monstersRt.delete(id); this.state.monsters.delete(id); }
+    }
+    const ground = sweepGroundSolids(flags.start, flags.end, T);
+    this.terrainBase = { solids: [...this.terrainBase.solids, ...ground], slopes: this.terrainBase.slopes };
+    this.state.sweepIndex = index + 1;
+    console.log(`[race] 라인 ${index} 스윕 완료`);
   }
 
   /**
@@ -111,6 +198,7 @@ export class RaceRoom extends PhysicsRoom {
       if (phase === "racing") await this.onEnterRacing();
 
       this.state.phase = phase;
+      if (phase === "racing") this.racingStartClock = this.clock_;
       const sec = phaseDurationSec(phase, this.state.lineCount);
       this.state.phaseEndsAt = sec === null ? 0 : this.clock_ + sec * 1000;
       console.log(`[race] phase → ${phase}${sec !== null ? ` (${sec}s)` : ""}`);
@@ -148,10 +236,17 @@ export class RaceRoom extends PhysicsRoom {
     try {
       const { lines, fallbackUserIds } = await resolveMemberLines(this.roomCode, memberUserIds);
       shuffleInPlace(lines);
-      const { worldDef, goalFlagTiles } = mergeLines(lines);
-      this.loadWorld(worldDef);
+      this.merged = mergeLines(lines);
+      this.loadWorld(this.merged.worldDef);
       this.state.lineCount = lines.length;
-      this.goalFlagTiles = goalFlagTiles;
+      this.state.sweepIndex = 0;
+      this.state.goalX = this.merged.goalFlagTiles.x * T;
+
+      // 멤버 진행상태 초기화 (재대결 대비, 첫판이면 이미 기본값)
+      this.state.members.forEach((m) => {
+        m.rank = 0; m.finishMs = 0; m.bestX = this.merged!.worldDef.spawn.x;
+      });
+      this.lastRespawnNotifyAt.clear();
 
       for (const userId of fallbackUserIds) {
         const sessionId = userIdToSessionId.get(userId.toString());
@@ -165,8 +260,40 @@ export class RaceRoom extends PhysicsRoom {
     }
   }
 
-  /** 4단계: 순위 확정·RaceResult 저장 */
-  protected onEnterFinished(): void {}
+  /**
+   * 순위 확정·RaceResult 저장. 완주자는 이미 rank·finishMs가 도달 순간 확정됨(§stepRaceProgress) —
+   * 여기서는 미완주자(리타이어)에게 bestX 내림차순으로 이어지는 순번을 매긴다.
+   * DB rank는 전원 순차 부여(1..N) — "1/2/3만 시상"은 조회 시 rank<=3으로 클라가 판단(스키마 rank는 not-null).
+   */
+  protected onEnterFinished(): void {
+    let maxRank = 0;
+    const results: { userId: bigint; finishMs: number | null; finalX: number | null; rank: number }[] = [];
+    const unfinished: { sessionId: string; userId: bigint; bestX: number }[] = [];
+
+    this.state.members.forEach((m, sessionId) => {
+      const userId = BigInt(m.userId);
+      if (m.rank > 0) {
+        maxRank = Math.max(maxRank, m.rank);
+        results.push({ userId, finishMs: m.finishMs, finalX: null, rank: m.rank });
+      } else {
+        unfinished.push({ sessionId, userId, bestX: m.bestX });
+      }
+    });
+    unfinished.sort((a, b) => b.bestX - a.bestX);
+    unfinished.forEach((u, i) => {
+      const rank = maxRank + i + 1;
+      const m = this.state.members.get(u.sessionId);
+      if (m) m.rank = rank;
+      results.push({ userId: u.userId, finishMs: null, finalX: Math.round(u.bestX), rank });
+    });
+
+    if (this.roomRowId !== null && results.length > 0) {
+      const roomId = this.roomRowId;
+      prisma.raceResult.createMany({
+        data: results.map((r) => ({ roomId, userId: r.userId, finishMs: r.finishMs, finalX: r.finalX, rank: r.rank })),
+      }).catch((e) => console.warn("[race] RaceResult 기록 실패:", e instanceof Error ? e.message : e));
+    }
+  }
 
   // ── 입장/퇴장 ───────────────────────────────────────
   async onAuth(client: Client, options: RaceJoinOptions): Promise<User> {

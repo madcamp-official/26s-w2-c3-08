@@ -13,10 +13,13 @@ export const RACE_MSG = {
 export const RACE_S2C_MSG = {
   /** 본인 라인이 결손(테스트 미완료)이라 DB 랜덤 라인으로 대체됐음을 통지 */
   lineFallback: "lineFallback",
+  /** 추락사 — 가장 최근 통과한 체크포인트(라인 시작 깃발) 좌표(px)로 리스폰하라 */
+  respawnAt: "respawnAt",
 } as const;
 export interface LineFallbackPayload {
   reason: "no_test_passed";
 }
+export interface RespawnAtPayload { x: number; y: number }
 
 // ── 테스트 룸(testline) — 자기 라인 혼자 검증 ──
 /** 서버 → 클라(개별 send) */
