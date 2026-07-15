@@ -18,3 +18,19 @@ export const REGEN_COOLDOWN_MS = 5 * 60 * 1000;
 
 // 프리셋(slow/normal/fast 등) → 물리값 매핑은 physics/tuning.json(TUNING)이 담당,
 // 프리셋 enum 정의 자체는 schemas/presets.ts 참조 — 이 파일에 중복 두지 않음.
+
+/**
+ * 게임 규칙·밸런싱 상수 (2026-07-14). 전부 타일/초 단위 — 한 곳에서 조정.
+ * 세로: 라인 내부는 20 상한, 병합맵 전체 세로는 무제한(깃발 y로 이어붙여 누적 = 오르내림 맵).
+ */
+export const GAME_RULES = {
+  lineMaxWidthTiles: 40,      // 라인 가로 최대 (시작~끝깃발)
+  lineMaxHeightTiles: 20,     // 라인 내부 세로 상한 (병합맵 전체는 무제한 누적)
+  buildSec: 180,              // 제작 페이즈 3분
+  previewSec: 15,             // 사용가능 에셋 프리뷰
+  perLineSec: 40,             // 게임시간 = 라인수 × 40초
+  finishCountdownSec: 10,     // 1등 도달 후 카운트다운
+  lastDanceSec: 30,           // 1등 없이 종료 시 라스트댄스
+  sweepSec: 50,               // 첫 라인부터 순차 파괴 간격
+  joinCutoffSec: 60,          // 남은 제작시간 이 미만이면 난입해도 제작 불가
+} as const;
