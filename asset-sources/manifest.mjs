@@ -796,12 +796,35 @@ export const AVATARS = [
 
 // ============================================================================
 // 시스템 UI 아이콘 — Asset 카테고리가 아님(/api/asset/submit 대상 아님). carry 상태 오버레이용.
+// 깃발/바닥은 shared/race/flagpole.ts(FLAGPOLE 상수)·docs/KJH/screen-design.md §126-137 참조:
+// "깃발은 에셋이 아니라 라인 메타데이터"(startFlag/endFlag는 MapLine 필드) — 여기 목록은 그 렌더용
+// 정적 이미지일 뿐 DB Asset 테이블과 무관.
 // ============================================================================
 export const SYSTEM_ICONS = [
   {
     id: "hand-icon", name: "carry hand icon", file: "system/hand-icon.png",
     tiles: { w: 1, h: 1 }, // 실사용은 14px(1/4타일)로 축소 — client/BaseworldScene.ts handRect 참조
     note: "흰 테두리+회색/어두운 장갑 — 유일하게 테두리 허용되는 예외 에셋. asset 테이블에 안 들어감.",
+  },
+  {
+    id: "flag-normal", name: "checkpoint flag (normal)", file: "system/flag-normal.png",
+    tiles: { w: 1, h: 5 }, // FLAGPOLE.poleHeightTiles=5 — 라인 경계(각 라인의 시작/끝) 공용 깃발
+    note: "마리오 체크포인트식 초록 깃발. 병합맵의 진짜 첫 시작/최종 골이 아닌 모든 시작·끝 깃발에 씀. 테두리 없음(일반 에셋과 동일 취급).",
+  },
+  {
+    id: "flag-long", name: "checkpoint flag (long pole)", file: "system/flag-long.png",
+    tiles: { w: 1, h: 8 }, // FLAGPOLE.longPoleHeightTiles=8 — 병합맵의 진짜 시작/최종 골 전용(구분용 긴 깃대)
+    note: "flag-normal과 같은 디자인, 깃대만 더 김. 맨 첫 라인의 진짜 시작 / 맨 끝 라인의 진짜 골에만 씀.",
+  },
+  {
+    id: "floor-3x1", name: "flag base (3x1 ground)", file: "system/floor-3x1.png",
+    tiles: { w: 3, h: 1 }, // FLAGPOLE.baseWidthTiles=3 — 깃발 아래 기단, 항상 깃발과 한 세트로 붙어다님
+    note: "물리판정 없는 순수 마커(깃발+바닥 세트 전체가 장식). flag-normal·flag-long 둘 다에 재사용.",
+  },
+  {
+    id: "mouse-cursor", name: "mouse cursor", file: "system/mouse-cursor.png",
+    tiles: { w: 1, h: 1 }, // 32x32 고정 UI 오버레이 — 월드 스프라이트 아님, 배율은 화면 DPI에 맞춰 클라에서 조정
+    note: "흰 몸통+검정 테두리 — hand-icon과 같은 이유로 테두리 허용 예외(어떤 배경 위에서도 보여야 함).",
   },
 ];
 
