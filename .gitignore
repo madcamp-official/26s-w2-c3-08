@@ -1,5 +1,6 @@
-# 세션 작업물 보관 (로컬 전용 — 레포에 올리지 않음)
-archive/
+# 세션 작업물 보관 — docs/plans/spikes는 추적(핸드오프 문서 등), reference/는 계속 로컬 전용
+# (참고용으로 클론해온 남의 저장소 — 중첩 .git 포함 + 66MB, 커밋하면 저장소가 영구히 불어남)
+archive/reference/
 
 # 공통
 node_modules/
