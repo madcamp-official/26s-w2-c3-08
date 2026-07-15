@@ -1,11 +1,12 @@
-// C. 방 대기실 — 참가자 목록·방장 표시·[시작]. lobby 이후 페이즈는 이번 배치에서 텍스트 상태만
-// (맵 에디터·레이스 실제 렌더는 별도 배치 — 사용자 작업/후속 작업).
+// C. 방 대기실 — 참가자 목록·방장 표시·[시작]. 손그림 재도장.
 import { useEffect } from "react";
 import { RACE_MSG } from "shared/race";
-import { COLORS } from "../../design/tokens/index.js";
-import { TileTexture, SpringButton, StaggerList, StaggerItem } from "../../design/primitives/index.js";
+import { YELLOW, INK, INK_SOFT } from "../../design/tokens/index.js";
+import { SketchButton, SketchBox } from "../../design/sketch/index.js";
+import { StaggerList, StaggerItem } from "../../design/primitives/index.js";
 import { useMorphTransition } from "../../design/transition/index.js";
 import { useRoomStore } from "../../store/room.js";
+import { playSound } from "../../audio/sfx.js";
 import { waitForPhaseChange } from "../../net/raceRoom.js";
 
 interface MemberSnap { userId: string; nickname: string; isHost: boolean; canBuild: boolean }
@@ -16,7 +17,7 @@ interface RaceStateSnap {
 
 export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void; onFinished: () => void }) {
   const room = useRoomStore((s) => s.room);
-  useRoomStore((s) => s.version);   // 리렌더 트리거만
+  useRoomStore((s) => s.version);
   const { ref, trigger } = useMorphTransition<HTMLButtonElement>();
 
   const state = room?.state as unknown as RaceStateSnap | undefined;
@@ -34,40 +35,45 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
   const leftSec = state.phaseEndsAt > 0 ? Math.max(0, Math.ceil((state.phaseEndsAt - state.serverTime) / 1000)) : null;
 
   const start = () => void trigger(async () => {
+    playSound("uiClick");
     room.send(RACE_MSG.start);
     await waitForPhaseChange(room, "lobby");
   });
-
-  const leave = () => { void room.leave(); onLeave(); };
+  const leave = () => { playSound("uiBack"); void room.leave(); onLeave(); };
 
   return (
-    <div className="dsScreen" style={{ padding: 32 }}>
-      <TileTexture />
-      <div style={{ position: "relative", maxWidth: 480, margin: "0 auto", color: "#fff" }}>
-        <h1 className="dsPointFont" style={{ color: COLORS.buildYellow, fontSize: 26 }}>방 대기실</h1>
+    <div className="dsScreen" style={{ background: YELLOW.list, overflow: "auto" }}>
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: 32 }}>
+        <h1 className="dsPointFont" style={{ color: INK, fontSize: 28, margin: "0 0 8px" }}>방 대기실</h1>
 
         {state.phase !== "lobby" && (
-          <p style={{ fontSize: 15 }}>
+          <p style={{ fontSize: 15, color: INK }}>
             현재 페이즈: <b>{state.phase}</b>{leftSec !== null && ` (${leftSec}s 남음)`}
           </p>
         )}
 
-        <StaggerList style={{ display: "flex", flexDirection: "column", gap: 8, margin: "16px 0" }}>
+        <StaggerList style={{ display: "flex", flexDirection: "column", gap: 10, margin: "18px 0" }}>
           {members.map((m) => (
             <StaggerItem key={m.sessionId}>
-              <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 14px" }}>
-                {m.isHost ? "★ " : ""}{m.nickname}
-                {state.phase === "building" && !m.canBuild && " (관전)"}
-              </div>
+              <SketchBox fill={YELLOW.card} stroke={INK} radius={12} preset="frame" center={false}
+                style={{ minHeight: 48 }}
+                contentStyle={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", boxSizing: "border-box" }}>
+                <span style={{ color: INK, fontSize: 15, fontWeight: m.isHost ? 700 : 400 }}>
+                  {m.isHost ? "★ " : ""}{m.nickname}
+                </span>
+                {state.phase === "building" && !m.canBuild && (
+                  <span style={{ color: INK_SOFT, fontSize: 12 }}>(관전)</span>
+                )}
+              </SketchBox>
             </StaggerItem>
           ))}
         </StaggerList>
 
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, height: 60 }}>
           {state.phase === "lobby" && isHost && (
-            <SpringButton ref={ref} onClick={start}>시작</SpringButton>
+            <div style={{ flex: 1 }}><SketchButton ref={ref} onClick={start}>시작</SketchButton></div>
           )}
-          <SpringButton variant="ghost" onClick={leave}>나가기</SpringButton>
+          <div style={{ flex: 1 }}><SketchButton fill={YELLOW.card} onClick={leave}>나가기</SketchButton></div>
         </div>
       </div>
     </div>

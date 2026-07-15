@@ -1,6 +1,7 @@
-// S2c. 설정 모달 — 닉네임 변경 + 볼륨 + 계정 연동(토큰 보기/복사/다른 토큰으로 전환).
+// S2c. 설정 모달 — 닉네임 변경 + 볼륨 + 계정 연동(토큰 보기/복사/다른 토큰으로 전환). 손그림 재도장.
 import { useState } from "react";
-import { SpringPanel, SpringButton } from "../../design/primitives/index.js";
+import { YELLOW, INK, INK_SOFT, SIGNAL } from "../../design/tokens/index.js";
+import { SketchPanel, SketchButton } from "../../design/sketch/index.js";
 import { useMorphTransition } from "../../design/transition/index.js";
 import { useSessionStore } from "../../store/session.js";
 import { api, verifyToken, ApiError } from "../../net/rest.js";
@@ -10,6 +11,12 @@ interface MeResponse {
   userId: string; nickname: string; avatarAssetId: string | null;
   avatar: { id: string; name: string; status: string } | null;
 }
+
+const field: React.CSSProperties = {
+  flex: 1, padding: "9px 13px", borderRadius: 8, border: "none", outline: "none",
+  background: YELLOW.card, color: INK, fontSize: 15, fontFamily: "var(--font-body)", boxSizing: "border-box",
+};
+const label: React.CSSProperties = { display: "block", marginBottom: 6, fontSize: 13, color: INK_SOFT };
 
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const token = useSessionStore((s) => s.token);
@@ -66,29 +73,28 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
   };
 
   return (
-    <SpringPanel open={open} onClose={onClose} title="설정">
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <SketchPanel open={open} onClose={onClose} title="설정" width={460}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, color: INK }}>
         <div>
-          <label style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: 0.8 }}>닉네임</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={nameInput} onChange={(e) => setNameInput(e.target.value)} maxLength={12}
-              style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "none" }}
-            />
-            <button onClick={saveName} disabled={saving} style={{ padding: "8px 14px", borderRadius: 6, border: "none" }}>
-              변경
-            </button>
+          <label style={label}>닉네임</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <input value={nameInput} onChange={(e) => setNameInput(e.target.value)} maxLength={12} style={field} />
+            <div style={{ width: 76 }}>
+              <SketchButton fill={YELLOW.base} radius={8} onClick={saveName} disabled={saving}>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>변경</span>
+              </SketchButton>
+            </div>
           </div>
-          {error && <p style={{ color: "#E52521", fontSize: 12 }}>{error}</p>}
+          {error && <p style={{ color: SIGNAL.danger, fontSize: 12, margin: "6px 0 0" }}>{error}</p>}
         </div>
 
         <div>
-          <label style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: 0.8 }}>효과음 볼륨</label>
+          <label style={label}>효과음 볼륨</label>
           <input type="range" min={0} max={1} step={0.01} defaultValue={audio.sfxVolume}
             onChange={(e) => setSfxVolume(Number(e.target.value))} style={{ width: "100%" }} />
         </div>
         <div>
-          <label style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: 0.8 }}>배경음 볼륨</label>
+          <label style={label}>배경음 볼륨</label>
           <input type="range" min={0} max={1} step={0.01} defaultValue={audio.bgmVolume}
             onChange={(e) => setBgmVolume(Number(e.target.value))} style={{ width: "100%" }} />
         </div>
@@ -97,36 +103,35 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
           음소거
         </label>
 
-        <hr style={{ border: "none", borderTop: "1px solid rgba(255,255,255,0.15)", margin: 0 }} />
+        <hr style={{ border: "none", borderTop: `1.5px solid ${INK_SOFT}`, opacity: 0.4, margin: 0 }} />
 
         <div>
-          <label style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: 0.8 }}>내 토큰(다른 기기에서 이 계정으로 연동할 때 사용)</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={token ?? ""} readOnly
-              style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "none", fontFamily: "monospace", fontSize: 12, background: "#e5e5e5", color: "#333" }}
-            />
-            <button onClick={copyToken} style={{ padding: "8px 14px", borderRadius: 6, border: "none" }}>
-              {copied ? "복사됨" : "복사"}
-            </button>
+          <label style={label}>내 토큰(다른 기기에서 이 계정으로 연동할 때 사용)</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <input value={token ?? ""} readOnly
+              style={{ ...field, fontFamily: "monospace", fontSize: 12, color: INK_SOFT }} />
+            <div style={{ width: 76 }}>
+              <SketchButton fill={YELLOW.barLight} radius={8} onClick={copyToken}>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>{copied ? "복사됨" : "복사"}</span>
+              </SketchButton>
+            </div>
           </div>
         </div>
 
         <div>
-          <label style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: 0.8 }}>토큰으로 계정 연동</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={linkToken} onChange={(e) => setLinkToken(e.target.value)}
-              placeholder="다른 계정의 토큰 붙여넣기"
-              style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "none", fontFamily: "monospace", fontSize: 12 }}
-            />
-            <SpringButton ref={linkRef} variant="ghost" onClick={linkAccount} disabled={!linkToken.trim()} style={{ padding: "8px 14px", fontSize: 13, minWidth: "auto" }}>
-              연동
-            </SpringButton>
+          <label style={label}>토큰으로 계정 연동</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <input value={linkToken} onChange={(e) => setLinkToken(e.target.value)} placeholder="다른 계정의 토큰 붙여넣기"
+              style={{ ...field, fontFamily: "monospace", fontSize: 12 }} />
+            <div style={{ width: 76 }} ref={linkRef as never}>
+              <SketchButton fill={YELLOW.base} radius={8} onClick={linkAccount} disabled={!linkToken.trim()}>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>연동</span>
+              </SketchButton>
+            </div>
           </div>
-          {linkError && <p style={{ color: "#E52521", fontSize: 12 }}>{linkError}</p>}
+          {linkError && <p style={{ color: SIGNAL.danger, fontSize: 12, margin: "6px 0 0" }}>{linkError}</p>}
         </div>
       </div>
-    </SpringPanel>
+    </SketchPanel>
   );
 }

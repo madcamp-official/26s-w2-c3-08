@@ -2,8 +2,8 @@
 // 세션 있음: 닉네임 미리 채워짐(읽기전용) + "시작하기" — API 호출 없이 바로 진입.
 // 세션 없음: 닉네임 직접 입력 + "새로 시작하기" — 신규 계정 생성.
 import { useState } from "react";
-import { COLORS } from "../../design/tokens/index.js";
-import { TileTexture, SpringButton } from "../../design/primitives/index.js";
+import { YELLOW, INK, INK_SOFT, SIGNAL } from "../../design/tokens/index.js";
+import { SketchButton, SketchBox } from "../../design/sketch/index.js";
 import { useMorphTransition } from "../../design/transition/index.js";
 import { useSessionStore } from "../../store/session.js";
 import { api, ApiError } from "../../net/rest.js";
@@ -41,33 +41,36 @@ export function LoginScreen({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="dsScreen">
-      <TileTexture />
+    <div className="dsScreen" style={{ background: YELLOW.list }}>
       <div style={{
         position: "relative", height: "100%", display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", gap: 24, minHeight: "100vh",
+        alignItems: "center", justifyContent: "center", gap: 28, minHeight: "100vh",
       }}>
-        <h1 className="dsPointFont" style={{ fontSize: 40, color: COLORS.buildYellow, margin: 0 }}>
+        <h1 className="dsPointFont" style={{ fontSize: 44, color: INK, margin: 0 }}>
           게임 제목
         </h1>
-        <input
-          value={displayValue}
-          onChange={(e) => !hasSession && setNickname(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="닉네임 (1~12자)"
-          maxLength={12}
-          readOnly={hasSession}
-          style={{
-            padding: "12px 16px", borderRadius: 8, border: "none", fontSize: 16,
-            width: 240, textAlign: "center", fontFamily: "var(--font-body)",
-            background: hasSession ? "#e5e5e5" : "#fff", color: hasSession ? "#666" : "#111",
-            cursor: hasSession ? "default" : "text",
-          }}
-        />
-        {error && <p style={{ color: COLORS.marioRed, margin: 0 }}>{error}</p>}
-        <SpringButton ref={ref} onClick={submit} disabled={!valid}>
-          {hasSession ? "시작하기" : "새로 시작하기"}
-        </SpringButton>
+        {/* 닉네임 입력 — 손그림 테두리 상자 안에 투명 input */}
+        <SketchBox fill={YELLOW.card} stroke={INK} radius={12} preset="chip" style={{ width: 280, height: 56 }}>
+          <input
+            value={displayValue}
+            onChange={(e) => !hasSession && setNickname(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="닉네임 (1~12자)"
+            maxLength={12}
+            readOnly={hasSession}
+            style={{
+              width: "82%", border: "none", outline: "none", background: "transparent",
+              fontSize: 16, textAlign: "center", fontFamily: "var(--font-body)",
+              color: hasSession ? INK_SOFT : INK, cursor: hasSession ? "default" : "text",
+            }}
+          />
+        </SketchBox>
+        {error && <p style={{ color: SIGNAL.danger, margin: 0 }}>{error}</p>}
+        <div style={{ width: 280, height: 64 }}>
+          <SketchButton ref={ref} onClick={submit} disabled={!valid}>
+            {hasSession ? "시작하기" : "새로 시작하기"}
+          </SketchButton>
+        </div>
       </div>
     </div>
   );

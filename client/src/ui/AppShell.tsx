@@ -53,12 +53,12 @@ export function AppShell() {
       <MorphCurtain />
       {screen === "login" && <LoginScreen onDone={() => setScreen("main")} />}
       {screen === "main" && <MainScreen onLobby={() => setScreen("lobby")} />}
-      {screen === "lobby" && <LobbyScreen onJoined={() => setScreen("waiting")} />}
+      {screen === "lobby" && <LobbyScreen onJoined={() => setScreen("waiting")} onMain={() => setScreen("main")} />}
       {screen === "waiting" && (
         <WaitingRoomScreen onLeave={() => setScreen("lobby")} onFinished={() => setScreen("result")} />
       )}
       {screen === "result" && (
-        <ResultScreen onLobby={() => setScreen("lobby")} onRestart={() => setScreen("waiting")} />
+        <ResultScreen onLobby={() => setScreen("lobby")} onRestart={() => setScreen("waiting")} onMain={() => setScreen("main")} />
       )}
     </>
   );
