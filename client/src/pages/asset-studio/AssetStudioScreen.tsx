@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-import { Badge, Toast, type ToastTone } from '../../design-system/components'
+import { Toast, type ToastTone } from '../../design-system/components'
 import { Button, Inline, Stack } from '../../design-system/primitives'
 import { StudioShell } from '../../design-system/shells'
 import {
@@ -131,8 +131,6 @@ export interface AssetStudioScreenProps extends AssetStudioScreenCallbacks {
 }
 
 const CELL_PX = 32
-const WORKSPACE_SCALE = 3
-
 export function AssetStudioScreen({
   state,
   form,
@@ -146,8 +144,6 @@ export function AssetStudioScreen({
   swatches,
   selectedSwatchId,
   recentSwatchIds,
-  checkerMode,
-  gridVisible,
   dirtyState,
   sourceAssetName,
   submitDisabledReason,
@@ -162,14 +158,11 @@ export function AssetStudioScreen({
   onNewAsset,
   onToggleLeftPanel,
   onToggleRightPanel,
-  onResizePanel,
   onResizeToolBlock,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
   onSelectColor,
-  onToggleCheckerMode,
-  onToggleGrid,
   onUndo,
   onRedo,
   onClear,
@@ -186,13 +179,9 @@ export function AssetStudioScreen({
   onDismissToast,
 }: AssetStudioScreenProps) {
   const visibleSize = toVisibleSize(form.size)
-  const workspaceSize = {
-    width: visibleSize.width * WORKSPACE_SCALE,
-    height: visibleSize.height * WORKSPACE_SCALE,
-  }
   const visibleFrame = {
-    x: visibleSize.width,
-    y: visibleSize.height,
+    x: 0,
+    y: 0,
     width: visibleSize.width,
     height: visibleSize.height,
   }
@@ -239,15 +228,11 @@ export function AssetStudioScreen({
             swatches={swatches}
             selectedSwatchId={selectedSwatchId}
             recentSwatchIds={recentSwatchIds}
-            checkerMode={checkerMode}
-            gridVisible={gridVisible}
             resizingTools={layout.resizing === 'tools'}
             onToolChange={onToolChange}
             onBrushSizeChange={onBrushSizeChange}
             onOpacityChange={onOpacityChange}
             onSelectColor={onSelectColor}
-            onToggleCheckerMode={onToggleCheckerMode}
-            onToggleGrid={onToggleGrid}
             onUndo={onUndo}
             onRedo={onRedo}
             onClear={onClear}
@@ -267,19 +252,19 @@ export function AssetStudioScreen({
           >
             <DrawingViewport
               label="에셋 캔버스"
-              workspaceSize={workspaceSize}
+              workspaceSize={visibleSize}
               visibleFrame={visibleFrame}
-              checkerMode={checkerMode}
-              gridVisible={gridVisible}
-              outsideDim
+              checkerMode="light"
+              gridVisible={false}
+              outsideDim={false}
+              surface="paper"
+              showVisibleFrame={false}
+              showStatus={false}
               status={submitting ? 'disabled' : activeTool === 'move' ? 'move' : dirtyState === 'blank' ? 'blank' : 'drawing'}
               toolLabel={getToolLabel(tools, activeTool)}
-            />
-            <div className={styles.workspaceMeta}>
-              <Badge state={state === 'submitFailed' || state === 'offline' ? 'failed' : submitting ? 'generating' : 'ready'} label={getStateLabel(state)} />
-              <Badge state="ready" label={`${form.size.widthCells}x${form.size.heightCells}`} />
-              <Badge state={gridVisible ? 'ready' : 'queued'} label={gridVisible ? '격자 켜짐' : '격자 꺼짐'} />
-            </div>
+            >
+              <div className={styles.assetCanvasSurface} aria-hidden="true" />
+            </DrawingViewport>
           </section>
         }
         rightPanel={
@@ -308,22 +293,6 @@ export function AssetStudioScreen({
               </p>
             ) : null}
           </StudioPanel>
-        }
-        statusLayer={
-          <Inline gap="small">
-            <PanelResizeHandle
-              axis="horizontal"
-              label="왼쪽 패널 폭 줄이기"
-              dragging={layout.resizing === 'left'}
-              onResizeStep={(delta) => onResizePanel('left', delta * 16)}
-            />
-            <PanelResizeHandle
-              axis="horizontal"
-              label="오른쪽 패널 폭 줄이기"
-              dragging={layout.resizing === 'right'}
-              onResizeStep={(delta) => onResizePanel('right', delta * 16)}
-            />
-          </Inline>
         }
         toastLayer={
           toast ? (
@@ -363,15 +332,11 @@ interface LeftToolsPanelProps {
   swatches: PaletteSwatchModel[]
   selectedSwatchId: string
   recentSwatchIds: string[]
-  checkerMode: CheckerMode
-  gridVisible: boolean
   resizingTools: boolean
   onToolChange: (toolId: StudioToolId) => void
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
   onSelectColor: (swatchId: string) => void
-  onToggleCheckerMode: () => void
-  onToggleGrid: () => void
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
@@ -390,15 +355,11 @@ function LeftToolsPanel({
   swatches,
   selectedSwatchId,
   recentSwatchIds,
-  checkerMode,
-  gridVisible,
   resizingTools,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
   onSelectColor,
-  onToggleCheckerMode,
-  onToggleGrid,
   onUndo,
   onRedo,
   onClear,
@@ -470,14 +431,6 @@ function LeftToolsPanel({
           disabled={state === 'submitting'}
           onSelect={onSelectColor}
         />
-        <Inline gap="small">
-          <Button size="small" variant="secondary" onClick={onToggleCheckerMode}>
-            {checkerMode === 'light' ? '어두운 체커' : '밝은 체커'}
-          </Button>
-          <Button size="small" variant="secondary" onClick={onToggleGrid}>
-            {gridVisible ? '격자 끄기' : '격자 켜기'}
-          </Button>
-        </Inline>
         <PanelResizeHandle
           axis="vertical"
           label="도구 블록 세로 크기 조절"
@@ -498,27 +451,6 @@ function toVisibleSize(size: AssetStudioSize) {
 
 function getToolLabel(tools: ToolButtonProps['tool'][], activeTool: StudioToolId) {
   return tools.find((tool) => tool.id === activeTool)?.label ?? '펜'
-}
-
-function getStateLabel(state: AssetStudioScreenState) {
-  const labels: Record<AssetStudioScreenState, string> = {
-    default: '편집 가능',
-    leftCollapsed: '왼쪽 접힘',
-    rightCollapsed: '오른쪽 접힘',
-    resizing: '패널 조절 중',
-    sizeChanged: '크기 변경됨',
-    loadMine: '내 에셋 불러오기',
-    loadOthers: '남이 만든 에셋',
-    loadedUnchanged: '수정 필요',
-    loadedChanged: '수정됨',
-    invalidMissingName: '이름 필요',
-    submitting: '요청 중',
-    submitSuccess: '요청 완료',
-    submitFailed: '요청 실패',
-    offline: '오프라인',
-  }
-
-  return labels[state]
 }
 
 function getDirtyMessage(state: AssetStudioScreenProps['dirtyState'], sourceAssetName: string | undefined) {

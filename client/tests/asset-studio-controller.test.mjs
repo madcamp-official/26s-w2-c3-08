@@ -70,8 +70,6 @@ for (const copy of [
   '장애물',
   '몬스터',
   '배경',
-  '격자 켜기',
-  '격자 끄기',
 ]) {
   assert.match(
     screenSource + attributeFormSource + fixturesSource + coreSource + studioComponentsSource,
@@ -108,6 +106,15 @@ assert.match(drawingPortSource, /encodePngDataUrl/)
 assert.match(drawingPortSource, /resizeAndResample/)
 assert.match(studioShellCss, /--studio-left-panel-width/)
 assert.match(studioShellCss, /--studio-right-panel-width/)
+assert.match(screenSource, /surface="paper"/)
+assert.match(screenSource, /showVisibleFrame=\{false\}/)
+assert.match(screenSource, /showStatus=\{false\}/)
+assert.match(screenSource, /gridVisible=\{false\}/)
+assert.match(screenSource, /outsideDim=\{false\}/)
+assert.match(screenSource, /assetCanvasSurface/)
+assert.doesNotMatch(screenSource, /workspaceMeta/)
+assert.doesNotMatch(screenSource, /getStateLabel/)
+assert.doesNotMatch(screenSource, /격자 켜기|격자 끄기|어두운 체커|밝은 체커/)
 
 assert.doesNotMatch(attributeFormSource, /item|avatar/)
 assert.doesNotMatch(

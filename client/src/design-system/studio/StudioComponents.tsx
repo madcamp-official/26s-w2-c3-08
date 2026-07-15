@@ -407,6 +407,7 @@ export interface DrawingViewportProps {
   toolLabel: string
   surface?: 'checker' | 'paper'
   showVisibleFrame?: boolean
+  showStatus?: boolean
   children?: ReactNode
 }
 
@@ -421,6 +422,7 @@ export function DrawingViewport({
   toolLabel,
   surface = 'checker',
   showVisibleFrame = true,
+  showStatus = true,
   children,
 }: DrawingViewportProps) {
   const viewportRef = useRef<HTMLElement>(null)
@@ -453,7 +455,7 @@ export function DrawingViewport({
       window.cancelAnimationFrame(animationFrame)
       animationFrame = window.requestAnimationFrame(() => {
         const viewportRect = viewport.getBoundingClientRect()
-        const statusRect = statusRef.current?.getBoundingClientRect()
+        const statusRect = showStatus ? statusRef.current?.getBoundingClientRect() : undefined
         const computedStyle = window.getComputedStyle(viewport)
         const rowGap = Number.parseFloat(computedStyle.rowGap) || 0
         const aspectRatio = workspaceSize.width / workspaceSize.height
@@ -503,7 +505,7 @@ export function DrawingViewport({
       window.cancelAnimationFrame(animationFrame)
       resizeObserver.disconnect()
     }
-  }, [workspaceSize.height, workspaceSize.width])
+  }, [showStatus, workspaceSize.height, workspaceSize.width])
 
   return (
     <section
@@ -517,6 +519,7 @@ export function DrawingViewport({
       data-grid-visible={gridVisible ? 'true' : 'false'}
       data-outside-dim={outsideDim ? 'true' : 'false'}
       data-surface={surface}
+      data-status-visible={showStatus ? 'true' : 'false'}
       data-state={status}
     >
       <div className={styles.viewportFrame}>
@@ -535,12 +538,14 @@ export function DrawingViewport({
         {gridVisible ? <div className={styles.gridLayer} aria-hidden="true" data-v2-layer="grid" /> : null}
         {showVisibleFrame ? <div className={styles.visibleFrame} aria-hidden="true" data-v2-layer="visible-frame" /> : null}
       </div>
-      <div className={styles.viewportStatus} ref={statusRef} role="status" aria-live="polite">
-        <Badge state={status === 'disabled' ? 'failed' : status === 'blank' ? 'queued' : 'ready'} label={getViewportStatusLabel(status)} />
-        <Text variant="caption" tone="secondary">
-          {toolLabel} · {workspaceSize.width}x{workspaceSize.height}
-        </Text>
-      </div>
+      {showStatus ? (
+        <div className={styles.viewportStatus} ref={statusRef} role="status" aria-live="polite">
+          <Badge state={status === 'disabled' ? 'failed' : status === 'blank' ? 'queued' : 'ready'} label={getViewportStatusLabel(status)} />
+          <Text variant="caption" tone="secondary">
+            {toolLabel} · {workspaceSize.width}x{workspaceSize.height}
+          </Text>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -308,6 +308,11 @@
   justify-items: center;
 }
 
+.drawingViewport[data-status-visible='false'] {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+
 .viewportFrame {
   position: relative;
   width: var(--drawing-frame-width);
