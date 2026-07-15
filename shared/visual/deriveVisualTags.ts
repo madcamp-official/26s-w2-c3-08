@@ -7,15 +7,19 @@ import type { BlockAttrs, MonsterAttrs } from "../schemas/index.js";
 
 export type Face = "top" | "bottom" | "left" | "right";
 
-/** 면 테두리 스타일 (visual-language.md §1.1) */
+/**
+ * 면 테두리 스타일 (visual-language.md §1.1).
+ * ⚠️ "무적 상태의 대미지 면(주황)"은 별도 스타일로 두지 않는다 — 렌더 시점에 "빨강"을
+ * "solidWhite"로 치환하는 방식으로 통일(2026-07-15, BaseworldScene.strokeFace 참조).
+ * 새 색을 늘리지 않고 기존 "안전" 의미를 재사용하는 쪽이 더 명확하다는 실사용 피드백.
+ */
 export type BorderStyle =
-  | "solidWhite"    // 단단한 면(충돌)
+  | "solidWhite"    // 단단한 면(충돌) · 위험이 사라진 면(무적 중 등)
   | "dashed"        // 통과 가능한 면
   | "red"           // 대미지 주는 면
-  | "orange"        // 무적 상태의 대미지 면
   | "bumper"        // 넉백/밀쳐냄(무해) — 파랑/청록
   | "trampoline"    // 밟으면 튕김 이득 — 초록/스프링
-  | "none";         // 표시 없음(밟기 가능한 몬스터 윗면 등)
+  | "none";         // 표시 없음
 export type FaceBorders = Record<Face, BorderStyle>;
 
 /** 전체 오라·소속 (§1.2). player는 렌더가 isSelf로 회색/흰색 결정 */
@@ -105,20 +109,25 @@ function blockTags(a: BlockAttrs): VisualTags {
   return { faces, auras, overlays };
 }
 
-/** 몬스터: 기본 위 빼고 빨강. 가시=위도 빨강, 트램펄린=위 초록, 무적=빨강→주황, 밀쳐냄=범퍼. */
+/**
+ * 몬스터: 기본 위 빼고 빨강. 트램펄린=위 초록, 밀쳐냄=범퍼. 무적(주황)은 그리지 않음 —
+ * 주황은 "지금 나(플레이어)가 무적이라 안전함"만 의미(런타임 렌더의 iAmInvincible 전환) —
+ * 몬스터의 immortal/spiky는 처치 가능 여부일 뿐 접촉 위험과 무관하므로 orange로 매핑하지 않는다.
+ * spiky(가시)를 위도 위험색으로 그리던 것도 제거 — 실제 스톰프 처리가 vuln.stomp(spiky→
+ * hurtAttacker)를 전혀 읽지 않아(§deriveVisualTagsFromSpec.ts 주석 참조) "밟으면 반격"이
+ * 구현돼 있지 않다. 밟기는 항상 안전하게 튕겨나가므로 위는 항상 solidWhite(트램펄린 제외).
+ */
 function monsterTags(a: MonsterAttrs): VisualTags {
-  const faces = faceMap("none");
-  const hazardStyle: BorderStyle = a.shove ? "bumper" : a.immortal ? "orange" : "red"; // 밀쳐냄 무해 우선
+  const faces = faceMap("solidWhite");
+  const hazardStyle: BorderStyle = a.shove ? "bumper" : "red";
 
   if (a.contactDamage || a.shove) {
     // 옆·아래 = 위험 표시
     faces.bottom = hazardStyle;
     faces.left = hazardStyle;
     faces.right = hazardStyle;
-    // 윗면: 밟기 반응에 따라
-    if (a.stompReaction.type === "spiky") faces.top = hazardStyle;      // 밟아도 당함 → 위도 위험색
-    else if (a.stompReaction.type === "trampoline") faces.top = "trampoline"; // 밟으면 이득
-    else faces.top = "none";                                            // die/stun = 밟기 가능
+    if (a.stompReaction.type === "trampoline") faces.top = "trampoline"; // 밟으면 이득
+    // else: 밟기 가능 = solidWhite 유지(spiky 포함 — 반격 미구현)
   } else if (a.stompReaction.type === "trampoline") {
     faces.top = "trampoline";
   }

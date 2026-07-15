@@ -67,12 +67,18 @@ export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
 
   // "밟기 가능"(위험 없음)도 시각적으로 빈칸이 아니라 흰 실선으로 — 몬스터 몸도 부딪히는 대상이라
   // 지형과 동일하게 "여기 표면이 있다"를 항상 알려야 함(피드백 2026-07-15: "비어있지 말고 흰선으로").
+  //
+  // ⚠️ vuln.stomp === "hurtAttacker"(가시/spiky)를 top=위험으로 그리던 로직을 제거했다(2026-07-15).
+  // 실사용 확인: BaseworldScene의 스톰프 처리(descending && fromAbove 분기)는 vuln.stomp 값을
+  // 전혀 읽지 않고 항상 안전하게 튕겨낸다 — registerHit도 invincible만 검사할 뿐 "밟으면 반격"을
+  // 구현하지 않는다. 즉 "hurtAttacker"는 스키마·조립기까지만 있고 실제 게임 로직(TODO(builder))이
+  // 없는 값이라, 위쪽을 빨강으로 그리면 "실제로 없는 위험"을 있는 것처럼 보여주게 된다(쿵쿵이가
+  // 밟아도 안 죽는데 전신이 빨강으로 표시됨). 반격 로직이 실제로 구현되면 그때 다시 반영한다.
   const faces = faceMap("solidWhite");
   if (contactDamage || shove) {
     faces.bottom = hazardStyle; faces.left = hazardStyle; faces.right = hazardStyle;
-    if (spec.vuln.stomp === "hurtAttacker") faces.top = hazardStyle;       // 가시(spiky)
-    else if (spec.vuln.stomp === "trampoline") faces.top = "trampoline";
-    // else: 밟기 가능 = solidWhite 유지(위 faceMap 기본값)
+    if (spec.vuln.stomp === "trampoline") faces.top = "trampoline";
+    // else: 밟기 가능 = solidWhite 유지(위 faceMap 기본값) — hurtAttacker 포함
   } else if (spec.vuln.stomp === "trampoline") {
     faces.top = "trampoline";
   }
