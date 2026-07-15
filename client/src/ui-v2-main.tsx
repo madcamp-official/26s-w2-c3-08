@@ -6,6 +6,6 @@ import './styles/globals.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppV2 />
+    <AppV2 chrome="lab" />
   </StrictMode>,
 )

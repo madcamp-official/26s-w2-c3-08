@@ -22,7 +22,11 @@ import {
 } from './navigation/prototypeRouter'
 import './AppV2.css'
 
-export default function AppV2() {
+export interface AppV2Props {
+  chrome?: 'product' | 'lab'
+}
+
+export default function AppV2({ chrome = 'lab' }: AppV2Props) {
   const [route, setRoute] = useState<PrototypeRoute>(() =>
     parsePrototypeHash(window.location.hash),
   )
@@ -42,24 +46,26 @@ export default function AppV2() {
   }, [])
 
   return (
-    <div className="v2-app" data-v2-route={route.path}>
-      <header className="v2-topbar">
-        <div>
-          <p className="v2-eyebrow">Frontend V2</p>
-          <h1>Code-first UI Lab</h1>
-        </div>
-        <nav aria-label="V2 preview routes">
-          {prototypeNavItems.map((item) => (
-            <a
-              key={item.path}
-              href={getPrototypeHref(item.path, item.query)}
-              aria-current={route.path === item.path ? 'page' : undefined}
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
-      </header>
+    <div className={`v2-app is-${chrome}`} data-v2-route={route.path}>
+      {chrome === 'lab' ? (
+        <header className="v2-topbar">
+          <div>
+            <p className="v2-eyebrow">Frontend V2</p>
+            <h1>Code-first UI Lab</h1>
+          </div>
+          <nav aria-label="V2 preview routes">
+            {prototypeNavItems.map((item) => (
+              <a
+                key={item.path}
+                href={getPrototypeHref(item.path, item.query)}
+                aria-current={route.path === item.path ? 'page' : undefined}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        </header>
+      ) : null}
 
       <main className="v2-main">{renderRoute(route)}</main>
     </div>

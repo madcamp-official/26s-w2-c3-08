@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getBackendReadiness, parseCorsOrigins } from "../src/config/env.js";
@@ -51,6 +54,42 @@ describe("V2 HTTP API contract", () => {
       generatedAssetStaticServing: expect.any(Boolean),
     }));
     expect(JSON.stringify(readinessResponse.body)).not.toContain("172.10.5.138");
+  });
+
+  it("serves the built frontend entry and preserves API/socket 404 JSON when client dist is configured", async () => {
+    const clientDistDir = mkdtempSync(join(tmpdir(), "relay-client-dist-"));
+    writeFileSync(join(clientDistDir, "index.html"), "<!doctype html><html><body><div id=\"root\">V2 frontend</div></body></html>");
+    writeFileSync(join(clientDistDir, "asset.txt"), "asset-ok");
+
+    const app = createApp({ clientDistDir });
+
+    const rootResponse = await request(app)
+      .get("/")
+      .expect(200);
+
+    expect(rootResponse.text).toContain("V2 frontend");
+
+    const assetResponse = await request(app)
+      .get("/asset.txt")
+      .expect(200);
+
+    expect(assetResponse.text).toBe("asset-ok");
+
+    const fallbackResponse = await request(app)
+      .get("/room/deep-link")
+      .expect(200);
+
+    expect(fallbackResponse.text).toContain("V2 frontend");
+
+    await request(app)
+      .get("/api/unknown-route")
+      .expect(404)
+      .expect("Content-Type", /json/);
+
+    await request(app)
+      .get("/socket.io/unknown-route")
+      .expect(404)
+      .expect("Content-Type", /json/);
   });
 
   it("marks production readiness false when required production config is missing or unsafe", () => {

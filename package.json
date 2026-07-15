@@ -5,6 +5,8 @@
     "dev:v2": "node scripts/dev-v2-services.mjs",
     "dev:backend": "npm run dev --prefix backend",
     "dev:client": "npm run dev --workspace client",
+    "build:production": "npm run build --workspace client && npm run build --prefix backend",
+    "start:production": "node backend/dist/index.js",
     "check:production-env": "node scripts/check-production-env.mjs",
     "check:production-env:self-test": "node scripts/check-production-env.mjs --self-test",
     "check:v2:client": "npm run tokens:check --workspace client && npm run primitives:check --workspace client && npm run core:check --workspace client && npm run shells:check --workspace client && npm run studio:check --workspace client && npm run login:check --workspace client && npm run main:check --workspace client && npm run warehouse:check --workspace client && npm run avatar-studio:check --workspace client && npm run asset-studio:check --workspace client && npm run lobby-room:check --workspace client && npm run game:check --workspace client && npm run realtime:check --workspace client && npm run launcher:check --workspace client && npm run flow:check --workspace client",

@@ -4,7 +4,7 @@
 
 AI로 만든 아바타와 에셋을 재료로 각자 짧은 2D 플랫폼 맵 조각을 만들고, 직접 클리어 가능성을 검증한 뒤, 성공한 조각들을 하나의 레이스 맵으로 이어 달리는 웹 MVP입니다.
 
-현재 저장소는 레거시 프론트엔드를 보존하면서 Frontend V2, Express backend, Socket.IO realtime 계약, GPU worker scaffold를 함께 발전시키는 중입니다. V2는 독립 진입점 `client/ui-v2.html`에서 확인하며, 기본 개발 실행은 backend REST와 Socket.IO remote realtime을 사용합니다. `socket.io-client@4.8.3`는 client workspace production dependency로 승인되어 추가되었습니다.
+현재 저장소는 레거시 프론트엔드를 보존하면서 Frontend V2, Express backend, Socket.IO realtime 계약, GPU worker scaffold를 함께 발전시키는 중입니다. 기본 앱 entry(`/`)는 Frontend V2 product 화면이며, `client/ui-v2.html`은 UI Lab/State Gallery 확인용 개발 entry로 유지합니다. `socket.io-client@4.8.3`는 client workspace production dependency로 승인되어 추가되었습니다.
 
 ### 빠른 실행
 
@@ -15,8 +15,8 @@ npm run dev:v2
 
 기본 V2 개발 서버는 다음 주소로 열립니다.
 
-- V2 로컬: `http://localhost:5174/ui-v2.html#/login`
-- 레거시 로컬: `http://localhost:5174/`
+- V2 product 로컬: `http://localhost:5174/`
+- V2 Lab 로컬: `http://localhost:5174/ui-v2.html#/ui-lab`
 - 같은 네트워크: `http://192.168.0.200:5174/`
 - Cloudflare Tunnel: `https://mad-mario.madcamp-kaist.org/`
 
@@ -25,6 +25,15 @@ npm run dev:v2
 ```bash
 VITE_ALLOWED_HOSTS=example.com,10.0.0.12 npm run dev --workspace client
 ```
+
+Production-facing origin은 `backend/`입니다. `npm run build:production`으로 `client/dist`와 `backend/dist`를 만든 뒤 backend를 실행하면 `/`, `/ui-v2.html`, static assets, `/api`, `/socket.io`를 같은 origin에서 제공합니다. Cloudflare Tunnel이 현재 5174를 바라보는 환경에서는 다음처럼 backend를 5174에 띄우면 즉시 V2 frontend가 반환됩니다.
+
+```bash
+npm run build:production
+PORT=5174 CORS_ORIGIN=https://mad-mario.madcamp-kaist.org npm run start:production
+```
+
+최종 production env에서는 `NODE_ENV=production`, real Qwen/WAN credentials, worker/internal tokens, image storage 값을 함께 주입한 뒤 `npm run check:production-env`를 통과시킵니다.
 
 ### 프론트 시연 흐름
 

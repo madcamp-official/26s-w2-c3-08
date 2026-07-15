@@ -415,7 +415,7 @@ export function replaceEmptyHashWithDefault() {
     return
   }
 
-  window.history.replaceState(null, '', getPrototypeHref('ui-lab'))
+  window.history.replaceState(null, '', getPrototypeHref('login'))
 }
 
 export function setPrototypeRoute(path: PrototypeRoutePath, query: PrototypeRouteQuery = {}) {
@@ -424,7 +424,7 @@ export function setPrototypeRoute(path: PrototypeRoutePath, query: PrototypeRout
 
 function parseHashParts(hash: string) {
   const normalizedHash = hash.trim().replace(/^#\/?/, '')
-  const fallbackHash = normalizedHash.length === 0 ? 'ui-lab' : normalizedHash
+  const fallbackHash = normalizedHash.length === 0 ? 'login' : normalizedHash
   const [rawPath, rawQuery = ''] = fallbackHash.split('?')
   const path = rawPath.replace(/^\/+|\/+$/g, '')
   const params = new URLSearchParams(rawQuery)

@@ -30,6 +30,7 @@ function includesAll(source, snippets) {
 const packageJson = JSON.parse(read('package.json'))
 const indexHtml = read('index.html')
 const app = read('src/App.tsx')
+const main = read('src/main.tsx')
 const api = read('src/net/api.ts')
 const realtime = read('src/net/realtime.ts')
 const store = read('src/store/appStore.ts')
@@ -46,7 +47,12 @@ addCheck('required runtime dependencies are installed', () =>
 )
 
 addCheck('boot HTML has branded fallback and app entry', () =>
-  includesAll(indexHtml, ['Relay Map Maker', 'boot-screen', '앱을 불러오는 중', '/src/main.tsx']),
+  includesAll(indexHtml, ['Mad Mario Relay Map Maker', 'boot-screen', '앱을 불러오는 중', '/src/main.tsx']),
+)
+
+addCheck('root app entry renders V2 product frontend', () =>
+  includesAll(main, ['AppV2', 'chrome="product"', './styles/globals.css']) &&
+  !main.includes("from './App.tsx'"),
 )
 
 addCheck('domain and LAN Vite server settings are present', () =>

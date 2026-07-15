@@ -14,7 +14,8 @@ const envSchema = z.object({
   INTERNAL_API_TOKEN: z.string().optional(),
   IMAGE_STORAGE_MODE: z.enum(["inline", "local", "http-put"]).optional(),
   IMAGE_STORAGE_DIR: z.string().optional(),
-  IMAGE_PUBLIC_PATH: z.string().default("/generated-assets")
+  IMAGE_PUBLIC_PATH: z.string().default("/generated-assets"),
+  CLIENT_DIST_DIR: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);

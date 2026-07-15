@@ -7,6 +7,10 @@
     linear-gradient(var(--semantic-color-launcher-background-top), var(--semantic-color-launcher-background-bottom));
 }
 
+.v2-app.is-product {
+  grid-template-rows: 1fr;
+}
+
 .v2-topbar {
   display: flex;
   align-items: center;
@@ -76,6 +80,10 @@
 .v2-main {
   min-width: 0;
   padding: var(--spacing-6);
+}
+
+.v2-app.is-product .v2-main {
+  padding: 0;
 }
 
 .v2-eyebrow {
