@@ -79,6 +79,8 @@ assert.match(remoteUpdatesSource, /createRemoteAssetJobUpdates/)
 assert.match(remoteUpdatesSource, /\/api\/asset-jobs\?user_id=/)
 assert.match(remoteUpdatesSource, /maxPollMs = 2 \* 60 \* 1_000/)
 assert.match(remoteUpdatesSource, /startAssetJobPolling/)
+assert.match(remoteUpdatesSource, /status: 'authentication'[\s\S]*에셋 작업 상태를 확인하려면 다시 로그인해주세요\./)
+assert.doesNotMatch(remoteUpdatesSource, /status: 'offline'[\s\S]{0,120}다시 로그인/)
 assert.doesNotMatch(remoteUpdatesSource, /BroadcastChannel|@colyseus/i)
 
 assert.match(routerSource, /kind: 'avatarStudio'/)

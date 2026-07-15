@@ -104,8 +104,8 @@ function startAssetJobPolling({
 
     if (!session) {
       onStatus({
-        status: 'offline',
-        message: '에셋 작업 상태를 확인할 세션이 없어요.',
+        status: 'authentication',
+        message: '에셋 작업 상태를 확인하려면 다시 로그인해주세요.',
       })
       return
     }
@@ -214,7 +214,7 @@ function startAssetJobPolling({
 function mapPollingHttpStatus(status: number): AssetJobConnectionEvent {
   if (status === 401 || status === 403) {
     return {
-      status: 'offline',
+      status: 'authentication',
       message: '에셋 작업 상태를 확인하려면 다시 로그인해주세요.',
     }
   }
