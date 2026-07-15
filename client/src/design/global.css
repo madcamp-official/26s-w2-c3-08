@@ -27,7 +27,8 @@ body { background: #FFF6DB; }
   --color-bg-deep: #16212e;
   --tile-overlay: rgba(255, 255, 255, 0.06);
   --font-point: "Galmuri11", monospace;
-  --font-body: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
+  /* 2026-07-16 유저 피드백 — 모든 텍스트(본문·입력창 포함)를 Galmuri로 통일 */
+  --font-body: "Galmuri11", monospace;
 }
 
 .dsScreen {

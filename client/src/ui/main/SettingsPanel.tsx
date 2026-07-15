@@ -109,7 +109,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
           <label style={label}>내 토큰(다른 기기에서 이 계정으로 연동할 때 사용)</label>
           <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
             <input value={token ?? ""} readOnly
-              style={{ ...field, fontFamily: "monospace", fontSize: 12, color: INK_SOFT }} />
+              style={{ ...field, fontSize: 12, color: INK_SOFT }} />
             <div style={{ width: 76 }}>
               <SketchButton fill={YELLOW.barLight} radius={8} onClick={copyToken}>
                 <span style={{ fontSize: 14, fontWeight: 700 }}>{copied ? "복사됨" : "복사"}</span>
@@ -122,7 +122,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
           <label style={label}>토큰으로 계정 연동</label>
           <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
             <input value={linkToken} onChange={(e) => setLinkToken(e.target.value)} placeholder="다른 계정의 토큰 붙여넣기"
-              style={{ ...field, fontFamily: "monospace", fontSize: 12 }} />
+              style={{ ...field, fontSize: 12 }} />
             <div style={{ width: 76 }} ref={linkRef as never}>
               <SketchButton fill={YELLOW.base} radius={8} onClick={linkAccount} disabled={!linkToken.trim()}>
                 <span style={{ fontSize: 14, fontWeight: 700 }}>연동</span>

@@ -22,7 +22,7 @@ export function MapEditor() {
         background: "#000",
         color: "#fff",
         display: "flex",
-        fontFamily: "sans-serif",
+        fontFamily: "var(--font-body)",
         overflow: "hidden",
       }}
     >
