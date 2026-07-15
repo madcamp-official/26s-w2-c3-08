@@ -80,7 +80,7 @@ model Asset {
   remixOf            Asset?   @relation("Remixes", fields: [remixOfId], references: [id])
   remixes            Asset[]  @relation("Remixes")
   status             String   @default("draft")
-  isPublic           Boolean  @default(true)                   // 다른 유저 불러오기 허용 여부
+  isPublic           Boolean  @default(false)                  // 공용 지정 = 불러오기·랜덤 공용 풀 허용. 기본 사적(2026-07-14)
   createdAt          DateTime @default(now())
 
   sprites         AssetSprite[]                                // 액션별 스프라이트 시트
