@@ -12,7 +12,10 @@
     "./parts": "./parts/index.ts",
     "./maps": "./maps/index.ts",
     "./schemas": "./schemas/index.ts",
-    "./actions": "./actions/index.ts"
+    "./actions": "./actions/index.ts",
+    "./visual": "./visual/index.ts",
+    "./build": "./build/index.ts",
+    "./pool": "./pool/index.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"

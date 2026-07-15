@@ -13,7 +13,8 @@
 | [player-spec.md](KJH/player-spec.md) | 플레이어 물리 사양 — 조작·내려찍기·슬라이딩·밟기·히트박스. 공유 물리 함수(core-game)의 사양서 | ✅ |
 | [ai-pipeline.md](KJH/ai-pipeline.md) | AI 생성 파이프라인 — LLM 프롬프트, 크로마키, bbox 정규화, 잡 큐(우선순위·쿨타임 5분) | ✅ |
 | [asset-attributes.md](KJH/asset-attributes.md) | 에셋 속성 시스템 — attrs Zod 검증의 원본 명세. **⚠️ 미완성: 세부 조정 진행 중** | 🔧 |
-| [screen-design.md](KJH/screen-design.md) | 화면 설계 — 로그인~에셋 스튜디오까지 확정, 로비 이후 미설계. **⚠️ 미완성** | 🔧 |
+| [visual-language.md](KJH/visual-language.md) | 시각 언어 — 테두리/오라/오버레이로 역할·위험·충돌 가독성(속성→시각 태그 `deriveVisualTags`) | 🔧 |
+| [screen-design.md](KJH/screen-design.md) | 화면 설계 + **게임 규칙 + UI 모션 가이드**(2026-07-14 보충) — 전 플로우 초안화. 담당 분담·API 미정 명시. **🔧 진행 중** | 🔧 |
 | [dev-console.md](KJH/dev-console.md) | 개발자 콘솔 + baseworld 테스트 방 설계 (VITE_DEV_CONSOLE 스위치) | ✅ |
 
 ## LSJ

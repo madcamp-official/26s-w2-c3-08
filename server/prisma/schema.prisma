@@ -42,7 +42,8 @@ model User {
   equippedSkillId     BigInt?                                  // 예약 (관계 미연결)
   createdAt           DateTime  @default(now())
 
-  createdAssets Asset[] @relation("CreatedAssets")             // 이 유저가 제작한 에셋
+  createdAssets Asset[]   @relation("CreatedAssets")           // 이 유저가 제작한 에셋
+  mapLines      MapLine[]                                       // 이 유저가 만든 라인
 }
 
 // ── Asset ────────────────────────────────────────────────
@@ -79,11 +80,12 @@ model Asset {
   remixOf            Asset?   @relation("Remixes", fields: [remixOfId], references: [id])
   remixes            Asset[]  @relation("Remixes")
   status             String   @default("draft")
-  isPublic           Boolean  @default(true)                   // 다른 유저 불러오기 허용 여부
+  isPublic           Boolean  @default(true)                   // 현재 비공개 미지원 — 유저 에셋 전부 공용 풀 대상. 컬럼은 향후 확장용 보존(2026-07-14)
   createdAt          DateTime @default(now())
 
   sprites         AssetSprite[]                                // 액션별 스프라이트 시트
-  equippedByUsers User[]        @relation("EquippedAvatar")    // 이 에셋을 아바타로 장착한 유저
+  equippedByUsers User[]             @relation("EquippedAvatar") // 이 에셋을 아바타로 장착한 유저
+  linePlacements  MapLinePlacement[]                           // 이 에셋이 배치된 라인 배치들(삭제 Restrict)
 
   @@index([creatorId])
   @@index([isSystem])
@@ -123,9 +125,57 @@ model AssetSprite {
   @@index([status, priority])                                  // 워커 폴링: queued를 우선순위순으로
 }
 
+// ── MapLine ──────────────────────────────────────────────
+// 한 플레이어가 제작·테스트한 라인(맵 세그먼트). 게임 종료 후 랜덤 병합 대상.
+// 저장 시점: 테스트 성공 시에만 기록/갱신(testPassedAt). 실패 라인은 맵에 안 쓰임.
+// 재사용: isPublic이면 "라인 카테고리"로 남이 가져다 씀(추후).
+// 세로 크기 = 전역 상수라 라인마다 저장 안 함. 병합맵은 런타임 일회성(미저장).
+model MapLine {
+  id           BigInt   @id @default(autoincrement())
+  creatorId    BigInt?
+  creator      User?    @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  name         String?                                          // 재사용 브라우징용(선택)
+  tileLength   Int      @db.SmallInt                            // 시작~끝깃발 거리(유동, 상한은 앱 상수)
+  startFlagX   Int      @db.SmallInt
+  startFlagY   Int      @db.SmallInt
+  endFlagX     Int      @db.SmallInt
+  endFlagY     Int      @db.SmallInt
+  testPassedAt DateTime?                                        // 테스트 성공 시각. NULL=미완=사용 불가
+  isPublic     Boolean  @default(false)                        // 라인 재사용 허용
+  sourceRoomId String?                                          // 어느 방에서 만들었는지(출처, 선택)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  placements MapLinePlacement[]
+
+  @@index([creatorId])
+  @@index([isPublic, testPassedAt])                            // 재사용 가능한(공개+완료) 라인 조회
+}
+
+// ── MapLinePlacement ─────────────────────────────────────
+// 라인에 배치된 에셋 1개. 라인 로컬 타일좌표(1타일 스냅). 회전·상하반전 없음(flipX만).
+// endX/endY = patrol/ride 이동 에셋의 끝점(핸들). 정적이면 NULL.
+// asset 삭제는 Restrict — 라인이 참조 중인 에셋은 하드삭제 차단(무결성 보호).
+model MapLinePlacement {
+  id      BigInt @id @default(autoincrement())
+  lineId  BigInt
+  line    MapLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  assetId BigInt
+  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  x       Int     @db.SmallInt
+  y       Int     @db.SmallInt
+  flipX   Boolean @default(false)                              // 좌우반전 (상하·회전 없음)
+  endX    Int?    @db.SmallInt                                 // patrol/ride 끝점, 정적이면 NULL
+  endY    Int?    @db.SmallInt
+
+  @@index([lineId])
+  @@index([assetId])
+}
+
 // =============================================================================
 // 미확정 모델 (참고용 — 주석 처리, 마이그레이션 대상 아님)
 // =============================================================================
+// (구 Line/Placement 초안은 위 MapLine/MapLinePlacement로 대체됨 — 2026-07-14)
 
 // ⚠️ Room 미확정 — 방 상세(난입 규칙, 페이즈 구조, 시간 조정 투표 등) 논의 대기.
 // 레이스 중 실시간 상태는 Colyseus Room 메모리가 원본, 이 테이블은 로비 목록 + 영구 기록만 담당.
@@ -155,30 +205,7 @@ model AssetSprite {
 //   @@id([roomId, userId])
 // }
 
-// ⚠️ Line 미확정 — 라인 지형(땅) 저장 방식 미결.
-// (placements에 타일 포함 vs terrain Json 분리)
-//
-// model Line {
-//   id      BigInt  @id @default(autoincrement())
-//   roomId  BigInt
-//   ownerId BigInt
-//   startY  Int
-//   goalY   Int
-//   cleared Boolean @default(false)                           // 검증(플레이 가능성) 통과 여부
-//
-//   @@unique([roomId, ownerId])
-// }
-
-// ⚠️ Placement 미확정 — Line과 동일 사유(라인 지형 저장 방식 미결).
-//
-// model Placement {
-//   id        BigInt @id @default(autoincrement())
-//   lineId    BigInt
-//   assetId   BigInt
-//   x         Int
-//   y         Int
-//   overrides Json?                                           // 배치 시 개별 오버라이드 속성
-// }
+// (Line/Placement → MapLine/MapLinePlacement로 활성화됨. 위 활성 모델 참조.)
 
 // ⚠️ RaceResult 미확정 — 결과 화면(F)·순위 규칙 확정 대기.
 //
@@ -197,7 +224,7 @@ model AssetSprite {
 // =============================================================================
 // - 방 상세 규칙 (난입 규칙, 페이즈 구조, 시간 조정 투표 등)
 // - 중간 난입 허용 여부
-// - 라인 지형 저장 방식 (placements 포함 vs terrain Json 분리)
 // - 결과·순위 규칙
 // - 커스텀 스킬 관계 연결 (User.equippedSkillId → Asset)
+// - MapLine 마이그레이션 (모델 추가 완료, VM 반영은 VPN 시 — 2026-07-14)
 // =============================================================================
