@@ -261,6 +261,7 @@ function validateGpuWorker(env, checks, failures, warnings) {
   const service = 'gpu-worker'
   const imageStorageMode = readImageStorageMode(env)
 
+  requireExactValue(env, service, 'NODE_ENV', 'production', checks, failures)
   requireHttpUrl(env, service, 'SERVER_URL', { publicUrl: false }, checks, failures)
   requireSecret(env, service, 'WORKER_TOKEN', { minLength: 16 }, checks, failures)
   requireOptionalPositiveInteger(env, service, 'JOB_POLL_INTERVAL_MS', checks, failures)
@@ -629,6 +630,14 @@ function runSelfTest() {
     GPU_WORKER_SIMULATE: 'true',
   })
   assert.ok(simulatedWorker.failures.some((failure) => failure.id === 'GPU-SIMULATE-001'))
+
+  const missingWorkerNodeEnv = checkProductionEnvForEnv({
+    ...passingEnv,
+    NODE_ENV: '',
+  })
+  assert.ok(missingWorkerNodeEnv.failures.some((failure) => (
+    failure.service === 'gpu-worker' && failure.variableName === 'NODE_ENV'
+  )))
 
   const gatewayMode = checkProductionEnvForEnv({
     ...passingEnv,

@@ -41,6 +41,7 @@ Real env files are ignored by `.gitignore`.
 | `backend.QWEN_BASE_URL` | Qwen internal base URL | May be private network URL |
 | `backend.QWEN_API_TOKEN` | real Qwen token | Placeholder values fail readiness |
 | `backend.IMAGE_STORAGE_MODE` | `local` or `http-put` | `local` serves a shared volume; `http-put` leaves serving to object storage/CDN |
+| `gpu-worker.NODE_ENV` | `production` | Required so worker runtime fail-closed checks are active |
 | `gpu-worker.SERVER_URL` | backend URL reachable by worker | May be internal service URL |
 | `gpu-worker.WORKER_TOKEN` | same value as backend | Cross-service mismatch fails readiness |
 | `gpu-worker.GPU_WORKER_SIMULATE` | `false` | `true` fails readiness |
@@ -77,6 +78,7 @@ Expected result before default switch:
 - `Production environment readiness: PASS`
 - no placeholder credential failures
 - no localhost public URL failures
+- no missing `gpu-worker.NODE_ENV=production`
 - no backend/gpu-worker worker token mismatch
 - no `GPU_WORKER_SIMULATE=true`
 
