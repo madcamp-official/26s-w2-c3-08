@@ -14,7 +14,7 @@ import express from "express";
 import { MyRoom } from "./rooms/MyRoom.js";
 import { BaseworldRoom } from "./rooms/baseworld/BaseworldRoom.js";
 import { aiWorkerRouter } from "./worker-api/routes.js";
-import { STORAGE_DIR, STORAGE_URL_PREFIX } from "./asset/storage.js";
+import { STORAGE_DIR, STORAGE_URL_PREFIX, SOURCES_DIR, SOURCES_URL_PREFIX } from "./asset/storage.js";
 
 const server = defineServer({
     /**
@@ -55,6 +55,8 @@ const server = defineServer({
 
         // 생성된 스프라이트 시트 정적 서빙 (sheetUrl = STORAGE_URL_PREFIX/{id}.png).
         app.use(STORAGE_URL_PREFIX, express.static(STORAGE_DIR));
+        // 업로드 소스(원본·정규화본) 정적 서빙 — 워커가 sourceImageUrl로 내려받는 경로.
+        app.use(SOURCES_URL_PREFIX, express.static(SOURCES_DIR));
 
         /**
          * Use @colyseus/monitor

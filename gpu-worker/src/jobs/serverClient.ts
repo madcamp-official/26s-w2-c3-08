@@ -13,7 +13,12 @@ export interface JobPayload {
   assetId: string;
   name: string;
   action: string;
+  /** 파이프라인 입력 소스 — 정규화본이 있으면 서버가 그걸 내려줌 */
   sourceImageUrl: string;
+  /** "drawn"(투명 보장) | "uploaded"(배경 분리 필요할 수 있음) */
+  sourceType: "drawn" | "uploaded";
+  /** true = uploaded인데 아직 정규화본이 없음 → 워커가 Stage 1에서 AI 매팅 수행 */
+  normPending: boolean;
   category: Category;
   tilesW: number;
   tilesH: number;
@@ -81,6 +86,30 @@ export class ServerClient {
       pipelineConfig.network.serverUploadTimeoutMs,
     );
     if (!res.ok) throw new Error(`jobs/${jobId}/result HTTP ${res.status}: ${await safeText(res)}`);
+  }
+
+  /** AI 매팅으로 만든 정규화 소스 등록 — 같은 에셋의 후속 잡·재생성이 재사용 (실패해도 치명 아님). */
+  async postNormSource(assetId: string, normPng: Buffer): Promise<void> {
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/api/ai/assets/${assetId}/norm-source`,
+      { method: "POST", headers: { ...this.authHeaders(), "Content-Type": "image/png" }, body: new Uint8Array(normPng) },
+      pipelineConfig.network.serverUploadTimeoutMs,
+    );
+    if (!res.ok) throw new Error(`assets/${assetId}/norm-source HTTP ${res.status}: ${await safeText(res)}`);
+  }
+
+  /** 소스 정규화 실패 — 에셋의 모든 잡을 한 번에 failed 처리(액션별 재시도 낭비 방지). */
+  async postNormFail(assetId: string, errorMsg: string): Promise<void> {
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/api/ai/assets/${assetId}/norm-fail`,
+      {
+        method: "POST",
+        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ errorMsg: errorMsg.slice(0, 500) }),
+      },
+      pipelineConfig.network.serverRequestTimeoutMs,
+    );
+    if (!res.ok) throw new Error(`assets/${assetId}/norm-fail HTTP ${res.status}: ${await safeText(res)}`);
   }
 
   /** 실패 보고 (재큐 or failed는 백엔드가 판단). */

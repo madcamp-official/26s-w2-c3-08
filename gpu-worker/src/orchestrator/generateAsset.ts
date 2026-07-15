@@ -1,17 +1,24 @@
 // 오케스트레이터 — 잡 1건(에셋의 한 액션)을 시트까지 만든다 (방식 A).
-//   외형(LLM 1회/에셋, 캐시) → 크로마키색 선택 → 프롬프트 조립 → 크로마 합성 →
-//   ComfyUI I2V → Stage 5 파이프라인 → 시트 PNG.
-// idle을 먼저 처리하면 그 키높이를 캐시해 같은 에셋의 다른 액션이 스케일 기준으로 재사용(단일 워커 순차 시).
+//
+// 100유저 병렬 전제의 3단 분리: GPU(ComfyUI)는 VRAM상 한 번에 1건이라 어차피 직렬이므로,
+// 진짜 이득은 "GPU가 생성하는 동안 다음 잡의 CPU·네트워크 작업을 겹치는 것"이다.
+//   prepare  — claim된 잡의 소스 다운로드 → Stage1 정규화(업로드 배경분리) → 키색·사지 판단 →
+//              LLM 외형 → 프롬프트 조립 → 크로마 합성  (CPU/네트워크; 이전 잡의 GPU 생성과 병행)
+//   generate — ComfyUI I2V (GPU; 전체 파이프라인의 직렬 병목)
+//   finish   — Stage 5 후처리 → 시트 패킹  (CPU; 다음 잡의 GPU 생성과 병행. idle 키높이 캐시
+//              순서 보존을 위해 호출측이 직렬 체인으로 실행)
+// 루프 배선은 index.ts.
 import type { Category } from "shared/schemas";
 import { ACTIONS, type ActionName, type ActionSpec } from "shared/actions";
 import { selectKeyColorFromPng } from "../chroma/selectKeyColor.js";
 import { detectLimbsFromPng, type LimbDetection } from "../anatomy/detectLimbs.js";
+import { normalizeSource, NormalizationError } from "../normalize/normalizeSource.js";
 import { compositeOnChroma } from "../image/composite.js";
 import { resolveGenResolution, resolveGenDuration } from "../generation/index.js";
 import { pipelineConfig } from "../config/index.js";
 import { packSheet, type SpriteSheet } from "../output/packSheet.js";
 import { Pipeline } from "../pipeline/runner.js";
-import type { PipelineContext, StageLogger, AssetJob } from "../pipeline/types.js";
+import type { PipelineContext, StageLogger, AssetJob, RgbaFrame } from "../pipeline/types.js";
 import {
   ChromakeyRemovalStage,
   BBoxStage,
@@ -27,19 +34,40 @@ import type { BBox } from "../pipeline/types.js";
 import type { GenerationBackend } from "../backends/types.js";
 import { assemblePrompt, type Appearance } from "./assemblePrompt.js";
 import { PromptGatewayClient } from "../llm/gatewayClient.js";
-import type { JobPayload } from "../jobs/serverClient.js";
+import { ServerClient, type JobPayload } from "../jobs/serverClient.js";
 
 export interface OrchestratorDeps {
   backend: GenerationBackend;
+  server: ServerClient;
   /** 없으면 외형을 스텁으로 채움(3090 없이 ComfyUI 검증용). */
   gateway?: PromptGatewayClient;
   log?: StageLogger;
 }
 
+/** prepare 산출물 — generate/finish가 재계산 없이 그대로 쓴다 */
+export interface PreparedJob {
+  job: JobPayload;
+  /** Stage 1 정규화 완료된 투명 배경 소스 */
+  sourcePng: Buffer;
+  positive: string;
+  negative: string;
+  width: number;
+  height: number;
+  fps: number;
+  genFrameCount: number;
+  startImagePng: Buffer;
+  chromaKeyHex: string;
+  chromaMargin: number;
+}
+
+/** 정규화 소스 캐시 상한 — 같은 에셋 3잡(idle/walk/onair)은 인접 처리되므로 작아도 충분 */
+const NORM_CACHE_MAX = 8;
+
 export class Orchestrator {
   private readonly pipeline: Pipeline;
   private readonly appearanceCache = new Map<string, Appearance>();
   private readonly refHeightCache = new Map<string, number>();
+  private readonly normCache = new Map<string, Buffer>();
   private readonly log: StageLogger;
 
   constructor(private readonly deps: OrchestratorDeps) {
@@ -55,8 +83,13 @@ export class Orchestrator {
     ]);
   }
 
-  /** 잡 1건 처리 → 시트. 실패는 throw(상위 워커 루프가 fail 보고). */
-  async run(job: JobPayload, sourcePng: Buffer): Promise<SpriteSheet> {
+  /**
+   * CPU/네트워크 준비 단계. NormalizationError는 에셋 단위 실패로 승격(norm-fail)한 뒤 rethrow —
+   * 같은 에셋의 다른 액션 잡들이 헛되이 GPU를 잡는 것을 막는다(3액션×3재시도 낭비 방지).
+   */
+  async prepare(job: JobPayload): Promise<PreparedJob> {
+    const sourcePng = await this.getNormalizedSource(job);
+
     const chroma = await selectKeyColorFromPng(sourcePng);
     const limbs = await detectLimbsFromPng(sourcePng);
     const spec = ACTIONS[job.action as ActionName] as ActionSpec | undefined;
@@ -73,23 +106,55 @@ export class Orchestrator {
       { motionHint, poseHint: job.poseHint, negativeExtra: [...(job.negativeExtra ?? []), ...limbNegativeExtra] },
       chroma.name,
     );
+    // 실제 Wan에 들어가는 프롬프트 가시화 — 게이트웨이(Qwen) 품질 튜닝의 전제.
+    this.log.info("wan prompt", { job: job.jobId, positive: truncate(positive, 220) });
 
     const res = resolveGenResolution(job.tilesW, job.tilesH);
     const dur = resolveGenDuration(job.action, job.loop);
     const genFrameCount = Math.max(1, Math.round(dur.durationSec * dur.fps));
     const startImagePng = await compositeOnChroma(sourcePng, chroma.hex, res.width, res.height);
 
+    return {
+      job,
+      sourcePng,
+      positive,
+      negative,
+      width: res.width,
+      height: res.height,
+      fps: dur.fps,
+      genFrameCount,
+      startImagePng,
+      chromaKeyHex: chroma.hex,
+      chromaMargin: chroma.rgbMargin,
+    };
+  }
+
+  /** GPU 생성 단계 — 전체 처리량의 직렬 병목. 이 동안 다음 잡의 prepare가 병행된다. */
+  async generate(prep: PreparedJob): Promise<RgbaFrame[]> {
     this.log.info("generating", {
-      job: job.jobId, action: job.action, res: `${res.width}x${res.height}`,
-      frames: genFrameCount, chroma: chroma.name,
+      job: prep.job.jobId,
+      action: prep.job.action,
+      res: `${prep.width}x${prep.height}`,
+      frames: prep.genFrameCount,
+      chroma: prep.chromaKeyHex,
     });
-
-    const rawFrames = await this.deps.backend.generate({
-      startImagePng, width: res.width, height: res.height,
-      frameCount: genFrameCount, fps: dur.fps,
-      positivePrompt: positive, negativePrompt: negative,
+    return this.deps.backend.generate({
+      startImagePng: prep.startImagePng,
+      width: prep.width,
+      height: prep.height,
+      frameCount: prep.genFrameCount,
+      fps: prep.fps,
+      positivePrompt: prep.positive,
+      negativePrompt: prep.negative,
     });
+  }
 
+  /**
+   * CPU 후처리 → 시트. idle 키높이 캐시(액션 간 크기 일관)가 실행 순서에 의존하므로
+   * 호출측(index.ts)이 잡 순서대로 직렬 체인으로 실행한다 — GPU와는 병행되므로 손해 없음.
+   */
+  async finish(prep: PreparedJob, rawFrames: RgbaFrame[]): Promise<SpriteSheet> {
+    const job = prep.job;
     const assetJob: AssetJob = {
       jobId: job.jobId,
       category: job.category as Category,
@@ -97,11 +162,11 @@ export class Orchestrator {
       loop: job.loop,
       tilesW: job.tilesW,
       tilesH: job.tilesH,
-      sourceImagePng: sourcePng,
-      wanPrompt: positive,
-      wanNegativePrompt: negative,
-      chromaKeyHex: chroma.hex,
-      chromaMargin: chroma.rgbMargin,
+      sourceImagePng: prep.sourcePng,
+      wanPrompt: prep.positive,
+      wanNegativePrompt: prep.negative,
+      chromaKeyHex: prep.chromaKeyHex,
+      chromaMargin: prep.chromaMargin,
     };
     const ctx: PipelineContext = {
       job: assetJob, config: pipelineConfig, frames: rawFrames, scratch: new Map(), log: this.log,
@@ -125,6 +190,45 @@ export class Orchestrator {
     }
 
     return packSheet(ctx.frames);
+  }
+
+  /** Stage 1 — 소스 다운로드 + 정규화(에셋당 1회 캐시 + 서버 persist). */
+  private async getNormalizedSource(job: JobPayload): Promise<Buffer> {
+    const cached = this.normCache.get(job.assetId);
+    if (cached) return cached;
+
+    const raw = await this.deps.server.fetchSourceImage(job.sourceImageUrl);
+    let png: Buffer;
+    try {
+      const norm = await normalizeSource(raw, job.sourceType, job.normPending);
+      png = norm.png;
+      if (norm.changed) {
+        this.log.info("source normalized", { job: job.jobId, asset: job.assetId, bytes: png.length });
+        // persist는 최적화(후속 잡·재생성이 매팅 반복 안 함) — 실패해도 이번 잡은 계속.
+        try {
+          await this.deps.server.postNormSource(job.assetId, png);
+        } catch (e) {
+          this.log.warn("norm-source persist failed (continuing)", { asset: job.assetId, err: errMsg(e) });
+        }
+      }
+    } catch (e) {
+      if (e instanceof NormalizationError) {
+        this.log.warn("source normalization failed — failing whole asset", { asset: job.assetId, err: e.message });
+        try {
+          await this.deps.server.postNormFail(job.assetId, e.message);
+        } catch (e2) {
+          this.log.warn("norm-fail report failed", { asset: job.assetId, err: errMsg(e2) });
+        }
+      }
+      throw e;
+    }
+
+    this.normCache.set(job.assetId, png);
+    if (this.normCache.size > NORM_CACHE_MAX) {
+      const oldest = this.normCache.keys().next().value as string;
+      this.normCache.delete(oldest);
+    }
+    return png;
   }
 
   /** 외형 프롬프트: 백엔드 제공 > 캐시 > LLM 게이트웨이 > 스텁. */
@@ -188,6 +292,14 @@ function categoryToAssetType(category: string): string {
     case "background": return "BACKGROUND";
     default: return "DEVICE";
   }
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 const consoleLogger: StageLogger = {
