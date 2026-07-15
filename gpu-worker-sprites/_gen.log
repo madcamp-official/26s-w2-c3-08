@@ -1,0 +1,1498 @@
+[manifest] monster=24 block=29 background=5 item=2 avatar=16 → 총 76개 (+system 1)
+[gen] ComfyUI: { ok: true }
+
+[gen] (1/71) goomba — 액션 idle,walk
+[orch] limb detection { job: 'goomba-idle', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'goomba-idle',
+  positive: 'brown, dark brown, round mushroom-shaped creature with a grumpy face, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, si…'
+}
+[orch] generating {
+  job: 'goomba-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 482 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 73 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 49 }
+[orch] scale-normalize done { reference: 262, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 12 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 58 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 12 }
+  + idle 완료 (8f 192x192, 55s)
+[orch] limb detection { job: 'goomba-walk', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'goomba-walk',
+  positive: 'brown, dark brown, round mushroom-shaped creature with a grumpy face, 2D platformer game sprite, walking in place, steady natural gait, in-place walk cycle, feet return to the same spot each loop, single character center…'
+}
+[orch] generating {
+  job: 'goomba-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 664 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 88 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 64 }
+[orch] scale-normalize done { reference: 262, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 90 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 11 }
+  + walk 완료 (8f 192x192, 87s)
+
+[gen] (2/71) koopa — 액션 idle,walk
+[orch] limb detection { job: 'koopa-idle', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'koopa-idle',
+  positive: 'green, brown shell, small round turtle-like creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character c…'
+}
+[orch] generating {
+  job: 'koopa-idle',
+  action: 'idle',
+  res: '576x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 353 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 38 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 30 }
+[orch] scale-normalize done { reference: 196, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 48 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 19 }
+  + idle 완료 (8f 192x256, 44s)
+[orch] limb detection { job: 'koopa-walk', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'koopa-walk',
+  positive: 'green, brown shell, small round turtle-like creature, 2D platformer game sprite, walking in place, steady natural gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, ful…'
+}
+[orch] generating {
+  job: 'koopa-walk',
+  action: 'walk',
+  res: '576x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 515 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 60 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 46 }
+[orch] scale-normalize done { reference: 196, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 68 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 12 }
+  + walk 완료 (8f 192x256, 66s)
+
+[gen] (3/71) buzzy-beetle — 액션 idle,walk
+[orch] limb detection { job: 'buzzy-beetle-idle', hasArms: true, hasLegs: false }
+[orch] wan prompt {
+  job: 'buzzy-beetle-idle',
+  positive: 'dark gray, black, round dome-shelled beetle creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character c…'
+}
+[orch] generating {
+  job: 'buzzy-beetle-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 439 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 56 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 42 }
+[orch] scale-normalize done { reference: 224, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 59 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'buzzy-beetle-walk', hasArms: true, hasLegs: false }
+[orch] wan prompt {
+  job: 'buzzy-beetle-walk',
+  positive: 'dark gray, black, round dome-shelled beetle creature, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered in f…'
+}
+[orch] generating {
+  job: 'buzzy-beetle-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 649 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 78 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 65 }
+[orch] scale-normalize done { reference: 224, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 45, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 89 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + walk 완료 (8f 192x192, 87s)
+
+[gen] (4/71) spiny — 액션 idle,walk
+[orch] limb detection { job: 'spiny-idle', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'spiny-idle',
+  positive: 'red, dark red, round spiky ball creature with an angry face, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single char…'
+}
+[orch] generating {
+  job: 'spiny-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 433 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 58 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 44 }
+[orch] scale-normalize done { reference: 275, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 8 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 14, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 55 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 13 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'spiny-walk', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'spiny-walk',
+  positive: 'red, dark red, round spiky ball creature with an angry face, 2D platformer game sprite, walking in place, steady natural gait, in-place walk cycle, feet return to the same spot each loop, single character centered in fra…'
+}
+[orch] generating {
+  job: 'spiny-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 679 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 78 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 63 }
+[orch] scale-normalize done { reference: 275, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 161 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 36, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 81 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 12 }
+  + walk 완료 (8f 192x192, 86s)
+
+[gen] (5/71) piranha — 액션 idle
+[orch] limb detection { job: 'piranha-idle', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'piranha-idle',
+  positive: 'red, green, yellow spots, flower-headed plant creature on a stem, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single…'
+}
+[orch] generating {
+  job: 'piranha-idle',
+  action: 'idle',
+  res: '576x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 315 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 69 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 36 }
+[orch] scale-normalize done { reference: 490, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 43 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 16 }
+  + idle 완료 (8f 192x256, 44s)
+
+[gen] (6/71) boo — 액션 idle,fly
+[orch] limb detection { job: 'boo-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'boo-idle',
+  positive: 'white, pale gray, round soft ghost blob, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered in fr…'
+}
+[orch] generating {
+  job: 'boo-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 442 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 51 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 41 }
+[orch] scale-normalize done { reference: 219, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 18 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 55 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'boo-fly', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'boo-fly',
+  positive: 'white, pale gray, round soft ghost blob, 2D platformer game sprite, hovering in place, gentle bobbing up and down, wings or body flutter, hover bob, stays in one spot, single character centered in frame, full body visibl…'
+}
+[orch] generating {
+  job: 'boo-fly',
+  action: 'fly',
+  res: '768x768',
+  frames: 48,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 665 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 78 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 63 }
+[orch] scale-normalize done { reference: 219, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 148 }
+[orch] loop window { start: 0, end: 24, of: 49, dist: 0 }
+[orch] stage done: loop-select { ms: 87 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 9 }
+  + fly 완료 (8f 192x192, 86s)
+
+[gen] (7/71) bob-omb — 액션 idle,walk
+[orch] limb detection { job: 'bob-omb-idle', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'bob-omb-idle',
+  positive: 'black, yellow, round bomb-shaped creature with small feet, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single charac…'
+}
+[orch] generating {
+  job: 'bob-omb-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 452 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 48 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 42 }
+[orch] scale-normalize done { reference: 224, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 18, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 56 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 9 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'bob-omb-walk', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'bob-omb-walk',
+  positive: 'black, yellow, round bomb-shaped creature with small feet, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered…'
+}
+[orch] generating {
+  job: 'bob-omb-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 667 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 72 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 63 }
+[orch] scale-normalize done { reference: 224, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 86 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + walk 완료 (8f 192x192, 86s)
+
+[gen] (8/71) chain-chomp — 액션 idle
+[orch] limb detection { job: 'chain-chomp-idle', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'chain-chomp-idle',
+  positive: 'black, white teeth, gray, round spiky ball creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character ce…'
+}
+[orch] generating {
+  job: 'chain-chomp-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 388 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 103 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 50 }
+[orch] scale-normalize done { reference: 521, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 53 }
+[orch] downscale done { w: 256, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 14 }
+  + idle 완료 (8f 256x256, 58s)
+
+[gen] (9/71) lakitu — 액션 idle,fly,attack
+[orch] limb detection { job: 'lakitu-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'lakitu-idle',
+  positive: 'white, pale gray, fluffy round cloud creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered…'
+}
+[orch] generating {
+  job: 'lakitu-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 399 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 96 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 46 }
+[orch] scale-normalize done { reference: 396, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 54 }
+[orch] downscale done { w: 256, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 15 }
+  + idle 완료 (8f 256x256, 58s)
+[orch] limb detection { job: 'lakitu-fly', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'lakitu-fly',
+  positive: 'white, pale gray, fluffy round cloud creature, 2D platformer game sprite, hovering in place, gentle bobbing up and down, wings or body flutter, hover bob, stays in one spot, single character centered in frame, full body …'
+}
+[orch] generating {
+  job: 'lakitu-fly',
+  action: 'fly',
+  res: '768x768',
+  frames: 48,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 585 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 143 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 66 }
+[orch] scale-normalize done { reference: 396, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop window { start: 0, end: 23, of: 49, dist: 0 }
+[orch] stage done: loop-select { ms: 89 }
+[orch] downscale done { w: 256, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 14 }
+  + fly 완료 (8f 256x256, 86s)
+[orch] limb detection { job: 'lakitu-attack', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'lakitu-attack',
+  positive: 'white, pale gray, fluffy round cloud creature, 2D platformer game sprite, quickly performs an attack motion, small recoil, returns exactly to the starting pose, throwing or shooting motion with an arm, brief windup, stri…'
+}
+[orch] generating {
+  job: 'lakitu-attack',
+  action: 'attack',
+  res: '768x768',
+  frames: 24,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 25,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 25,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 299 }
+[orch] bbox done { frames: 25 }
+[orch] stage done: bbox { ms: 71 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 35 }
+[orch] scale-normalize done { reference: 396, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] stage done: loop-select { ms: 0 }
+[orch] downscale done { w: 256, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 15 }
+  + attack 완료 (8f 256x256, 45s)
+
+[gen] (10/71) hammer-bro — 액션 idle,walk,attack
+[orch] limb detection { job: 'hammer-bro-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'hammer-bro-idle',
+  positive: 'dark gray, teal, orange, upright humanoid creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character cen…'
+}
+[orch] generating {
+  job: 'hammer-bro-idle',
+  action: 'idle',
+  res: '576x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 342 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 46 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 35 }
+[orch] scale-normalize done { reference: 442, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 43 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 11 }
+  + idle 완료 (8f 192x256, 44s)
+[orch] limb detection { job: 'hammer-bro-walk', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'hammer-bro-walk',
+  positive: 'dark gray, teal, orange, upright humanoid creature, 2D platformer game sprite, walking in place, steady natural gait, arms swinging, in-place walk cycle, feet return to the same spot each loop, single character centered …'
+}
+[orch] generating {
+  job: 'hammer-bro-walk',
+  action: 'walk',
+  res: '576x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 529 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 69 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 58 }
+[orch] scale-normalize done { reference: 442, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 45, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 66 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 13 }
+  + walk 완료 (8f 192x256, 63s)
+[orch] limb detection { job: 'hammer-bro-attack', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'hammer-bro-attack',
+  positive: 'dark gray, teal, orange, upright humanoid creature, 2D platformer game sprite, quickly performs an attack motion, small recoil, returns exactly to the starting pose, throwing or shooting motion with an arm, brief windup,…'
+}
+[orch] generating {
+  job: 'hammer-bro-attack',
+  action: 'attack',
+  res: '576x768',
+  frames: 24,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 25,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 25,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 270 }
+[orch] bbox done { frames: 25 }
+[orch] stage done: bbox { ms: 37 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 26 }
+[orch] scale-normalize done { reference: 442, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] stage done: loop-select { ms: 0 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 14 }
+  + attack 완료 (8f 192x256, 39s)
+
+[gen] (11/71) straight-shooter — 액션 idle,walk,attack
+[orch] limb detection { job: 'straight-shooter-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'straight-shooter-idle',
+  positive: 'blue, tan, simple upright humanoid creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered i…'
+}
+[orch] generating {
+  job: 'straight-shooter-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 445 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 49 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 44 }
+[orch] scale-normalize done { reference: 249, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 3 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 54 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 9 }
+  + idle 완료 (8f 192x192, 61s)
+[orch] limb detection { job: 'straight-shooter-walk', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'straight-shooter-walk',
+  positive: 'blue, tan, simple upright humanoid creature, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, ful…'
+}
+[orch] generating {
+  job: 'straight-shooter-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 664 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 72 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 63 }
+[orch] scale-normalize done { reference: 249, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 9 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 45, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 85 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 9 }
+  + walk 완료 (8f 192x192, 85s)
+[orch] limb detection { job: 'straight-shooter-attack', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'straight-shooter-attack',
+  positive: 'blue, tan, simple upright humanoid creature, 2D platformer game sprite, quickly performs an attack motion, small recoil, returns exactly to the starting pose, throwing or shooting motion with an arm, brief windup, strike…'
+}
+[orch] generating {
+  job: 'straight-shooter-attack',
+  action: 'attack',
+  res: '768x768',
+  frames: 24,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 25,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 25,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 340 }
+[orch] bbox done { frames: 25 }
+[orch] stage done: bbox { ms: 39 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 32 }
+[orch] scale-normalize done { reference: 249, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 3 }
+[orch] stage done: loop-select { ms: 0 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + attack 완료 (8f 192x192, 45s)
+
+[gen] (12/71) tracker-homing — 액션 idle,fly,attack
+[orch] limb detection { job: 'tracker-homing-idle', hasArms: true, hasLegs: false }
+[orch] wan prompt {
+  job: 'tracker-homing-idle',
+  positive: 'purple, round floating blob creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered in frame…'
+}
+[orch] generating {
+  job: 'tracker-homing-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 450 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 53 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 43 }
+[orch] scale-normalize done { reference: 216, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 29 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 22, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 56 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'tracker-homing-fly', hasArms: true, hasLegs: false }
+[orch] wan prompt {
+  job: 'tracker-homing-fly',
+  positive: 'purple, round floating blob creature, 2D platformer game sprite, hovering in place, gentle bobbing up and down, wings or body flutter, hover bob, stays in one spot, single character centered in frame, full body visible, …'
+}
+[orch] generating {
+  job: 'tracker-homing-fly',
+  action: 'fly',
+  res: '768x768',
+  frames: 48,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 662 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 75 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 63 }
+[orch] scale-normalize done { reference: 216, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 19 }
+[orch] loop window { start: 0, end: 26, of: 49, dist: 0 }
+[orch] stage done: loop-select { ms: 94 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 9 }
+  + fly 완료 (8f 192x192, 86s)
+[orch] limb detection { job: 'tracker-homing-attack', hasArms: true, hasLegs: false }
+[orch] wan prompt {
+  job: 'tracker-homing-attack',
+  positive: 'purple, round floating blob creature, 2D platformer game sprite, quickly performs an attack motion, small recoil, returns exactly to the starting pose, throwing or shooting motion with an arm, brief windup, strike, then …'
+}
+[orch] generating {
+  job: 'tracker-homing-attack',
+  action: 'attack',
+  res: '768x768',
+  frames: 24,
+  chroma: '#00FFFF'
+}
+[orch] chromakey done {
+  frames: 25,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 25,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 344 }
+[orch] bbox done { frames: 25 }
+[orch] stage done: bbox { ms: 39 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 30 }
+[orch] scale-normalize done { reference: 216, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 26 }
+[orch] stage done: loop-select { ms: 0 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + attack 완료 (8f 192x192, 45s)
+
+[gen] (13/71) king-splitter — 액션 idle,walk
+[orch] limb detection { job: 'king-splitter-idle', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'king-splitter-idle',
+  positive: 'green, round soft blob creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered in frame, ful…'
+}
+[orch] generating {
+  job: 'king-splitter-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 462 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 56 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 43 }
+[orch] scale-normalize done { reference: 205, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 14, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 58 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'king-splitter-walk', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'king-splitter-walk',
+  positive: 'green, round soft blob creature, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, full body visib…'
+}
+[orch] generating {
+  job: 'king-splitter-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 666 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 74 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 62 }
+[orch] scale-normalize done { reference: 205, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 57 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 28, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 85 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 13 }
+  + walk 완료 (8f 192x192, 86s)
+
+[gen] (14/71) teleport-boss — 액션 idle,walk
+[orch] limb detection { job: 'teleport-boss-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'teleport-boss-idle',
+  positive: 'purple, tall upright humanoid creature with a spiky head, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single charact…'
+}
+[orch] generating {
+  job: 'teleport-boss-idle',
+  action: 'idle',
+  res: '576x768',
+  frames: 32,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 337 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 47 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 35 }
+[orch] scale-normalize done { reference: 438, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 41 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 13 }
+  + idle 완료 (8f 192x256, 44s)
+[orch] limb detection { job: 'teleport-boss-walk', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'teleport-boss-walk',
+  positive: 'purple, tall upright humanoid creature with a spiky head, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered …'
+}
+[orch] generating {
+  job: 'teleport-boss-walk',
+  action: 'walk',
+  res: '576x768',
+  frames: 48,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 512 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 67 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 53 }
+[orch] scale-normalize done { reference: 438, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 63 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 18 }
+  + walk 완료 (8f 192x256, 64s)
+
+[gen] (15/71) creeper — 액션 idle,walk
+[orch] limb detection { job: 'creeper-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'creeper-idle',
+  positive: 'green, tall blocky upright humanoid creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered …'
+}
+[orch] generating {
+  job: 'creeper-idle',
+  action: 'idle',
+  res: '576x768',
+  frames: 32,
+  chroma: '#FF00FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 362 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 46 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 36 }
+[orch] scale-normalize done { reference: 396, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 42 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 14 }
+  + idle 완료 (8f 192x256, 44s)
+[orch] limb detection { job: 'creeper-walk', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'creeper-walk',
+  positive: 'green, tall blocky upright humanoid creature, 2D platformer game sprite, walking in place, steady natural gait, arms swinging, in-place walk cycle, feet return to the same spot each loop, single character centered in fra…'
+}
+[orch] generating {
+  job: 'creeper-walk',
+  action: 'walk',
+  res: '576x768',
+  frames: 48,
+  chroma: '#FF00FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 510 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 69 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 54 }
+[orch] scale-normalize done { reference: 396, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 34, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 64 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 14 }
+  + walk 완료 (8f 192x256, 64s)
+
+[gen] (16/71) zombie — 액션 idle,walk
+[orch] limb detection { job: 'zombie-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'zombie-idle',
+  positive: 'green, dark, simple upright humanoid creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered…'
+}
+[orch] generating {
+  job: 'zombie-idle',
+  action: 'idle',
+  res: '576x768',
+  frames: 32,
+  chroma: '#FF00FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 344 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 48 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 34 }
+[orch] scale-normalize done { reference: 403, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 42 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 11 }
+  + idle 완료 (8f 192x256, 44s)
+[orch] limb detection { job: 'zombie-walk', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'zombie-walk',
+  positive: 'green, dark, simple upright humanoid creature, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, f…'
+}
+[orch] generating {
+  job: 'zombie-walk',
+  action: 'walk',
+  res: '576x768',
+  frames: 48,
+  chroma: '#FF00FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 502 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 68 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 53 }
+[orch] scale-normalize done { reference: 403, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 45, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 63 }
+[orch] downscale done { w: 192, h: 256, frames: 8 }
+[orch] stage done: downscale { ms: 17 }
+  + walk 완료 (8f 192x256, 64s)
+
+[gen] (17/71) spider — 액션 idle,climb
+[orch] limb detection { job: 'spider-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'spider-idle',
+  positive: 'black, dark gray, round-bodied many-legged creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character ce…'
+}
+[orch] generating {
+  job: 'spider-idle',
+  action: 'idle',
+  res: '768x576',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 347 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 41 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 32 }
+[orch] scale-normalize done { reference: 227, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 41 }
+[orch] downscale done { w: 256, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 13 }
+  + idle 완료 (8f 256x192, 47s)
+[orch] limb detection { job: 'spider-climb', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'spider-climb',
+  positive: 'black, dark gray, round-bodied many-legged creature, 2D platformer game sprite, clinging to a vertical surface, slow crawling motion in place, single character centered in frame, full body visible, static locked camera, …'
+}
+[orch] generating {
+  job: 'spider-climb',
+  action: 'climb',
+  res: '768x576',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 516 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 57 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 50 }
+[orch] scale-normalize done { reference: 227, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 21 }
+[orch] loop window { start: 0, end: 48, of: 49, dist: 0 }
+[orch] stage done: loop-select { ms: 66 }
+[orch] downscale done { w: 256, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 11 }
+  + climb 완료 (8f 256x192, 64s)
+
+[gen] (18/71) enderman — 액션 idle,walk
+[orch] limb detection { job: 'enderman-idle', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'enderman-idle',
+  positive: 'black, very tall thin upright humanoid creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character center…'
+}
+[orch] generating {
+  job: 'enderman-idle',
+  action: 'idle',
+  res: '464x768',
+  frames: 32,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 264 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 54 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 32 }
+[orch] scale-normalize done { reference: 575, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 29, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 34 }
+[orch] downscale done { w: 192, h: 320, frames: 8 }
+[orch] stage done: downscale { ms: 12 }
+  + idle 완료 (8f 192x320, 41s)
+[orch] limb detection { job: 'enderman-walk', hasArms: true, hasLegs: true }
+[orch] wan prompt {
+  job: 'enderman-walk',
+  positive: 'black, very tall thin upright humanoid creature, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame,…'
+}
+[orch] generating {
+  job: 'enderman-walk',
+  action: 'walk',
+  res: '464x768',
+  frames: 48,
+  chroma: '#00FF00'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 402 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 68 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 47 }
+[orch] scale-normalize done { reference: 575, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 45, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 51 }
+[orch] downscale done { w: 192, h: 320, frames: 8 }
+[orch] stage done: downscale { ms: 13 }
+  + walk 완료 (8f 192x320, 50s)
+
+[gen] (19/71) trampoline-ball — 액션 idle,walk
+[orch] limb detection { job: 'trampoline-ball-idle', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'trampoline-ball-idle',
+  positive: 'green, round bouncy ball creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered in frame, f…'
+}
+[orch] generating {
+  job: 'trampoline-ball-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 433 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 51 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 42 }
+[orch] scale-normalize done { reference: 221, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 14, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 55 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 11 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'trampoline-ball-walk', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'trampoline-ball-walk',
+  positive: 'green, round bouncy ball creature, 2D platformer game sprite, walking in place, steady natural gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, full body visible, sta…'
+}
+[orch] generating {
+  job: 'trampoline-ball-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 649 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 72 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 63 }
+[orch] scale-normalize done { reference: 221, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 89 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + walk 완료 (8f 192x192, 85s)
+
+[gen] (20/71) shy-fleer — 액션 idle,walk
+[orch] limb detection { job: 'shy-fleer-idle', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'shy-fleer-idle',
+  positive: 'pink, round soft blob creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered in frame, full…'
+}
+[orch] generating {
+  job: 'shy-fleer-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 438 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 49 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 41 }
+[orch] scale-normalize done { reference: 212, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 9 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 14, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 55 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'shy-fleer-walk', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'shy-fleer-walk',
+  positive: 'pink, round soft blob creature, 2D platformer game sprite, walking in place, steady natural gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, full body visible, static…'
+}
+[orch] generating {
+  job: 'shy-fleer-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 655 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 71 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 61 }
+[orch] scale-normalize done { reference: 212, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 86 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + walk 완료 (8f 192x192, 85s)
+
+[gen] (21/71) hop-syncer — 액션 idle,walk
+[orch] limb detection { job: 'hop-syncer-idle', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'hop-syncer-idle',
+  positive: 'cyan, teal, round blob creature, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character centered in frame, ful…'
+}
+[orch] generating {
+  job: 'hop-syncer-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#FF00FF'
+}
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 452 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 50 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 42 }
+[orch] scale-normalize done { reference: 216, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 20, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 55 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 9 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'hop-syncer-walk', hasArms: false, hasLegs: true }
+[orch] wan prompt {
+  job: 'hop-syncer-walk',
+  positive: 'cyan, teal, round blob creature, 2D platformer game sprite, walking in place, steady natural gait, in-place walk cycle, feet return to the same spot each loop, single character centered in frame, full body visible, stati…'
+}
+[orch] generating {
+  job: 'hop-syncer-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#FF00FF'
+}
+[orch] chromakey done {
+  frames: 49,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 49,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 681 }
+[orch] bbox done { frames: 49 }
+[orch] stage done: bbox { ms: 75 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 62 }
+[orch] scale-normalize done { reference: 216, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 46 }
+[orch] loop window { start: 0, end: 22, of: 46, dist: 0 }
+[orch] stage done: loop-select { ms: 86 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + walk 완료 (8f 192x192, 85s)
+
+[gen] (22/71) enrager — 액션 idle,walk
+[orch] limb detection { job: 'enrager-idle', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'enrager-idle',
+  positive: 'brown, orange, red, round creature with an angry face, 2D platformer game sprite, standing still, subtle breathing motion, gentle natural sway, minimal movement, neutral resting stance, weight centered, single character …'
+}
+[orch] generating {
+  job: 'enrager-idle',
+  action: 'idle',
+  res: '768x768',
+  frames: 32,
+  chroma: '#0000FF'
+}
