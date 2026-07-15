@@ -12,6 +12,12 @@ git pull --ff-only
 echo "== npm install =="
 npm install
 
+# prisma migrate deploy는 migrate dev와 달리 클라이언트를 자동 재생성하지 않는다(2026-07-15 실측
+# 버그 — 마이그레이션 적용 후 서버가 신규 컬럼을 "Unknown argument"로 계속 거부했음).
+# 스키마 변경 여부와 무관하게 매번 generate — 이것도 재발 방지 위해 조건부 판단 없앰.
+echo "== prisma generate =="
+(cd server && npx prisma generate)
+
 echo "== client build =="
 cd client
 VITE_DEV_CONSOLE=1 VITE_SERVER_URL=wss://sunboy7594-game.madcamp-kaist.org npx vite build
