@@ -14,7 +14,8 @@
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "clean": "rimraf build",
     "test": "mocha -r tsx test/**.test.ts --exit --timeout 15000",
-    "seed": "tsx src/seed/systemAssets.ts"
+    "seed": "tsx src/seed/systemAssets.ts",
+    "ingest-sprites": "tsx src/seed/ingestSpriteSheet.ts"
   },
   "author": "",
   "license": "UNLICENSED",

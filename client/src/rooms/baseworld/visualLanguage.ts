@@ -85,6 +85,43 @@ export function drawFaceBorders(
   strokeFace(gfx, left + w, top, left + w, top + h, faces.right, iAmInvincible);
 }
 
+/**
+ * 스프라이트 윤곽 폴리곤(월드 좌표)에 면별 테두리 스타일을 입혀 그림(§sprites, 2026-07-16).
+ * 각 점을 폴리곤 자체 바운딩박스의 위/아래/왼쪽/오른쪽 중 가장 가까운 변으로 분류하고,
+ * 그 구간을 해당 면(faces.top 등)의 색·스타일로 긋는다 — 사각형의 drawFaceBorders와 같은
+ * 시각 언어를 임의 윤곽에 확장한 것. 단색이 필요하면 4면에 같은 스타일을 넣으면 됨.
+ * dashed 면은 선분을 하나 걸러 하나 그려 점선 흉내(윤곽 선분은 짧아서 자연스럽게 점선이 됨).
+ */
+export function drawPolyFaceBorders(
+  gfx: Phaser.GameObjects.Graphics, poly: { x: number; y: number }[],
+  faces: FaceBorders, iAmInvincible: boolean, lineWidth = BORDER_WIDTH - 1,
+): void {
+  if (poly.length < 3) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of poly) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }
+  const faceOf = (p: { x: number; y: number }): keyof FaceBorders => {
+    const dTop = p.y - minY, dBottom = maxY - p.y, dLeft = p.x - minX, dRight = maxX - p.x;
+    const m = Math.min(dTop, dBottom, dLeft, dRight);
+    if (m === dTop) return "top";
+    if (m === dBottom) return "bottom";
+    return m === dLeft ? "left" : "right";
+  };
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const style = faces[faceOf(a)];
+    if (style === "none") continue;
+    const effective = style === "red" && iAmInvincible ? "solidWhite" : style;
+    const color = BORDER_COLOR[effective];
+    if (color === undefined) continue;
+    if (effective === "dashed" && i % 2 === 1) continue;   // 점선: 선분 하나 걸러 하나
+    gfx.lineStyle(lineWidth, color, 0.95);
+    gfx.lineBetween(a.x, a.y, b.x, b.y);
+  }
+}
+
 // ── 이음선(seam) 병합 — 1×1 블록을 이어붙여 바닥을 만들면 타일마다 테두리가 둘러져 보이는 문제
 // (피드백 2026-07-15) 방지. "흰 실선(solidWhite)" 면끼리 맞닿은 구간만 지운다 — 위험·특수 면은
 // 정보 손실을 막기 위해 항상 통짜로 그린다.

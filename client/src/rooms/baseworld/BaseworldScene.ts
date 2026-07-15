@@ -26,9 +26,12 @@ import { unlockAudio } from "../../audio/zzfx.js";
 import { setListenerPosition } from "../../audio/listener.js";
 import { playSound } from "../../audio/sfx.js";
 import { blockVisualTagsFromSpec, monsterVisualTagsFromSpec } from "shared/visual";
+import { createSpriteView, destroySpriteView, assignManifest, stepSpriteView, getSpriteOutlineWorld, type SpriteView } from "../../sprites/view.js";
+import { resolveAvatarAction, resolveMonsterAction } from "../../sprites/resolve.js";
+import { fetchManifestByKey } from "../../sprites/registry.js";
 import {
   flickerAlpha, squashedBox, revealAlpha, drawFaceBorders, drawSeamMergedBorders, type SeamRect,
-  drawSlopeBorder, drawPlayerBorder, drawSwitchTogglerBorder, drawSwitchAffectedBorder,
+  BORDER_WIDTH, drawPolyFaceBorders, drawSlopeBorder, drawPlayerBorder, drawSwitchTogglerBorder, drawSwitchAffectedBorder,
   drawItemGiverGlow, itemPulseScale,
   drawConveyorArrows, drawIceGlint, drawDashLines, drawBounceArrow, drawDirectionArrow,
   drawRideHint, drawDetectRing, drawCrumbleWarning, drawPeriodicWarning,
@@ -36,6 +39,16 @@ import {
 } from "./visualLanguage.js";
 
 const FIXED_MS = 1000 / TUNING.world.tickRate;
+
+/** 블록 스펙 → 스프라이트 레지스트리 로컬 키(§sprites) — 시드 에셋 성격과 대응. 매핑 없으면 폴백. */
+function blockLocalKey(spec: BlockSpec): string {
+  if (spec.properties?.some((p) => p.type === "trampoline")) return "spring";
+  if (spec.properties?.some((p) => p.type === "switchToggle")) return "switch";
+  if (spec.properties?.some((p) => p.type === "damage")) return "spike";
+  if (spec.switchReact) return "gate";
+  if (spec.faces && spec.faces.top && !spec.faces.bottom) return "platform";
+  return "ground";
+}
 
 interface View {
   rect: Phaser.GameObjects.Rectangle;
@@ -50,6 +63,7 @@ interface View {
   pound: number;      // 상대 내려찍기 상태 (넉백+스턴 판정용)
   ghostPushLeftMs: number;  // 상대-밀기(노이즈) 스무딩 잔여 — iPush(내 입력)는 즉시라 스무딩 안 함
   crouchSpring: SpringState;   // §B2 웅크림 스프라이트 스프링(축소·복원 띠용) — 원격 플레이어용
+  spriteView: SpriteView;   // §sprites — 시트 준비 전엔 rect 폴백
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -75,6 +89,8 @@ export class BaseworldScene extends Phaser.Scene {
   }>();
   projectiles = new Map<string, Phaser.GameObjects.Rectangle>();
   itemRects = new Map<string, Phaser.GameObjects.Rectangle>();
+  itemSprites = new Map<string, SpriteView>();     // §sprites — 아이템 kind별 시트, 준비 전엔 rect 폴백
+  blockSprites = new Map<string, SpriteView>();    // §sprites — 블록 성격별 시트, 준비 전엔 rect 폴백
   itemSpawnAt = new Map<string, number>();   // 스폰 유예(§spawnGraceMs) — 나오자마자 바로 먹히는 것 방지
   carryRects = new Map<string, Phaser.GameObjects.Rectangle>();
   blockRects = new Map<string, Phaser.GameObjects.Rectangle>();
@@ -89,6 +105,7 @@ export class BaseworldScene extends Phaser.Scene {
   // 몬스터 로컬 타격 확정 (서버 왕복 안 기다림) — id → {예측 타격수, 시각}
   localMonHits = new Map<string, { count: number; at: number }>();
   myRect!: Phaser.GameObjects.Rectangle;
+  mySpriteView!: SpriteView;   // §sprites — 매니페스트 준비 전엔 항상 폴백(myRect)이 보임
   handRect!: Phaser.GameObjects.Rectangle;
   debugGfx!: Phaser.GameObjects.Graphics;
   // 시각 언어(면별 테두리) — 두 레이어로 분리(피드백 2026-07-15: "스프라이트가 테두리보다 뒤에 있다").
@@ -178,6 +195,8 @@ export class BaseworldScene extends Phaser.Scene {
 
     // 내 아바타
     this.myRect = this.add.rectangle(0, 0, this.me.body.w, this.me.body.h, 0x4488ff).setOrigin(0.5, 1).setDepth(5);
+    this.mySpriteView = createSpriteView(this, 5);
+    this.loadAvatarSprite();
     this.handRect = this.add.rectangle(0, 0, 14, 14, 0xffffff).setDepth(6).setVisible(false);
     this.debugGfx = this.add.graphics().setDepth(20);
     this.visualGfx = this.add.graphics().setDepth(2.5);       // 블록(2) 위, 아이템·엔티티(3~5) 아래
@@ -194,6 +213,7 @@ export class BaseworldScene extends Phaser.Scene {
       if (id === this.room.sessionId) return;
       this.dropView(this.players, id);
       const v = this.makeView(p.x, p.y, p.w, p.h, 0xff5555, p.nickname || id.slice(0, 4));
+      this.assignSpriteByKey(v.spriteView, "avatar");
       this.players.set(id, v);
     });
     $(this.room.state).players.onRemove((_p: PlayerNet, id: string) => { this.dropView(this.players, id); this.playerFx.delete(id); });
@@ -201,6 +221,7 @@ export class BaseworldScene extends Phaser.Scene {
     $(this.room.state).monsters.onAdd((m: MonsterNet, id: string) => {
       this.dropView(this.monsters, id);
       const v = this.makeView(m.x, m.y, m.w, m.h, 0xcc66ff, m.asset);
+      this.assignSpriteByKey(v.spriteView, m.asset);
       this.monsters.set(id, v);
     });
     $(this.room.state).monsters.onRemove((_m: MonsterNet, id: string) => { this.dropView(this.monsters, id); this.monsterFx.delete(id); });
@@ -219,6 +240,11 @@ export class BaseworldScene extends Phaser.Scene {
     $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
       this.itemRects.get(id)?.destroy();
       this.itemRects.set(id, this.add.rectangle(it.x, it.y, TUNING.sizes.item, TUNING.sizes.item, 0x66ffcc).setOrigin(0.5, 1).setDepth(3));
+      const sv = this.itemSprites.get(id);
+      if (sv) destroySpriteView(sv);
+      const view = createSpriteView(this, 3);
+      this.assignSpriteByKey(view, it.kind);
+      this.itemSprites.set(id, view);
       // 스폰 유예(§spawnGraceMs, 2026-07-16): 물음표 블록에서 막 나온 아이템이 스폰 위치와 겹쳐
       // 있는 플레이어에게 그 자리에서 바로(같은 프레임 수준으로) 먹혀버려 "나오자마자 사라져서
       // 먹은 건지도 모르겠다"는 피드백 — 원작처럼 잠깐 뜬 걸 보여준 다음에야 먹을 수 있게 함.
@@ -240,6 +266,11 @@ export class BaseworldScene extends Phaser.Scene {
       if (!spec) return;
       this.blockRects.get(id)?.destroy();
       this.blockRects.set(id, this.add.rectangle(bs.x, bs.y, spec.w, spec.h, 0x888888).setOrigin(0, 0).setDepth(2));
+      const sv = this.blockSprites.get(id);
+      if (sv) destroySpriteView(sv);
+      const view = createSpriteView(this, 2);
+      this.assignSpriteByKey(view, blockLocalKey(spec));
+      this.blockSprites.set(id, view);
     });
     // 아이템 획득 중재 결과 (§60)
     this.room.onMessage("itemClaim", (m: { itemId: string; winner: string | null }) => {
@@ -258,6 +289,12 @@ export class BaseworldScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.myRect, true, 0.15, 0.15);
   }
 
+  /** 기본 아바타 매니페스트 조회(§sprites) — 시스템 에셋에 시트가 아직 없으면(404/actions 빈 응답)
+   *  조용히 실패하고 폴백(myRect 사각형)을 계속 쓴다. 게임 진행을 절대 막지 않는다. */
+  private loadAvatarSprite(): void {
+    this.assignSpriteByKey(this.mySpriteView, "avatar");
+  }
+
   makeView(x: number, y: number, w: number, h: number, color: number, name: string): View {
     return {
       rect: this.add.rectangle(x, y, w, h, color).setOrigin(0.5, 1).setDepth(4),
@@ -269,12 +306,22 @@ export class BaseworldScene extends Phaser.Scene {
       lastTick: -1, lastTickAt: 0, stale: false,
       pound: 0, ghostPushLeftMs: 0,
       crouchSpring: createSpring(1),
+      spriteView: createSpriteView(this, 4),
     };
   }
   dropView(map: Map<string, View>, id: string): void {
     const v = map.get(id);
     v?.rect.destroy(); v?.label.destroy();
+    if (v) destroySpriteView(v.spriteView);
     map.delete(id);
+  }
+
+  /** 로컬 키(몬스터 asset명·아이템 kind 등)로 매니페스트를 찾아 SpriteView에 배정(§sprites).
+   *  매핑 없음·미준비·실패는 전부 무시 — 폴백(사각형) 유지. */
+  private assignSpriteByKey(view: SpriteView, localKey: string): void {
+    fetchManifestByKey(localKey).then((m) => {
+      if (m && view.sprite.active) assignManifest(this, view, m);
+    });
   }
 
   update(_time: number, delta: number): void {
@@ -722,6 +769,14 @@ export class BaseworldScene extends Phaser.Scene {
     const dtSec = delta / 1000;
     stepSquash(this.mySquash);
     stepSpring(this.crouchSpring, this.crouchScaleTarget(this.me.crouch, this.me.slide, b.h), dtSec);
+    // §sprites: 시트 준비됐으면 이미지로, 아니면 사각형 폴백(둘 다 항상 갱신해두고 visible만 토글
+    // — 전환 시 위치가 안 어긋남).
+    const spriteReady = stepSpriteView(
+      this, this.mySpriteView, resolveAvatarAction(b),
+      b.x + this.mySquash.offsetX, b.y + this.mySquash.offsetY, b.facing,
+      b.w * this.mySquash.sx, b.h, this.mySquash.sy * this.crouchSpring.v,
+    );
+    this.myRect.setVisible(!spriteReady);
     this.myRect.setSize(b.w, b.h);
     this.myRect.setScale(this.mySquash.sx, this.mySquash.sy * this.crouchSpring.v);
     this.myRect.setPosition(b.x + this.mySquash.offsetX, b.y + this.mySquash.offsetY);
@@ -729,7 +784,9 @@ export class BaseworldScene extends Phaser.Scene {
     this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55
       : this.me.pound !== 0 ? 0xffcc33 : 0x4488ff;
     // 무적(피격 직후·부활 직후 공용) 동안 점멸 — 부활 즉시 죽는 것 방지 유예를 시각으로도 표시
-    this.myRect.setAlpha(this.me.invincibleLeftMs > 0 ? flickerAlpha(this.time.now) : 1);
+    const invAlpha = this.me.invincibleLeftMs > 0 ? flickerAlpha(this.time.now) : 1;
+    this.myRect.setAlpha(invAlpha);
+    this.mySpriteView.sprite.setAlpha(invAlpha);
     // 오디오 리스너 = 로컬 플레이어 위치 (거리감쇠·좌우팬 기준점)
     setListenerPosition(b.x, b.y);
     // 고스트 플레이어
@@ -747,11 +804,20 @@ export class BaseworldScene extends Phaser.Scene {
       stepSquash(v.squash);
       stepSpring(v.crouchSpring, this.crouchScaleTarget(p.crouch, p.slide, p.h), dtSec);
       v.w = p.w; v.h = p.h; v.pound = p.pound;
+      // §sprites: 원격 플레이어도 같은 아바타 시트 — 준비 전엔 rect 폴백
+      const pReady = stepSpriteView(
+        this, v.spriteView, resolveAvatarAction({ grounded: p.grounded, vx: p.vx }),
+        v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY, (p.facing as 1 | -1) || 1,
+        p.w * v.squash.sx, p.h, v.squash.sy * v.crouchSpring.v,
+      );
+      v.rect.setVisible(!pReady);
       v.rect.setSize(p.w, p.h);
       v.rect.setScale(v.squash.sx, v.squash.sy * v.crouchSpring.v);
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);   // 찌부/shift 앵커 적용(내 몸과 동일)
       // 정지 = 반투명(통과 중), 무적(피격/부활 유예)이면 점멸 — 둘 다 아니면 불투명
-      v.rect.setAlpha(v.stale ? 0.35 : p.invincible ? flickerAlpha(nowMs) : 1);
+      const pAlpha = v.stale ? 0.35 : p.invincible ? flickerAlpha(nowMs) : 1;
+      v.rect.setAlpha(pAlpha);
+      v.spriteView.sprite.setAlpha(pAlpha);
       v.label.setPosition(v.ghost.x, v.ghost.y - p.h - 4);
       // ── 사운드: 다른 플레이어 전이 감지 (PlayerState 필드만으로 재현 — listener.ts가 거리감쇠 적용) ──
       if (v.stale) return; // 백그라운드 정지 중엔 소리도 쉼(B)
@@ -792,12 +858,24 @@ export class BaseworldScene extends Phaser.Scene {
       ghostRenderAt(v.ghost, this.time.now - TUNING.net.interpDelayMs);   // 지연 시점 보간(예측 X)
       stepSquash(v.squash);
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;   // 로컬 확정 사망 즉시 숨김
-      v.rect.setVisible(visible); v.label.setVisible(visible);
+      // §sprites: 시트 준비됐으면 이미지, 아니면 rect 폴백. 숨김 상태면 둘 다 끔.
+      const mReady = visible && stepSpriteView(
+        this, v.spriteView, resolveMonsterAction(m.currentAction),
+        v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY, (m.facing as 1 | -1) || 1,
+        m.w * v.squash.sx, m.h, v.squash.sy,
+      );
+      if (!visible) v.spriteView.sprite.setVisible(false);
+      v.rect.setVisible(visible && !mReady); v.label.setVisible(visible);
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.fillColor = m.stunned ? 0x999999 : m.windupAnim ? 0xff8888 : 0xcc66ff;
-      // 재생성 유예(무적) 동안 점멸 — 상호작용 없음을 시각으로 알림
-      v.rect.setAlpha(this.room.state.serverTime < m.graceEndsAt ? flickerAlpha(this.time.now) : 1);
+      // 재생성 유예(무적) 동안 점멸 — 상호작용 없음을 시각으로 알림. 스턴/윈드업은 스프라이트엔 틴트로.
+      const mAlpha = this.room.state.serverTime < m.graceEndsAt ? flickerAlpha(this.time.now) : 1;
+      v.rect.setAlpha(mAlpha);
+      v.spriteView.sprite.setAlpha(mAlpha);
+      if (m.stunned) v.spriteView.sprite.setTint(0x999999);
+      else if (m.windupAnim) v.spriteView.sprite.setTint(0xff8888);
+      else v.spriteView.sprite.clearTint();
       v.label.setPosition(v.ghost.x, v.ghost.y - m.h - 4);
       // ── 사운드/이펙트: MonsterState 전이 감지 (서버 emit이 클라로 직접 안 와서 상태값으로 엣지 검출) ──
       const prevFx = this.monsterFx.get(id);
@@ -825,10 +903,16 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.items.forEach((it: ItemNet, id: string) => {
       const r = this.itemRects.get(id);
       if (r) {
-        r.setVisible(it.available);
+        // §sprites: 아이템도 시트 우선, 준비 전엔 rect. 펄스 배율은 둘 다 공통 적용.
+        const pulse = itemPulseScale(this.time.now, TUNING.visual.itemPulseMs, TUNING.visual.itemPulseAmt);
+        const sv = this.itemSprites.get(id);
+        const size = TUNING.sizes.item * pulse;
+        const itReady = !!sv && it.available && stepSpriteView(this, sv, "idle", it.x, it.y, 1, size, size);
+        if (sv && !it.available) sv.sprite.setVisible(false);
+        r.setVisible(it.available && !itReady);
         r.setPosition(it.x, it.y);
         // 아이템 = 노란 발광 테두리 + 스프링 확대·축소 펄스(§1.2, 항상 표시)
-        r.setScale(itemPulseScale(this.time.now, TUNING.visual.itemPulseMs, TUNING.visual.itemPulseAmt));
+        r.setScale(pulse);
         if (this.grabHighlightUntil > this.time.now) r.setStrokeStyle(3, 0xffff00);
         else r.setStrokeStyle(2, 0xffee55, 0.85);
       }
@@ -867,16 +951,30 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       const r = this.blockRects.get(id);
       if (!r) return;
+      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
       // reappearing 동안은 비충돌이지만(§상호작용은 active 게이트로 이미 배제) 화면엔 점멸로 보여준다.
-      r.setVisible((bs.active && bs.visibleNow) || bs.reappearing);
-      r.setAlpha(bs.reappearing ? flickerAlpha(this.time.now) : 1);
+      const bVisible = (bs.active && bs.visibleNow) || bs.reappearing;
+      const bAlpha = bs.reappearing ? flickerAlpha(this.time.now) : 1;
       const g = this.blockGhosts.get(id);   // 충돌과 동일한 보간 위치
       const bumpFx = this.blockBumpFx.get(id);
       if (bumpFx) {
         if (this.time.now > bumpFx.untilMs) setSquash(bumpFx.squash, "none");
         stepSquash(bumpFx.squash, 0.35);
       }
-      r.setPosition((g ? g.x : bs.x) + (bumpFx?.squash.offsetX ?? 0), (g ? g.y : bs.y) + (bumpFx?.squash.offsetY ?? 0));
+      const bx = (g ? g.x : bs.x) + (bumpFx?.squash.offsetX ?? 0);
+      const by = (g ? g.y : bs.y) + (bumpFx?.squash.offsetY ?? 0);
+      // §sprites: 블록도 시트 우선(좌상단 앵커 → 바닥-중앙으로 변환해 전달), 준비 전엔 rect 폴백
+      const sv = this.blockSprites.get(id);
+      const bReady = !!sv && !!spec && bVisible
+        && stepSpriteView(this, sv, "idle", bx + spec.w / 2, by + spec.h, 1, spec.w, spec.h);
+      if (sv && (!bVisible || !bReady)) sv.sprite.setVisible(false);
+      if (sv) {
+        sv.sprite.setAlpha(bAlpha);
+        if (bs.emptied) sv.sprite.setTint(0x555555); else sv.sprite.clearTint();
+      }
+      r.setVisible(bVisible && !bReady);
+      r.setAlpha(bAlpha);
+      r.setPosition(bx, by);
       r.fillColor = bs.emptied ? 0x555555 : 0x888888;
       // 접촉반응(낙하/파괴) 텔레그래프 — 시작 전이 감지(사운드 1회) + 시작시각 기록(진행도 연출용, §2026-07-16)
       const cfx = this.blockCrumbleFx.get(id);
@@ -961,7 +1059,15 @@ export class BaseworldScene extends Phaser.Scene {
       // 따로 또 그리면 뒤에 흰 테두리가 겹쳐 보임(2026-07-16 피드백: "흰 테두리 뭔가가 있는데"). 스킵.
       const hasOwnBorder = tags.auras.includes("switchToggler") || tags.auras.includes("switchAffected");
       if (tags.faces && !hasOwnBorder && (!spec.shape || spec.shape === "rect")) {
-        seamRects.push({ left, top, w: spec.w, h: spec.h, faces: tags.faces });
+        // §sprites: 시트가 뜬 블록은 이음선 병합 대신 그림 윤곽에 면별 색을 직접 입힘
+        const sv = this.blockSprites.get(id);
+        const bPoly = sv ? getSpriteOutlineWorld(this, sv, left + spec.w / 2, top + spec.h, 1, spec.w, spec.h) : null;
+        if (bPoly) {
+          const faces = tags.faces;
+          laterDraws.push(() => drawPolyFaceBorders(ground, bPoly, faces, iAmInvincible));
+        } else {
+          seamRects.push({ left, top, w: spec.w, h: spec.h, faces: tags.faces });
+        }
       }
       if (tags.auras.includes("switchToggler")) {
         laterDraws.push(() => drawSwitchTogglerBorder(ground, left, top, spec.w, spec.h, this.room.state.switchOn, nowMs));
@@ -1000,14 +1106,39 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 엔티티 레이어(entities, 자기 몸 위 — 병합 없이 항상 통짜로) ──────────
     // squash(벽 찌부·밀림 등 연출) 반영 — 시각 사각형이 움직이면 테두리도 같이 움직여야 함(피드백 2026-07-15).
     // 웅크림 스프링(§B2)도 반영 — 안 그러면 스프라이트는 줄어드는데 테두리는 원래 크기 그대로 남음(2026-07-16 피드백)
-    drawPlayerBorder(entities, squashedBox(this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h,
-      { ...this.mySquash, sy: this.mySquash.sy * this.crouchSpring.v }), true);
+    // §sprites: 스프라이트가 준비됐으면 그림 윤곽에 면별 시각 언어를 입혀 테두리로(사각형 아님),
+    // 아니면 사각 테두리 폴백. 플레이어 소속색(내=흰/남=회)은 4면 동일 스타일로 전달.
+    const myScaleY = this.mySquash.sy * this.crouchSpring.v;
+    const myPoly = getSpriteOutlineWorld(
+      this, this.mySpriteView,
+      this.me.body.x + this.mySquash.offsetX, this.me.body.y + this.mySquash.offsetY,
+      this.me.body.facing, this.me.body.w * this.mySquash.sx, this.me.body.h, myScaleY,
+    );
+    if (myPoly) {
+      drawPolyFaceBorders(entities, myPoly, { top: "solidWhite", bottom: "solidWhite", left: "solidWhite", right: "solidWhite" }, false);
+    } else {
+      drawPlayerBorder(entities, squashedBox(this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h,
+        { ...this.mySquash, sy: myScaleY }), true);
+    }
     this.room.state.players.forEach((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId || p.dead) return;
       const v = this.players.get(id);
       if (!v || v.stale) return;
-      drawPlayerBorder(entities, squashedBox(v.ghost.x, v.ghost.y, p.w, p.h,
-        { ...v.squash, sy: v.squash.sy * v.crouchSpring.v }), false);
+      const pPoly = getSpriteOutlineWorld(
+        this, v.spriteView, v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY,
+        (p.facing as 1 | -1) || 1, p.w * v.squash.sx, p.h, v.squash.sy * v.crouchSpring.v,
+      );
+      if (pPoly) {
+        // 다른 플레이어 = 회색 — 시각 언어 색표에 회색이 없어 별도 단색 스트로크로 처리
+        entities.lineStyle(BORDER_WIDTH - 1, 0x9a9a9a, 0.9);
+        entities.beginPath();
+        pPoly.forEach((pt, i) => { if (i === 0) entities.moveTo(pt.x, pt.y); else entities.lineTo(pt.x, pt.y); });
+        entities.closePath();
+        entities.strokePath();
+      } else {
+        drawPlayerBorder(entities, squashedBox(v.ghost.x, v.ghost.y, p.w, p.h,
+          { ...v.squash, sy: v.squash.sy * v.crouchSpring.v }), false);
+      }
     });
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;
@@ -1019,7 +1150,13 @@ export class BaseworldScene extends Phaser.Scene {
       const box = squashedBox(mx, my, m.w, m.h, v ? v.squash : { sx: 1, sy: 1, offsetX: 0, offsetY: 0 });
       const cx = box.left + box.w / 2, topY = box.top;
       const tags = monsterVisualTagsFromSpec(spec);
-      if (tags.faces) drawFaceBorders(entities, box.left, box.top, box.w, box.h, tags.faces, iAmInvincible);
+      // §sprites: 윤곽 폴리곤에 면별 색(윗면 흰=밟기 가능, 옆·아래 빨강=위험 등) 그대로 적용
+      const mPoly = v ? getSpriteOutlineWorld(
+        this, v.spriteView, mx + v.squash.offsetX, my + v.squash.offsetY,
+        (m.facing as 1 | -1) || 1, m.w * v.squash.sx, m.h, v.squash.sy,
+      ) : null;
+      if (tags.faces && mPoly) drawPolyFaceBorders(entities, mPoly, tags.faces, iAmInvincible);
+      else if (tags.faces) drawFaceBorders(entities, box.left, box.top, box.w, box.h, tags.faces, iAmInvincible);
 
       const reveal = revealAt(mx, my - m.h / 2, m.w, m.h);
       if (tags.overlays.includes("hpPips") && m.hp > 1) {

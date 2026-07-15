@@ -19,6 +19,7 @@ import { aiWorkerRouter } from "./worker-api/routes.js";
 import { sessionRouter } from "./api/session.js";
 import { linesRouter } from "./api/lines.js";
 import { roomsRouter } from "./api/rooms.js";
+import { assetsRouter } from "./api/assets.js";
 import { STORAGE_DIR, STORAGE_URL_PREFIX, SOURCES_DIR, SOURCES_URL_PREFIX } from "./asset/storage.js";
 
 const server = defineServer({
@@ -68,6 +69,9 @@ const server = defineServer({
 
         // 로비 방 목록 API
         app.use(roomsRouter());
+
+        // 에셋 스프라이트 매니페스트 조회 (클라 sprites 모듈이 항상 이 형태로 로드)
+        app.use(assetsRouter());
 
         // 생성된 스프라이트 시트 정적 서빙 (sheetUrl = STORAGE_URL_PREFIX/{id}.png).
         app.use(STORAGE_URL_PREFIX, express.static(STORAGE_DIR));
