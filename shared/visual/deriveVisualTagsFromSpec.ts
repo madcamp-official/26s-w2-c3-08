@@ -65,12 +65,14 @@ export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
   // 처치 불가 여부는 표시하지 않음(과대 표시 방지 원칙) — 필요해지면 별도 오라로 추가.
   const hazardStyle: BorderStyle = shove ? "bumper" : "red";
 
-  const faces = faceMap("none");
+  // "밟기 가능"(위험 없음)도 시각적으로 빈칸이 아니라 흰 실선으로 — 몬스터 몸도 부딪히는 대상이라
+  // 지형과 동일하게 "여기 표면이 있다"를 항상 알려야 함(피드백 2026-07-15: "비어있지 말고 흰선으로").
+  const faces = faceMap("solidWhite");
   if (contactDamage || shove) {
     faces.bottom = hazardStyle; faces.left = hazardStyle; faces.right = hazardStyle;
     if (spec.vuln.stomp === "hurtAttacker") faces.top = hazardStyle;       // 가시(spiky)
     else if (spec.vuln.stomp === "trampoline") faces.top = "trampoline";
-    else faces.top = "none";
+    // else: 밟기 가능 = solidWhite 유지(위 faceMap 기본값)
   } else if (spec.vuln.stomp === "trampoline") {
     faces.top = "trampoline";
   }

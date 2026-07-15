@@ -3,7 +3,7 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { getStateCallbacks } from "@colyseus/sdk";
-import { TUNING, type Terrain, type Slope, slopeSurfaceY } from "shared/physics";
+import { TUNING, type Terrain, type Slope, type Rect, slopeSurfaceY, facesOf } from "shared/physics";
 import "shared/behavior";
 import "shared/properties";
 import {
@@ -95,18 +95,38 @@ function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): void {
   }
 }
 
+/** 기본 지형(TESTMAP.terrain.solids — 바닥·벽·계단·발판) 테두리. 위험·물성 개념이 없으니 충돌면만 흰/점선. */
+function drawTerrainRectBorder(gfx: Phaser.GameObjects.Graphics, r: Rect): void {
+  const f = facesOf(r);
+  const faces: FaceBorders = {
+    top: f.top ? "solidWhite" : "dashed",
+    bottom: f.bottom ? "solidWhite" : "dashed",
+    left: f.left ? "solidWhite" : "dashed",
+    right: f.right ? "solidWhite" : "dashed",
+  };
+  drawFaceBorders(gfx, r.x, r.y, r.w, r.h, faces, false);
+}
+
+/** 플레이어(§1.2 소속) — 내 아바타 회색, 다른 플레이어 흰색. AABB는 바닥-중앙 앵커라 top-left로 환산. */
+function drawPlayerBorder(gfx: Phaser.GameObjects.Graphics, centerX: number, bottomY: number, w: number, h: number, isSelf: boolean): void {
+  gfx.lineStyle(BORDER_WIDTH - 1, isSelf ? 0x9a9a9a : 0xffffff, 0.9);
+  gfx.strokeRect(centerX - w / 2, bottomY - h, w, h);
+}
+
 /**
- * 스위치 토글러(시스템 ON/OFF 블록) — 문서상 "빨강·파랑 반반 회전". 전체 색이 확 바뀌는 점멸은
- * 눈에 거슬린다는 피드백(2026-07-15)으로, 둘레를 따라 두 색 세그먼트가 실제로 도는 것처럼
- * (marching ants) 다시 구현 — 매 순간엔 빨강/청록이 공존하고 위치만 흐른다.
+ * 스위치 토글러(시스템 ON/OFF 블록) — 문서상 "빨강·파랑 반반 회전". 둘레를 따라 두 색 세그먼트가
+ * 실제로 도는 것처럼(marching ants) 그리되, 현재 상태를 못 읽는다는 피드백(2026-07-15)으로
+ * 50:50 균등 대신 "지금 상태 색"이 둘레 대부분을 차지하도록(다른 색은 소량만) 비율을 준다.
+ * ON=빨강 우세, OFF=청록 우세 (임의 매핑 — 코드 내 유일한 기준).
  */
 function drawRotatingStripedRect(
   gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
-  colorA: number, colorB: number, nowMs: number,
+  majorColor: number, minorColor: number, majorLen: number, minorLen: number, nowMs: number,
 ): void {
-  const seg = 12, speedPxPerSec = 45;
+  const speedPxPerSec = 45;
   const perimeter = 2 * (w + h);
-  const offset = ((nowMs / 1000) * speedPxPerSec) % (seg * 2);
+  const cycle = majorLen + minorLen;
+  const offset = ((nowMs / 1000) * speedPxPerSec) % cycle;
   const pointAt = (dIn: number): [number, number] => {
     const d = ((dIn % perimeter) + perimeter) % perimeter;
     if (d <= w) return [left + d, top];
@@ -114,21 +134,24 @@ function drawRotatingStripedRect(
     if (d <= 2 * w + h) return [left + w - (d - w - h), top + h];
     return [left, top + h - (d - 2 * w - h)];
   };
-  let d = -offset, toggle = true;
+  let d = -offset, isMajor = true;
   while (d < perimeter) {
-    const d0 = Math.max(d, 0), d1 = Math.min(d + seg, perimeter);
+    const segLen = isMajor ? majorLen : minorLen;
+    const d0 = Math.max(d, 0), d1 = Math.min(d + segLen, perimeter);
     if (d1 > d0) {
       const [x0, y0] = pointAt(d0);
       const [x1, y1] = pointAt(d1);
-      gfx.lineStyle(BORDER_WIDTH, toggle ? colorA : colorB, 0.9);
+      gfx.lineStyle(BORDER_WIDTH, isMajor ? majorColor : minorColor, 0.9);
       gfx.lineBetween(x0, y0, x1, y1);
     }
-    d += seg;
-    toggle = !toggle;
+    d += segLen;
+    isMajor = !isMajor;
   }
 }
-function drawSwitchTogglerBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, nowMs: number): void {
-  drawRotatingStripedRect(gfx, left, top, w, h, 0xff3b30, 0x2ec4c4, nowMs);
+function drawSwitchTogglerBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, switchOn: boolean, nowMs: number): void {
+  const RED = 0xff3b30, CYAN = 0x2ec4c4;
+  const majorColor = switchOn ? RED : CYAN, minorColor = switchOn ? CYAN : RED;
+  drawRotatingStripedRect(gfx, left, top, w, h, majorColor, minorColor, 18, 6, nowMs);
 }
 
 /** 스위치 영향 블록 — 현재 스위치 상태와 자신의 발동 조건이 일치하면 진하게, 아니면 옅게 틴트 */
@@ -859,8 +882,18 @@ export class BaseworldScene extends Phaser.Scene {
     gfx.clear();
     const iAmInvincible = this.me.invincibleLeftMs > 0;
 
-    // 경사(구불구불한 지형) — 정적 지형이라 항상 그림(피드백: 사각형 아닌 지형도 표시 필요)
+    // 기본 지형(바닥·벽·계단·발판) + 경사 — 정적이라 항상 그림 (피드백: 기본 지형에 테두리 없던 것 포함)
+    for (const r of TESTMAP.terrain.solids) drawTerrainRectBorder(gfx, r);
     for (const s of TESTMAP.terrain.slopes) drawSlopeBorder(gfx, s);
+
+    // 플레이어(§1.2 소속) — 나=회색, 남=흰색
+    drawPlayerBorder(gfx, this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h, true);
+    this.room.state.players.forEach((p: PlayerNet, id: string) => {
+      if (id === this.room.sessionId || p.dead) return;
+      const v = this.players.get(id);
+      if (!v || v.stale) return;
+      drawPlayerBorder(gfx, v.ghost.x, v.ghost.y, p.w, p.h, false);
+    });
 
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       if (!bs.active || !bs.visibleNow) return;
@@ -870,7 +903,7 @@ export class BaseworldScene extends Phaser.Scene {
       const left = g ? g.x : bs.x, top = g ? g.y : bs.y;
       const tags = blockVisualTagsFromSpec(spec);
       if (tags.faces) drawFaceBorders(gfx, left, top, spec.w, spec.h, tags.faces, iAmInvincible);
-      if (tags.auras.includes("switchToggler")) drawSwitchTogglerBorder(gfx, left, top, spec.w, spec.h, this.time.now);
+      if (tags.auras.includes("switchToggler")) drawSwitchTogglerBorder(gfx, left, top, spec.w, spec.h, this.room.state.switchOn, this.time.now);
       else if (tags.auras.includes("switchAffected") && spec.switchReact) {
         drawSwitchAffectedBorder(gfx, left, top, spec.w, spec.h, spec.switchReact.whenOn, this.room.state.switchOn);
       }
