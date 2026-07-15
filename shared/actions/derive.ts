@@ -63,11 +63,10 @@ export function deriveActions<C extends Category>(category: C, attrs: AttrsByCat
       break;
     }
 
-    case "platform":
-    case "obstacle":
+    case "block":
     case "background":
     case "item":
-      break; // idle만 — 움직임은 코드 담당 (장애물 회전·돌진 포함)
+      break; // idle만 — 움직임은 코드 담당 (블록 회전·돌진 포함)
   }
 
   return out;

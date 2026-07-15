@@ -11,8 +11,8 @@
 import { TUNING } from "../physics/tuning.js";
 import type { Faces } from "../physics/terrain.js";
 import { speedPreset } from "../behavior/helpers.js";
-import { collisionFaces } from "../schemas/platform.js";
-import type { MonsterAttrs, ObstacleAttrs, PlatformAttrs, Power2, Period3 } from "../schemas/index.js";
+import { collisionFaces } from "../schemas/block.js";
+import type { BlockAttrs, MonsterAttrs, Power2, Period3 } from "../schemas/index.js";
 import type { BlockSpec } from "../parts/block.js";
 import type { MonsterSpec, StompReaction } from "../parts/monster.js";
 import type { RuleSpec } from "../behavior/types.js";
@@ -38,11 +38,18 @@ function flipFaces(f: Faces): Faces { return { top: f.top, bottom: f.bottom, lef
 // =============================================================================
 // 플랫폼 → BlockSpec
 // =============================================================================
-export function buildPlatformBlock(id: string, a: PlatformAttrs, g: BuildGeom): BlockSpec {
+export function buildBlock(id: string, a: BlockAttrs, g: BuildGeom): BlockSpec {
   let faces = collisionFaces(a.collision) as Faces;
   if (g.flipX) faces = flipFaces(faces);
 
   const properties: PropSpec[] = [];
+  if (a.contactEffect.type === "damage") {
+    const z = a.contactEffect.zone;
+    properties.push({ type: "damage", part: z === "all" ? "all" : z === "except_top" ? "notTop" : "bottomOnly" });
+  } else if (a.contactEffect.type === "updraft") {
+    properties.push({ type: "updraft" });
+  }
+  // TODO(builder): knockback — 대응 물성 미구현
   if (a.slippery) properties.push({ type: "ice" });
   if (a.conveyor) {
     const dir = g.flipX ? flipDir(a.conveyor.dir) : a.conveyor.dir;
@@ -50,25 +57,39 @@ export function buildPlatformBlock(id: string, a: PlatformAttrs, g: BuildGeom): 
   }
   if (a.bouncy) properties.push({ type: "trampoline", power: powerNum(a.bouncy.power) });
   if (a.dash) properties.push({ type: "dash" });
+  if (a.togglesSwitch) properties.push({ type: "switchToggle" });
 
   const spec: BlockSpec = { id, x: g.x, y: g.y, w: g.w, h: g.h, faces };
+  if (properties.length) spec.properties = properties;
 
-  // 모양(경사) — flipX면 NE↔NW 스왑. ⚠️ 방향 대응은 렌더 확인 필요.
   if (a.shape.type === "slope") spec.shape = slopeShape(a.shape.dir, g.flipX);
 
-  // 실체화
   if (a.presence.type === "hidden") spec.visibility = "hidden";
   else if (a.presence.type === "blink") { spec.visibility = "blink"; spec.blinkMs = periodMs(a.presence.period); }
   else if (a.presence.type === "switch_on") spec.switchReact = { mode: "show", whenOn: true };
   else if (a.presence.type === "switch_off") spec.switchReact = { mode: "show", whenOn: false };
 
-  // 이동 (behavior 통합)
-  if (a.movement.type === "patrol") {
-    spec.rules = [{ when: { type: "always" }, do: { type: "patrol", speed: a.movement.speed } }];
-    // TODO(builder): g.endX/endY 경로 반영 — patrol 액션이 끝점 파라미터를 아직 안 받음
+  // 이동·동작 (behavior 통합)
+  const rules: RuleSpec[] = [];
+  switch (a.motion.type) {
+    case "patrol": rules.push({ when: { type: "always" }, do: { type: "patrol", speed: a.motion.speed } }); break;
+    case "spin": rules.push({ when: { type: "always" }, do: { type: "rotate", speed: a.motion.speed } }); break;
+    case "pendulum": rules.push({ when: { type: "always" }, do: { type: "pendulum" } }); break;
+    case "charge":
+      rules.push({ when: { type: "always" }, do: { type: "idle" } });
+      rules.push({
+        when: { type: "playerWithin", dist: "near" },
+        do: a.motion.dir === "down" ? { type: "slamDown" } : { type: "chargeSide", dir: a.motion.dir },
+        priority: 1, windupMs: 400,
+      });
+      break;
+    // TODO(builder): ride_start / ride_oneway 대응 행동 미구현
   }
-  // TODO(builder): ride_start / ride_oneway — 대응 행동 미구현
-  // TODO(builder): contactReaction fall/break — 타이머성 낙하·파괴 대응 미구현(breakBy는 머리치기 파괴라 다름)
+  if (a.shooter) {
+    rules.push({ when: { type: "periodic", ms: periodMs(a.shooter.period) }, do: { type: "shoot", speed: a.shooter.speed, aim: a.shooter.aim } });
+  }
+  if (rules.length) spec.rules = rules;
+  // TODO(builder): trigger 게이팅, patrol 끝점(g.endX/Y), contactReaction fall/break 타이머
 
   return spec;
 }
@@ -82,53 +103,6 @@ function slopeShape(dir: SlopeDir, flip?: boolean): BlockSpec["shape"] {
   let s = base[dir as string];
   if (flip) s = s === "slopeNE" ? "slopeNW" : s === "slopeNW" ? "slopeNE" : s === "ceilNE" ? "ceilNW" : "ceilNE";
   return s;
-}
-
-// =============================================================================
-// 장애물 → BlockSpec (지형 아님 — faces 없음, 접촉효과 물성 위주)
-// =============================================================================
-export function buildObstacleBlock(id: string, a: ObstacleAttrs, g: BuildGeom): BlockSpec {
-  const properties: PropSpec[] = [];
-  const ce = a.contactEffect;
-  if (ce.type === "damage") {
-    const part = ce.zone === "all" ? "all" : ce.zone === "except_top" ? "notTop" : "bottomOnly";
-    properties.push({ type: "damage", part });
-  } else if (ce.type === "updraft") {
-    properties.push({ type: "updraft" });
-  }
-  // TODO(builder): knockback 장애물 — 대응 물성 미구현(범퍼). 물성 추가 시 여기.
-  if (a.togglesSwitch) properties.push({ type: "switchToggle" });
-
-  const rules: RuleSpec[] = [];
-  switch (a.motion.type) {
-    case "spin": rules.push({ when: { type: "always" }, do: { type: "rotate", speed: a.motion.speed } }); break;
-    case "pendulum": rules.push({ when: { type: "always" }, do: { type: "pendulum" } }); break;
-    case "patrol": rules.push({ when: { type: "always" }, do: { type: "patrol", speed: a.motion.speed } }); break;
-    case "charge":
-      // best-effort: 아래 접근 시 돌진. 방향 down은 slamDown, 좌우는 chargeSide.
-      rules.push({ when: { type: "always" }, do: { type: "idle" } });
-      rules.push({
-        when: { type: "playerWithin", dist: "near" },
-        do: a.motion.dir === "down" ? { type: "slamDown" } : { type: "chargeSide", dir: a.motion.dir },
-        priority: 1, windupMs: 400,
-      });
-      // TODO(builder): after(return/respawn/once) 반영
-      break;
-    case "none": break;
-  }
-  if (a.shooter) {
-    // 주기 발사. TODO(builder): homing/stopNearPlayer 세부
-    rules.push({
-      when: { type: "periodic", ms: periodMs(a.shooter.period) },
-      do: { type: "shoot", speed: a.shooter.speed, aim: a.shooter.aim },
-    });
-  }
-  // TODO(builder): trigger periodic/proximity/switch 게이팅 — 위 rules를 조건으로 감싸야 함
-
-  const spec: BlockSpec = { id, x: g.x, y: g.y, w: g.w, h: g.h };
-  if (properties.length) spec.properties = properties;
-  if (rules.length) spec.rules = rules;
-  return spec;
 }
 
 // =============================================================================

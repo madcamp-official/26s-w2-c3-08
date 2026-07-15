@@ -2,8 +2,8 @@
 // docs/KJH/visual-language.md의 단일 소스. 클라 렌더(BaseworldScene)와 에디터 미리보기가 같이 사용.
 // ⚠️ 여기는 "무엇을 표시할지" 파생만. 실제 그리기(테두리·발광·모션)는 렌더 계층 담당(미구현).
 import type { AttrsByCategory, Category } from "../schemas/index.js";
-import { collisionFaces } from "../schemas/platform.js";
-import type { MonsterAttrs, ObstacleAttrs, PlatformAttrs } from "../schemas/index.js";
+import { collisionFaces } from "../schemas/block.js";
+import type { BlockAttrs, MonsterAttrs } from "../schemas/index.js";
 
 export type Face = "top" | "bottom" | "left" | "right";
 
@@ -61,10 +61,8 @@ export function deriveVisualTags<C extends Category>(
       return { faces: null, auras: ["item"], overlays: [] };
     case "background":
       return { faces: null, auras: ["backgroundLayer"], overlays: [] };
-    case "platform":
-      return platformTags(attrs as PlatformAttrs);
-    case "obstacle":
-      return obstacleTags(attrs as ObstacleAttrs);
+    case "block":
+      return blockTags(attrs as BlockAttrs);
     case "monster":
       return monsterTags(attrs as MonsterAttrs);
     default:
@@ -72,14 +70,24 @@ export function deriveVisualTags<C extends Category>(
   }
 }
 
-/** 플랫폼: 충돌 면 = 흰 실선 / 나머지 = 점선. 대미지원 아님. */
-function platformTags(a: PlatformAttrs): VisualTags {
-  const solid = collisionFaces(a.collision); // { top,bottom,left,right: boolean }
+/** 블록(구 platform+obstacle): 충돌 면 = 흰 실선/점선, 대미지 면은 빨강, 넉백 범퍼로 덮어씀. */
+function blockTags(a: BlockAttrs): VisualTags {
+  const solid = collisionFaces(a.collision);
   const faces = {} as FaceBorders;
   for (const f of ALL_FACES) faces[f] = solid[f] ? "solidWhite" : "dashed";
 
+  // 접촉 효과가 충돌 테두리를 덮어씀 (해당 면)
+  const ce = a.contactEffect;
+  if (ce.type === "damage") {
+    const red = damageFaces(ce.zone);
+    for (const f of ALL_FACES) if (red[f]) faces[f] = "red";
+  } else if (ce.type === "knockback") {
+    for (const f of ALL_FACES) faces[f] = "bumper";
+  }
+
   const auras: AuraTag[] = [];
-  if (a.presence.type === "switch_on" || a.presence.type === "switch_off") auras.push("switchAffected");
+  if (a.presence.type === "switch_on" || a.presence.type === "switch_off" || a.trigger.type === "switch") auras.push("switchAffected");
+  if (a.togglesSwitch) auras.push("switchToggler");
 
   const overlays: OverlayTag[] = [];
   if (a.slippery) overlays.push("ice");
@@ -87,33 +95,11 @@ function platformTags(a: PlatformAttrs): VisualTags {
   if (a.bouncy) overlays.push("bouncy");
   if (a.dash) overlays.push("dash");
   if (a.contactReaction.type === "fall" || a.contactReaction.type === "break") overlays.push("fallBreak");
-  if (a.movement.type === "patrol") overlays.push("moving");
-  if (a.movement.type === "ride_start" || a.movement.type === "ride_oneway") overlays.push("rideStart");
-  if (a.presence.type === "blink") overlays.push("periodic");
-  if (a.presence.type === "hidden") overlays.push("hiddenEditorOnly");
-  return { faces, auras, overlays };
-}
-
-/** 장애물: 지형 아님(흰/점선 없음). 대미지 주는 면만 빨강, 넉백은 범퍼색. */
-function obstacleTags(a: ObstacleAttrs): VisualTags {
-  const faces = faceMap("none");
-  const ce = a.contactEffect;
-  if (ce.type === "damage") {
-    const red = damageFaces(ce.zone); // zone → 어느 면이 빨강
-    for (const f of ALL_FACES) if (red[f]) faces[f] = "red";
-  } else if (ce.type === "knockback") {
-    for (const f of ALL_FACES) faces[f] = "bumper"; // 무해 범퍼
-  }
-  // updraft = 무해 → 면 테두리 없음(오버레이 wind은 추후)
-
-  const auras: AuraTag[] = [];
-  if (a.togglesSwitch) auras.push("switchToggler");
-  if (a.trigger.type === "switch") auras.push("switchAffected");
-
-  const overlays: OverlayTag[] = [];
   if (a.motion.type === "charge") overlays.push("charge");
-  else if (a.motion.type !== "none") overlays.push("moving"); // spin/pendulum/patrol
-  if (a.trigger.type === "periodic") overlays.push("periodic");
+  else if (a.motion.type === "patrol" || a.motion.type === "spin" || a.motion.type === "pendulum") overlays.push("moving");
+  else if (a.motion.type === "ride_start" || a.motion.type === "ride_oneway") overlays.push("rideStart");
+  if (a.presence.type === "blink" || a.trigger.type === "periodic") overlays.push("periodic");
+  if (a.presence.type === "hidden") overlays.push("hiddenEditorOnly");
   if (a.trigger.type === "proximity") overlays.push("proximity");
   if (a.shooter) overlays.push("shooter");
   return { faces, auras, overlays };

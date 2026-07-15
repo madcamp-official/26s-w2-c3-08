@@ -8,25 +8,22 @@ import { AvatarAttrs, defaultAvatarAttrs } from "./avatar.js";
 import { BackgroundAttrs, defaultBackgroundAttrs } from "./background.js";
 import { ItemAttrs } from "./item.js";
 import { MonsterAttrs, defaultMonsterAttrs } from "./monster.js";
-import { ObstacleAttrs, defaultObstacleAttrs } from "./obstacle.js";
-import { PlatformAttrs, defaultPlatformAttrs } from "./platform.js";
+import { BlockAttrs, defaultBlockAttrs } from "./block.js";
 
 export * from "./presets.js";
-export * from "./platform.js";
-export * from "./obstacle.js";
+export * from "./block.js";
 export * from "./monster.js";
 export * from "./background.js";
 export * from "./avatar.js";
 export * from "./item.js";
 
 /** Asset.category 허용 값 (schema.prisma 주석과 동일) */
-export const CATEGORIES = ["avatar", "platform", "obstacle", "monster", "background", "item"] as const;
+export const CATEGORIES = ["avatar", "block", "monster", "background", "item"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 export const attrsSchemaByCategory = {
   avatar: AvatarAttrs,
-  platform: PlatformAttrs,
-  obstacle: ObstacleAttrs,
+  block: BlockAttrs,          // platform+obstacle 통합 (2026-07-14)
   monster: MonsterAttrs,
   background: BackgroundAttrs,
   item: ItemAttrs, // 시스템 전용 — 유저 제출 경로에서는 서버가 카테고리 자체를 거부해야 함
@@ -34,8 +31,7 @@ export const attrsSchemaByCategory = {
 
 export type AttrsByCategory = {
   avatar: AvatarAttrs;
-  platform: PlatformAttrs;
-  obstacle: ObstacleAttrs;
+  block: BlockAttrs;
   monster: MonsterAttrs;
   background: BackgroundAttrs;
   item: ItemAttrs;
@@ -51,8 +47,7 @@ export function parseAttrs<C extends Category>(category: C, json: unknown): Attr
 /** 스튜디오 폼 초기값 팩토리 (유저 제작 4종만 — item은 시스템 시드에서 직접 구성) */
 export const defaultAttrsByCategory = {
   avatar: defaultAvatarAttrs,
-  platform: defaultPlatformAttrs,
-  obstacle: defaultObstacleAttrs,
+  block: defaultBlockAttrs,
   monster: defaultMonsterAttrs,
   background: defaultBackgroundAttrs,
 } as const;
@@ -74,16 +69,16 @@ export function deriveColumnMirror(
     const a = attrs as BackgroundAttrs;
     return { colliderType: "none", slopeDir: null, widthCells: a.size.w, heightCells: a.size.h };
   }
-  if (category === "platform") {
-    const a = attrs as PlatformAttrs;
+  if (category === "block") {
+    const a = attrs as BlockAttrs;
     return {
-      colliderType: a.shape.type === "slope" ? "slope" : "rect",
+      colliderType: a.collision.type === "none" ? "none" : a.shape.type === "slope" ? "slope" : "rect",
       slopeDir: a.shape.type === "slope" ? a.shape.dir : null,
       widthCells: a.size.w,
       heightCells: a.size.h,
     };
   }
-  const a = attrs as ObstacleAttrs | MonsterAttrs | ItemAttrs;
+  const a = attrs as MonsterAttrs | ItemAttrs;
   const size = "size" in a ? a.size : { w: 1, h: 1 };
   return { colliderType: "rect", slopeDir: null, widthCells: size.w, heightCells: size.h };
 }
