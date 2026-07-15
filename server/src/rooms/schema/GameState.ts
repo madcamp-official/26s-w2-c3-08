@@ -45,6 +45,8 @@ export class MonsterState extends Schema {
   @type("number") windupEndsAt = 0;      // 서버 clock 기준 ms
   // 현재 선택된 행동 종류(behavior evaluate.ts actionChanged) — 클라가 전환 시점에 패턴별 사운드/연출 재생
   @type("string") currentAction = "";
+  // 재생성 유예 종료 절대시각(서버 clock, §부활유예) — 접촉 피해는 클라 로컬 판정이라 이 값으로 유예 판정
+  @type("number") graceEndsAt = 0;
 }
 
 export class BlockState extends Schema {
@@ -55,6 +57,7 @@ export class BlockState extends Schema {
   @type("boolean") active = true;        // 파괴/재생성
   @type("boolean") emptied = false;      // 물음표 소진
   @type("boolean") visibleNow = true;    // 스위치·점멸 반영 (서버 계산)
+  @type("boolean") reappearing = false;  // 재생성 유예 중(비충돌·점멸) — active=false이지만 화면엔 보여야 함
 }
 
 export class ItemState extends Schema {

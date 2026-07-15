@@ -57,6 +57,11 @@ export interface Avatar {
   wallJumpSeq: number;
 }
 
+/**
+ * 새 아바타 생성 — join/부활(respawn) 공용. 스폰 직후 무방비 상태로 죽는 것을 막기 위해
+ * invincibleLeftMs를 유예시간으로 미리 채워둔다(피격 무적과 동일 필드 재사용 — takeHit()이
+ * 이미 이 값을 검사하므로 별도 분기 불필요, 렌더도 기존 무적 점멸을 그대로 탄다).
+ */
 export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = TUNING): Avatar {
   const w = t.world.tileSize;
   return {
@@ -67,7 +72,7 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
     wallGrabMs: 0, wallClingGraceMs: 0, wallCoyoteLeftMs: 0, wallCoyoteSide: 0,
     coyoteLeftMs: 0, jumpBufferLeftMs: 0, prevJumpHeld: false,
     freezeLeftMs: 0, stunLeftMs: 0,
-    speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: 0,
+    speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: t.rules.avatarRespawnGraceMs,
     fx: new Set(),
     wallJumpSeq: 0,
   };

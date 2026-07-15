@@ -23,8 +23,74 @@ import { feedback, monsterPatternChanged } from "../../fx/dispatch.js";
 import { unlockAudio } from "../../audio/zzfx.js";
 import { setListenerPosition } from "../../audio/listener.js";
 import { playSound } from "../../audio/sfx.js";
+import { blockVisualTagsFromSpec, monsterVisualTagsFromSpec, type FaceBorders } from "shared/visual";
 
 const FIXED_MS = 1000 / TUNING.world.tickRate;
+
+/** 무적/재생성 유예 표시용 알파 점멸 (90ms 주기 토글) — 아바타·고스트·몬스터·블록 공통 */
+function flickerAlpha(nowMs: number): number {
+  return Math.floor(nowMs / 90) % 2 === 0 ? 1 : 0.35;
+}
+
+// ── 시각 언어 렌더 (visual-language.md §1 항상 표시분만 — §2 맥락 표시는 범위 밖) ──────
+const BORDER_COLOR: Record<string, number> = {
+  solidWhite: 0xffffff,
+  dashed: 0xffffff,
+  red: 0xff3b30,
+  orange: 0xff9500,
+  bumper: 0x2ec4c4,
+  trampoline: 0x34c759,
+};
+
+/** 한 면(선분)을 스타일대로 그림. "빨강" 면은 내(로컬 플레이어) 무적 중이면 주황으로(§1.1 "무적 상태의 대미지 면"). */
+function strokeFace(
+  gfx: Phaser.GameObjects.Graphics,
+  x1: number, y1: number, x2: number, y2: number,
+  style: string, iAmInvincible: boolean,
+): void {
+  if (style === "none") return;
+  const effective = style === "red" && iAmInvincible ? "orange" : style;
+  const color = BORDER_COLOR[effective];
+  if (color === undefined) return;
+  gfx.lineStyle(2, color, 0.95);
+  if (effective === "dashed") {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const segs = Math.max(2, Math.round(len / 8));
+    for (let i = 0; i < segs; i += 2) {
+      const t0 = i / segs, t1 = Math.min(1, (i + 1) / segs);
+      gfx.lineBetween(x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1);
+    }
+  } else {
+    gfx.lineBetween(x1, y1, x2, y2);
+  }
+}
+
+/** AABB(top-left+크기) 기준 4면 테두리 */
+function drawFaceBorders(
+  gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
+  faces: FaceBorders, iAmInvincible: boolean,
+): void {
+  strokeFace(gfx, left, top, left + w, top, faces.top, iAmInvincible);
+  strokeFace(gfx, left, top + h, left + w, top + h, faces.bottom, iAmInvincible);
+  strokeFace(gfx, left, top, left, top + h, faces.left, iAmInvincible);
+  strokeFace(gfx, left + w, top, left + w, top + h, faces.right, iAmInvincible);
+}
+
+/** 스위치 토글러(시스템 ON/OFF 블록) — 문서상 "빨강·파랑 반반 회전". 실제 회전 대신 시간에 따라
+ * 두 색을 교대하는 것으로 단순화(애니메이션 목적은 동일 — 항상 도는 것처럼 보이는 두드러짐). */
+function drawSwitchTogglerBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, nowMs: number): void {
+  const color = Math.floor(nowMs / 280) % 2 === 0 ? 0xff3b30 : 0x2ec4c4;
+  gfx.lineStyle(3, color, 0.9);
+  gfx.strokeRect(left, top, w, h);
+}
+
+/** 스위치 영향 블록 — 현재 스위치 상태와 자신의 발동 조건이 일치하면 진하게, 아니면 옅게 틴트 */
+function drawSwitchAffectedBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, whenOn: boolean, switchOn: boolean): void {
+  const active = whenOn === switchOn;
+  gfx.lineStyle(2, whenOn ? 0xff3b30 : 0x2ec4c4, active ? 0.85 : 0.3);
+  gfx.strokeRect(left, top, w, h);
+}
 
 interface View {
   rect: Phaser.GameObjects.Rectangle;
@@ -71,6 +137,7 @@ export class BaseworldScene extends Phaser.Scene {
   myRect!: Phaser.GameObjects.Rectangle;
   handRect!: Phaser.GameObjects.Rectangle;
   debugGfx!: Phaser.GameObjects.Graphics;
+  visualGfx!: Phaser.GameObjects.Graphics;   // 시각 언어(면별 테두리) 오버레이 — 매 프레임 다시 그림
   // serverview (§19): 주체 필터 + 옵션 1(스프라이트박스)/2(히트박스)/3(서버상태)
   svSubject: "all" | "player" | "terrain" | "monster" = "all";
   svOpts = new Set<number>();
@@ -155,6 +222,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.myRect = this.add.rectangle(0, 0, this.me.body.w, this.me.body.h, 0x4488ff).setOrigin(0.5, 1).setDepth(5);
     this.handRect = this.add.rectangle(0, 0, 14, 14, 0xffffff).setDepth(6).setVisible(false);
     this.debugGfx = this.add.graphics().setDepth(20);
+    this.visualGfx = this.add.graphics().setDepth(6);
 
     const $ = getStateCallbacks(this.room);
     // 고스트 플레이어
@@ -414,6 +482,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const effHits = this.monEffHits(id, m.hitCount);
       if (!m.alive || m.hidden || effHits >= m.hp) return;   // 로컬 확정 사망도 즉시 제외
+      if (this.room.state.serverTime < m.graceEndsAt) return;   // 재생성 유예 중엔 접촉·타격 상호작용 없음
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;   // 판정=화면과 동일한 지연 보간 위치
       // 밟기 가로 판정만 확대(일반 ×reachH, 내려찍기 ×poundReachH), 데미지 히트박스는 기본 폭. 세로 불변
@@ -479,7 +548,7 @@ export class BaseworldScene extends Phaser.Scene {
       if (!spec || !bs.active || !bs.visibleNow) return;
       const g = this.blockGhosts.get(id);   // 상호작용도 보간 위치로 (충돌과 일치)
       const bx = g ? g.x : bs.x, by = g ? g.y : bs.y;
-      const r = blockRect({ spec, x: bx, y: by, state: "active", respawnLeftMs: 0, emptied: bs.emptied, mem: {} });
+      const r = blockRect({ spec, x: bx, y: by, state: "active", respawnLeftMs: 0, graceLeftMs: 0, emptied: bs.emptied, mem: {} });
       const withinX = Math.abs(b.x - (r.x + r.w / 2)) < (b.w + r.w) / 2;
       const headAt = b.y - b.h;
       const bonkHead = withinX && prevVy < 0 && Math.abs(headAt - (r.y + r.h)) < 10;
@@ -588,6 +657,8 @@ export class BaseworldScene extends Phaser.Scene {
     // 무적=노랑 / 내려찍기·공중스핀=주황(애니메이션 없어 구별용) / 평상=파랑
     this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55
       : this.me.pound !== 0 ? 0xffcc33 : 0x4488ff;
+    // 무적(피격 직후·부활 직후 공용) 동안 점멸 — 부활 즉시 죽는 것 방지 유예를 시각으로도 표시
+    this.myRect.setAlpha(this.me.invincibleLeftMs > 0 ? flickerAlpha(this.time.now) : 1);
     // 오디오 리스너 = 로컬 플레이어 위치 (거리감쇠·좌우팬 기준점)
     setListenerPosition(b.x, b.y);
     // 고스트 플레이어
@@ -607,7 +678,8 @@ export class BaseworldScene extends Phaser.Scene {
       v.rect.setSize(p.w, p.h);
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);   // 찌부/shift 앵커 적용(내 몸과 동일)
-      v.rect.setAlpha(v.stale ? 0.35 : 1);   // 정지 = 반투명 (통과 중임을 표시)
+      // 정지 = 반투명(통과 중), 무적(피격/부활 유예)이면 점멸 — 둘 다 아니면 불투명
+      v.rect.setAlpha(v.stale ? 0.35 : p.invincible ? flickerAlpha(nowMs) : 1);
       v.label.setPosition(v.ghost.x, v.ghost.y - p.h - 4);
       // ── 사운드: 다른 플레이어 전이 감지 (PlayerState 필드만으로 재현 — listener.ts가 거리감쇠 적용) ──
       if (v.stale) return; // 백그라운드 정지 중엔 소리도 쉼(B)
@@ -652,6 +724,8 @@ export class BaseworldScene extends Phaser.Scene {
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.fillColor = m.stunned ? 0x999999 : m.windupAnim ? 0xff8888 : 0xcc66ff;
+      // 재생성 유예(무적) 동안 점멸 — 상호작용 없음을 시각으로 알림
+      v.rect.setAlpha(this.room.state.serverTime < m.graceEndsAt ? flickerAlpha(this.time.now) : 1);
       v.label.setPosition(v.ghost.x, v.ghost.y - m.h - 4);
       // ── 사운드/이펙트: MonsterState 전이 감지 (서버 emit이 클라로 직접 안 와서 상태값으로 엣지 검출) ──
       const prevFx = this.monsterFx.get(id);
@@ -681,8 +755,9 @@ export class BaseworldScene extends Phaser.Scene {
       if (r) {
         r.setVisible(it.available);
         r.setPosition(it.x, it.y);
+        // 아이템 = 노란 발광 테두리(§1.2, 항상 표시). 잡기 하이라이트는 더 두껍게 덮어씀.
         if (this.grabHighlightUntil > this.time.now) r.setStrokeStyle(3, 0xffff00);
-        else r.setStrokeStyle();
+        else r.setStrokeStyle(2, 0xffee55, 0.85);
       }
     });
     // 잡기 파츠 렌더 (내가 든 것은 로컬 핀 §30-2, 남이 든 것은 서버 추종)
@@ -718,12 +793,50 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       const r = this.blockRects.get(id);
       if (!r) return;
-      r.setVisible(bs.active && bs.visibleNow);
+      // reappearing 동안은 비충돌이지만(§상호작용은 active 게이트로 이미 배제) 화면엔 점멸로 보여준다.
+      r.setVisible((bs.active && bs.visibleNow) || bs.reappearing);
+      r.setAlpha(bs.reappearing ? flickerAlpha(this.time.now) : 1);
       const g = this.blockGhosts.get(id);   // 충돌과 동일한 보간 위치
       r.setPosition(g ? g.x : bs.x, g ? g.y : bs.y);
       r.fillColor = bs.emptied ? 0x555555 : 0x8888aa;
     });
+    this.drawVisualLanguage();
     this.renderServerview();
+  }
+
+  /**
+   * 시각 언어 오버레이(§1 항상 표시분) — deriveVisualTagsFromSpec으로 면별 테두리를 매 프레임 다시 그린다.
+   * 스펙은 TESTMAP에서 id로 조회(런타임 스폰 몬스터 등 TESTMAP 밖 엔티티는 스펙이 없어 테두리 생략).
+   */
+  private drawVisualLanguage(): void {
+    const gfx = this.visualGfx;
+    gfx.clear();
+    const iAmInvincible = this.me.invincibleLeftMs > 0;
+
+    this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
+      if (!bs.active || !bs.visibleNow) return;
+      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      if (!spec) return;
+      const g = this.blockGhosts.get(id);
+      const left = g ? g.x : bs.x, top = g ? g.y : bs.y;
+      const tags = blockVisualTagsFromSpec(spec);
+      if (tags.faces) drawFaceBorders(gfx, left, top, spec.w, spec.h, tags.faces, iAmInvincible);
+      if (tags.auras.includes("switchToggler")) drawSwitchTogglerBorder(gfx, left, top, spec.w, spec.h, this.time.now);
+      else if (tags.auras.includes("switchAffected") && spec.switchReact) {
+        drawSwitchAffectedBorder(gfx, left, top, spec.w, spec.h, spec.switchReact.whenOn, this.room.state.switchOn);
+      }
+    });
+
+    this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
+      const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;
+      if (!visible || this.room.state.serverTime < m.graceEndsAt) return;   // 재생성 유예 중엔 위험 표시 생략(점멸이 대신 알림)
+      const spec = TESTMAP.monsters.find((ms) => ms.id === id);
+      if (!spec) return;   // 콘솔 spawnmonster 등 테스트맵 밖 엔티티는 스펙이 없어 테두리 생략
+      const v = this.monsters.get(id);
+      const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
+      const tags = monsterVisualTagsFromSpec(spec);
+      if (tags.faces) drawFaceBorders(gfx, mx - m.w / 2, my - m.h, m.w, m.h, tags.faces, iAmInvincible);
+    });
   }
 
   /** serverview (§19): 옵션1 스프라이트박스 / 2 히트박스 / 3 서버수신 상태 */
@@ -767,8 +880,8 @@ export class BaseworldScene extends Phaser.Scene {
 
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
 interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number; slide: boolean; grounded: boolean; touchingWall: number; dead: boolean; wallJumpSeq: number; invincible: boolean }
-interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number; currentAction: string }
-interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean }
+interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number; currentAction: string; graceEndsAt: number }
+interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean; reappearing: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
 interface CarryNet { x: number; y: number; alive: boolean; heldBy: string }
 interface ProjNet { asset: string; x: number; y: number; vx: number; vy: number; effect: string; ownerId: string }

@@ -278,6 +278,7 @@ export abstract class PhysicsRoom extends Room {
         else if (kind === "revived") st.stunned = false;
         else if (kind === "hide") st.hidden = true;
         else if (kind === "emerge") st.hidden = false;
+        else if (kind === "respawn") st.graceEndsAt = this.clock_ + Number(data.graceMs ?? 0);   // §부활유예
         else if (kind === "actionChanged") st.currentAction = String(data.type ?? "");
       };
       stepMonster(m, target, playerList, terrain, FIXED_MS, Math.random, this.state.switchOn, emit);
@@ -330,6 +331,7 @@ export abstract class PhysicsRoom extends Room {
         }
       }
       st.active = b.state === "active";
+      st.reappearing = b.state === "reappearing";
       st.visibleNow = blockSolid(b, this.state.switchOn, this.clock_);
       st.x = b.x; st.y = b.y; st.emptied = b.emptied;
     }

@@ -21,12 +21,14 @@ export interface BlockSpec {
   seesaw?: boolean;                                     // 서버 권위 특수 (§44-1)
 }
 
-export type BlockState = "active" | "broken" | "hiddenWaiting" | "fading";
+// "reappearing" = 파괴 재생성 유예(비충돌·점멸) — 등장 직후 즉시 재파괴/재이용되는 것 방지(§부활유예).
+export type BlockState = "active" | "broken" | "reappearing" | "hiddenWaiting" | "fading";
 
 export interface BlockInstance {
   spec: BlockSpec;
   state: BlockState;
   respawnLeftMs: number;
+  graceLeftMs: number;       // "reappearing" 유예 잔여시간
   emptied: boolean;          // 물음표 소진 (빈 블록화)
   x: number; y: number;      // 이동 블록의 현재 위치 (좌상단)
   mem: Record<string, number>;
@@ -36,7 +38,7 @@ export function createBlock(spec: BlockSpec): BlockInstance {
   return {
     spec,
     state: spec.visibility === "hidden" ? "hiddenWaiting" : "active",
-    respawnLeftMs: 0, emptied: false,
+    respawnLeftMs: 0, graceLeftMs: 0, emptied: false,
     x: spec.x, y: spec.y, mem: {},
   };
 }
@@ -68,11 +70,19 @@ export function tryBreak(b: BlockInstance, by: "headbutt" | "pound" | "shell" | 
   return true;
 }
 
-/** 매 틱 재생성 타이머 (§45) */
-export function stepBlockRespawn(b: BlockInstance, dtMs: number): boolean {
+/**
+ * 매 틱 재생성 타이머 (§45). broken → reappearing(비충돌·점멸 유예) → active.
+ * 반환값 true = 이 틱에 완전히 active로 복귀(재생성 완료 사운드/이펙트 트리거용).
+ */
+export function stepBlockRespawn(b: BlockInstance, dtMs: number, t: Tuning = TUNING): boolean {
   if (b.state === "broken") {
     b.respawnLeftMs -= dtMs;
-    if (b.respawnLeftMs <= 0) { b.state = "active"; return true; }
+    if (b.respawnLeftMs <= 0) { b.state = "reappearing"; b.graceLeftMs = t.rules.blockReappearMs; }
+    return false;
+  }
+  if (b.state === "reappearing") {
+    b.graceLeftMs -= dtMs;
+    if (b.graceLeftMs <= 0) { b.state = "active"; return true; }
   }
   return false;
 }

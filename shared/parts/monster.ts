@@ -101,7 +101,10 @@ export function stepMonster(
     if (m.respawnLeftMs <= 0) {
       m.alive = true; m.hits.clear(); m.body.x = m.spec.x; m.body.y = m.spec.y;
       m.body.vx = 0; m.body.vy = 0; m.mem = {};
-      emit("respawn", { id: m.spec.id });
+      // 재생성 유예(§iframe 재사용): 등장 즉시 타격/접촉 피해 없음 — registerHit이 이미 검사.
+      // 접촉 피해는 클라 로컬 판정이라 emit("respawn")으로 서버가 graceEndsAt을 실어 클라에 알린다.
+      m.iframeLeftMs = t.monster.respawnGraceMs;
+      emit("respawn", { id: m.spec.id, graceMs: t.monster.respawnGraceMs });
     }
     return;
   }
