@@ -174,10 +174,11 @@ export class BaseworldScene extends Phaser.Scene {
     $(this.room.state).projectiles.onAdd((pr: ProjNet, id: string) => {
       this.projectiles.set(id, this.add.rectangle(pr.x, pr.y, TUNING.sizes.projectile, TUNING.sizes.projectile, 0xffaa33).setOrigin(0.5, 1).setDepth(4));
     });
-    $(this.room.state).projectiles.onRemove((_pr: ProjNet, id: string) => {
+    $(this.room.state).projectiles.onRemove((pr: ProjNet, id: string) => {
       this.projectiles.get(id)?.destroy();
       this.projectiles.delete(id);
       this.projGhosts.delete(id);
+      feedback.projectileHit(this, pr.x, pr.y);
     });
     // 아이템
     $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
@@ -190,6 +191,7 @@ export class BaseworldScene extends Phaser.Scene {
     // 잡기 거부 (서버 소유권 패배 §30-4) — 손에서 사라짐, 이전 행동 원복 없음
     this.room.onMessage("grabDenied", (m: { objId: string }) => {
       if (this.carry.heldId === m.objId) this.carry.heldId = null;
+      feedback.grabDenied(this, this.me.body.x, this.me.body.y);
     });
     // 블록
     $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
@@ -525,14 +527,15 @@ export class BaseworldScene extends Phaser.Scene {
       carryables.push({ id, body: cb, grabbable: true, heldBy: c.heldBy || null });
     });
     const ev = stepCarry(this.carry, this.me, input, carryables);
-    if (ev.kind === "grabMiss") this.grabHighlightUntil = now + 800;
-    else if (ev.kind === "grab" && ev.id) this.room.send("grabObj", { objId: ev.id });
+    if (ev.kind === "grabMiss") { this.grabHighlightUntil = now + 800; feedback.grabDenied(this, b.x, b.y); }
+    else if (ev.kind === "grab" && ev.id) { this.room.send("grabObj", { objId: ev.id }); feedback.grab(this, b.x, b.y); }
     else if (ev.kind === "throw" && ev.id) {
       this.room.send("throwObj", {
         objId: ev.id,
         x: b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset), y: b.y - b.h * 0.5,
         vx: ev.vx ?? 0, vy: ev.vy ?? 0,
       });
+      playSound("throw", { x: b.x, y: b.y });
     }
 
     // ── 압사 (§35-L) ──
@@ -686,6 +689,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.carryables.forEach((c: CarryNet, id: string) => {
       const r = this.carryRects.get(id);
       if (!r) return;
+      if (!r.visible && c.alive) feedback.objectRespawn(this, c.x, c.y);   // 재생성 전이 감지(§45)
       r.setVisible(c.alive);
       if (!c.alive) { this.carryGhosts.delete(id); return; }   // 재생성 시 순간이동 방지(다시 생성)
       if (this.carry.heldId === id) {

@@ -8,7 +8,11 @@ import { SOUNDS, EFFECTS, type SoundName, type EffectName } from "shared/effects
 import { playSound } from "../audio/sfx.js";
 import { unlockAudio } from "../audio/zzfx.js";
 import { playEffect } from "../fx/effects.js";
-import { getAudioSettings, setSfxVolume, setMuted, toggleMuted } from "../audio/settings.js";
+import { getAudioSettings, setSfxVolume, setBgmVolume, setMuted, toggleMuted } from "../audio/settings.js";
+import {
+  playBgm, queueBgm, stopBgm, currentBgmName, BGM_NAMES, type BgmName,
+  playJingle, JINGLE_NAMES, type JingleName,
+} from "../audio/bgm/index.js";
 
 // 백엔드 HTTP 베이스 URL — Colyseus WS와 같은 호스트/포트(2567)에서 API가 돈다.
 // connect.ts의 SERVER_URL(ws://...)을 http로 치환하거나 VITE_SERVER_URL을 직접 사용.
@@ -87,6 +91,7 @@ export const COMMANDS: Record<string, Command> = {
     run: async (args, ctx) => {
       const room = await joinBaseworld(args[0]);
       startGame(room);
+      playBgm("race"); // 인게임 BGM (임시 배선 — 페이즈 관리 붙으면 페이즈별 곡으로)
       ctx.print(`접속: ${room.roomId} (${room.sessionId})`);
       ctx.print("조작: ←→/AD 이동 · Space 점프 · ↓ 웅크리기/내려찍기 · Shift 달리기 · K 잡기");
     },
@@ -94,7 +99,7 @@ export const COMMANDS: Record<string, Command> = {
   leave: {
     usage: "leave",
     desc: "나가기",
-    run: async (_a, ctx) => { stopGame(); await leaveBaseworld(); ctx.print("나갔습니다."); },
+    run: async (_a, ctx) => { stopGame(); stopBgm(); await leaveBaseworld(); ctx.print("나갔습니다."); },
   },
   players: {
     usage: "players",
@@ -311,6 +316,60 @@ export const COMMANDS: Record<string, Command> = {
       if (!Number.isFinite(x) || !Number.isFinite(y)) { ctx.print("사용법: playeffect <이름> [x] [y]"); return; }
       playEffect(sc, name as EffectName, x, y);
       ctx.print(`재생: ${name} @ (${Math.round(x)}, ${Math.round(y)})`);
+    },
+  },
+  playbgm: {
+    usage: "playbgm <이름|list|stop|next 이름>",
+    desc: "BGM 재생/전환/정지 (next = 15초 경계 이음새 전환 테스트)",
+    run: (args, ctx) => {
+      unlockAudio();
+      const a0 = args[0];
+      if (!a0 || a0 === "list") {
+        ctx.print(`BGM ${BGM_NAMES.length}개: ${BGM_NAMES.join(", ")}`);
+        ctx.print(`재생 중: ${currentBgmName() ?? "없음"}`);
+        return;
+      }
+      if (a0 === "stop") { stopBgm(); ctx.print("BGM 정지"); return; }
+      if (a0 === "next") {
+        const name = args[1];
+        if (!name || !(BGM_NAMES as readonly string[]).includes(name)) { ctx.print("사용법: playbgm next <이름> (playbgm list)"); return; }
+        queueBgm(name as BgmName);
+        ctx.print(`다음 세그먼트 경계에서 전환 예약: ${name}`);
+        return;
+      }
+      if (!(BGM_NAMES as readonly string[]).includes(a0)) { ctx.print(`알 수 없는 BGM: ${a0} (playbgm list)`); return; }
+      playBgm(a0 as BgmName);
+      ctx.print(`재생: ${a0}`);
+    },
+  },
+  playjingle: {
+    usage: "playjingle <이름|list>",
+    desc: "징글(짧은 멜로디 신호음) 단독 재생",
+    run: (args, ctx) => {
+      unlockAudio();
+      const name = args[0];
+      if (!name || name === "list") {
+        ctx.print(`징글 ${JINGLE_NAMES.length}개: ${JINGLE_NAMES.join(", ")}`);
+        return;
+      }
+      if (!(JINGLE_NAMES as readonly string[]).includes(name)) { ctx.print(`알 수 없는 징글: ${name} (playjingle list)`); return; }
+      playJingle(name as JingleName);
+      ctx.print(`재생: ${name}`);
+    },
+  },
+  bgmvolume: {
+    usage: "bgmvolume [0-100]",
+    desc: "BGM 볼륨 조회/설정 (localStorage 저장)",
+    run: (args, ctx) => {
+      if (args.length === 0) {
+        const s = getAudioSettings();
+        ctx.print(`BGM 볼륨 ${Math.round(s.bgmVolume * 100)}% · ${s.muted ? "뮤트 중" : "뮤트 아님"}`);
+        return;
+      }
+      const pct = Number(args[0]);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) { ctx.print("사용법: bgmvolume <0~100>"); return; }
+      setBgmVolume(pct / 100);
+      ctx.print(`BGM 볼륨 → ${pct}%`);
     },
   },
   volume: {

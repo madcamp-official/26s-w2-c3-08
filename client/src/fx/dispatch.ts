@@ -89,4 +89,12 @@ export const feedback = {
   monsterEmerge: (s: Phaser.Scene, x: number, y: number) => { playSound("emerge", { x, y }); playEffect(s, "spawnSparkle", x, y); },
   /** 몬스터 재생성(라인 이탈 사망 후 부활) */
   monsterRespawn: (s: Phaser.Scene, x: number, y: number) => { playSound("revive", { x, y }); playEffect(s, "spawnSparkle", x, y); },
+  /** 잡기(§30): 집기 성공 */
+  grab: (_s: Phaser.Scene, x: number, y: number) => playSound("grab", { x, y }),
+  /** 잡기: 허공 잡기 또는 서버 소유권 패배(거부) — 둘 다 "실패" 의미라 같은 소리 재사용 */
+  grabDenied: (_s: Phaser.Scene, x: number, y: number) => playSound("grabDenied", { x, y }),
+  /** 발사체(몬스터 발사·던진 물체 포함)가 벽/바닥에 맞아 소멸 */
+  projectileHit: (s: Phaser.Scene, x: number, y: number) => { playSound("projectileHit", { x, y }); playEffect(s, "dust", x, y); },
+  /** 잡기 파츠 원위치 재생성 */
+  objectRespawn: (s: Phaser.Scene, x: number, y: number) => { playSound("objectRespawn", { x, y }); playEffect(s, "spawnSparkle", x, y); },
 };

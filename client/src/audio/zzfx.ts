@@ -4,13 +4,15 @@
 // 브라우저는 사용자 제스처 전엔 오디오를 막으므로, 첫 클릭/키에서 unlockAudio()를 한 번 호출할 것.
 import { effectiveVolume } from "./settings.js";
 
-const SR = 44100;
+export const SR = 44100;
 
 let ctx: AudioContext | null = null;
-function audio(): AudioContext {
+/** 공용 AudioContext — SFX·BGM이 같은 컨텍스트를 써야 unlock·시계가 일치한다 */
+export function audioContext(): AudioContext {
   if (!ctx) ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
   return ctx;
 }
+const audio = audioContext;
 /** 첫 사용자 제스처에서 호출 — 자동재생 정책 해제 */
 export function unlockAudio(): void {
   const c = audio();

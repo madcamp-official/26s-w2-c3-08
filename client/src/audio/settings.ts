@@ -4,11 +4,12 @@
 
 export interface AudioSettings {
   sfxVolume: number; // 0~1
-  muted: boolean;
+  bgmVolume: number; // 0~1
+  muted: boolean;    // 전체 뮤트 (SFX·BGM 공통)
 }
 
 const STORAGE_KEY = "audioSettings";
-const DEFAULTS: AudioSettings = { sfxVolume: 1, muted: false };
+const DEFAULTS: AudioSettings = { sfxVolume: 1, bgmVolume: 0.8, muted: false };
 
 let current: AudioSettings = load();
 
@@ -19,6 +20,7 @@ function load(): AudioSettings {
     const parsed = JSON.parse(raw) as Partial<AudioSettings>;
     return {
       sfxVolume: clamp01(typeof parsed.sfxVolume === "number" ? parsed.sfxVolume : DEFAULTS.sfxVolume),
+      bgmVolume: clamp01(typeof parsed.bgmVolume === "number" ? parsed.bgmVolume : DEFAULTS.bgmVolume),
       muted: typeof parsed.muted === "boolean" ? parsed.muted : DEFAULTS.muted,
     };
   } catch {
@@ -60,6 +62,12 @@ export function setSfxVolume(v: number): void {
   notify();
 }
 
+export function setBgmVolume(v: number): void {
+  current = { ...current, bgmVolume: clamp01(v) };
+  save();
+  notify();
+}
+
 export function setMuted(m: boolean): void {
   current = { ...current, muted: m };
   save();
@@ -74,4 +82,9 @@ export function toggleMuted(): boolean {
 /** 오디오 엔진이 재생 직전에 호출 — 뮤트면 0, 아니면 sfxVolume 배율 */
 export function effectiveVolume(): number {
   return current.muted ? 0 : current.sfxVolume;
+}
+
+/** BGM 게인 노드가 반영할 배율 — 뮤트면 0 */
+export function effectiveBgmVolume(): number {
+  return current.muted ? 0 : current.bgmVolume;
 }
