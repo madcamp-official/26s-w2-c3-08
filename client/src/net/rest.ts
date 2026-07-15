@@ -35,3 +35,11 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
 };
+
+/** 임의 토큰으로 GET /api/me 검증 — 계정 연동(설정에서 다른 토큰 입력) 전용, 현재 세션 토큰과 무관 */
+export async function verifyToken<T>(token: string): Promise<T> {
+  const res = await fetch(`${HTTP_BASE}/api/me`, { headers: { "x-user-token": token } });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, json?.error ?? `HTTP ${res.status}`);
+  return json as T;
+}

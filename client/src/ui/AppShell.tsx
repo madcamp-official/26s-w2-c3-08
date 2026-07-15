@@ -24,17 +24,19 @@ export function AppShell() {
   useEffect(() => {
     // zustand persist는 localStorage 복원이 비동기다 — 복원 완료 전에 token을 읽으면 항상 null이라
     // 재방문 시에도 매번 로그인 화면이 뜨고 새 계정이 생기는 버그가 있었다. 복원 완료를 기다린다.
+    // 토큰이 있어도 메인으로 스킵하지 않음 — 로그인 화면은 항상 거치되, 검증된 닉네임을
+    // 미리 채워 보여준다(LoginScreen이 세션 유무로 "새로 시작하기"/"시작하기"를 분기).
     const checkSession = async () => {
       const currentToken = useSessionStore.getState().token;
-      if (!currentToken) { setScreen("login"); return; }
-      try {
-        const me = await api.get<MeResponse>("/api/me");
-        setSession(me);
-        setScreen("main");
-      } catch {
-        useSessionStore.getState().clear();
-        setScreen("login");
+      if (currentToken) {
+        try {
+          const me = await api.get<MeResponse>("/api/me");
+          setSession(me);
+        } catch {
+          useSessionStore.getState().clear();
+        }
       }
+      setScreen("login");
     };
     if (useSessionStore.persist.hasHydrated()) {
       void checkSession();
