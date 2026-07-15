@@ -173,58 +173,57 @@ model MapLinePlacement {
 }
 
 // =============================================================================
-// 미확정 모델 (참고용 — 주석 처리, 마이그레이션 대상 아님)
+// 게임 진행 모델 (2026-07-14 활성화 — Room/RoomMember/RaceResult)
 // =============================================================================
-// (구 Line/Placement 초안은 위 MapLine/MapLinePlacement로 대체됨 — 2026-07-14)
+// (구 Line/Placement 초안은 위 MapLine/MapLinePlacement로 대체됨)
 
-// ⚠️ Room 미확정 — 방 상세(난입 규칙, 페이즈 구조, 시간 조정 투표 등) 논의 대기.
-// 레이스 중 실시간 상태는 Colyseus Room 메모리가 원본, 이 테이블은 로비 목록 + 영구 기록만 담당.
-// status: lobby → building → validating → playing → finished
-//
-// model Room {
-//   id             BigInt    @id @default(autoincrement())
-//   code           String    @unique                          // 초대 코드
-//   name           String?                                    // 미지정 시 "OO님의 방"
-//   hostId         BigInt                                     // 방장 유저 id
-//   isPublic       Boolean   @default(true)
-//   passwordHash   String?                                    // 비공개방 비밀번호 해시
-//   maxPlayers     Int
-//   status         String    @default("lobby")
-//   phaseStartedAt DateTime?                                  // 로비 카드 진행 경과 계산용
-//   createdAt      DateTime  @default(now())
-// }
+// ── Room ── 로비 목록 + 영구 기록. 실시간 상태는 Colyseus 메모리가 원본(2026-07-14 확정).
+// status: lobby → building(15s 프리뷰+3분) → racing → finished. String이라 페이즈 추가 자유.
+// hostId/userId 등은 scalar(관계 미연결) — 기록 테이블이라 가볍게.
+model Room {
+  id             BigInt   @id @default(autoincrement())
+  code           String   @unique                            // 초대 코드
+  name           String?                                     // 미지정 시 "OO님의 방"
+  hostId         BigInt                                       // 방장 User id
+  isPublic       Boolean  @default(true)
+  passwordHash   String?                                      // 비밀방 비번 해시
+  maxPlayers     Int      @db.SmallInt
+  status         String   @default("lobby")
+  lineCount      Int?     @db.SmallInt                        // 경기 시작 시 확정 — 게임시간=lineCount×40초
+  phaseStartedAt DateTime?                                    // 로비 카드 진행 경과 계산용
+  createdAt      DateTime @default(now())
 
-// ⚠️ RoomMember 미확정 — 중간 난입 허용 여부 재논의 중.
-// (허용 시 joinedMidGame 등 컬럼 추가 가능성)
-//
-// model RoomMember {
-//   roomId     BigInt
-//   userId     BigInt
-//   finalOrder Int?                                           // 랜덤 배치 순서
-//
-//   @@id([roomId, userId])
-// }
+  members RoomMember[]
+  results RaceResult[]
+}
 
-// (Line/Placement → MapLine/MapLinePlacement로 활성화됨. 위 활성 모델 참조.)
+// ── RoomMember ──
+model RoomMember {
+  roomId     BigInt
+  room       Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     BigInt
+  finalOrder Int?    @db.SmallInt                             // 라인 병합 순서
+  canBuild   Boolean @default(true)                           // 난입 시 남은 제작시간<1분이면 false
+  lineId     BigInt?                                          // → MapLine (scalar 링크)
 
-// ⚠️ RaceResult 미확정 — 결과 화면(F)·순위 규칙 확정 대기.
-//
-// model RaceResult {
-//   roomId   BigInt
-//   userId   BigInt
-//   finishMs Int?                                             // 완주 시간(ms), 미완주 시 NULL
-//   finalX   Int?                                             // 미완주 시 도달 거리 (거리순 순위용)
-//   rank     Int
-//
-//   @@id([roomId, userId])
-// }
+  @@id([roomId, userId])
+}
+
+// ── RaceResult ── 결과 화면(F)·순위 기록
+model RaceResult {
+  roomId   BigInt
+  room     Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId   BigInt
+  finishMs Int?                                               // 완주 ms, 미완=NULL
+  finalX   Int?                                               // 미완 시 도달 거리(거리순 순위)
+  rank     Int  @db.SmallInt                                  // 1/2/3 = 금은동
+
+  @@id([roomId, userId])
+}
 
 // =============================================================================
 // 다음 확정 대기 항목
 // =============================================================================
-// - 방 상세 규칙 (난입 규칙, 페이즈 구조, 시간 조정 투표 등)
-// - 중간 난입 허용 여부
-// - 결과·순위 규칙
 // - 커스텀 스킬 관계 연결 (User.equippedSkillId → Asset)
-// - MapLine 마이그레이션 (모델 추가 완료, VM 반영은 VPN 시 — 2026-07-14)
+// - 마이그레이션: MapLine·Room·RoomMember·RaceResult 모델 추가 완료, VM 반영은 VPN 시 (2026-07-14)
 // =============================================================================
