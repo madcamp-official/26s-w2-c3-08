@@ -19,7 +19,7 @@
 - **즉사 없음**: HP 1(아이템으로 2). instakill 옵션·물성 제거됨.
 - **스위치**: 옵션(`block.togglesSwitch`) — 시스템 블록 아님. 라인당 boolean 1개·OFF 시작·서버권위·전역(짝짓기 없음).
 - **공용 풀**: `shared/pool/` — 방 시작 1회 랜덤·방 전체 동일·중복 없음·소스=전 유저 에셋+시스템(비공개 미지원, isPublic 기본 true 유지). 개수 block30/monster10/item5·배경 무제한. 보장규칙(스위치 에셋 최소1) = `GUARANTEED_POOL_RULES`.
-- **내 에셋 3종**(배치 무제한, 종류 3). 공용 지정 시 내 창고 반투명·카운트 제외.
+- **내 에셋 3종**(배치 무제한, 종류 3). ~~공용 지정 시 내 창고 반투명·카운트 제외~~ **(2026-07-16 취소)** — 공용 지정돼도 "내가 만든" 탭에서 비활성화하지 않음. 대신 **라벨로 표시**(예: "공용 지정됨" 뱃지). 카운트 제외 여부는 별도 확인 필요.
 - **시각 언어**: `docs/KJH/visual-language.md` + `shared/visual/deriveVisualTags.ts` (면별 테두리·오라·오버레이 파생. 렌더 적용은 미구현).
 - **조립기**: `shared/build/buildRuntimePart.ts` — attrs→BlockSpec/MonsterSpec (testmap 수작업의 다리). `TODO(builder)` 주석 = 밑단 행동 미구현 지점.
 - **배치**: 1타일 스냅 · `flipX`만(상하/회전 없음) · patrol/ride 끝점 핸들(endX/Y).
