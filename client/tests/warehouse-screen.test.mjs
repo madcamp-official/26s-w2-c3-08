@@ -85,6 +85,7 @@ for (const copy of [
   '재생성',
   '그림·속성 수정하기',
   '다시 시도',
+  '다시 로그인',
   '생성이 끝난 뒤 사용할 수 있어요.',
   '대기 중 · 예상 2~4분',
   '생성 중 · 남은 시간 약 3분',
@@ -119,6 +120,7 @@ assert.match(screenSource, /role="img"/)
 
 for (const callback of [
   'onGoMain',
+  'onGoLogin',
   'onChangeTab',
   'onChangeFilter',
   'onOpenAsset',

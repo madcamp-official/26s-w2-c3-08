@@ -5,6 +5,31 @@ import { basename, join } from 'node:path'
 
 type ImageStorageMode = 'inline' | 'local' | 'http-put'
 
+type AiTraceStage = 'qwen' | 'wan' | 'gateway' | 'storage'
+
+interface AiTraceStep {
+  stage: AiTraceStage
+  status: 'success' | 'failed'
+  code?: string
+  message?: string
+  responseSummary?: string
+  response?: unknown
+}
+
+interface FailedJobResult {
+  status: 'failed'
+  errorCode: string
+  errorMessage: string
+  aiTrace: AiTraceStep[]
+}
+
+interface ReadyJobResult {
+  status: 'ready'
+  sheetUrl: string
+  sourceImageUrl?: string
+  aiTrace?: AiTraceStep[]
+}
+
 interface WorkerJob {
   id: string
   userId: string | null
@@ -140,6 +165,11 @@ async function runJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher = f
     return {
       status: 'ready',
       sheetUrl: createSimulatedSheetUrl(job),
+      aiTrace: [
+        createAiTraceStep('gateway', 'success', {
+          message: 'GPU_WORKER_SIMULATE=true; generated a deterministic local sheet URL.',
+        }),
+      ],
     }
   }
 
@@ -152,19 +182,19 @@ async function runJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher = f
 
 async function executeWanPipelineJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
   if (!config.qwenBaseUrl || !config.qwenApiToken) {
-    return {
-      status: 'failed',
-      errorCode: 'QWEN_NOT_CONFIGURED',
-      errorMessage: 'QWEN_BASE_URL and QWEN_API_TOKEN are required unless GPU_WORKER_SIMULATE=true.',
-    }
+    return createStageFailure(
+      'qwen',
+      'QWEN_NOT_CONFIGURED',
+      'QWEN_BASE_URL and QWEN_API_TOKEN are required unless GPU_WORKER_SIMULATE=true.',
+    )
   }
 
   if (!config.wanBaseUrl || !config.wanApiToken) {
-    return {
-      status: 'failed',
-      errorCode: 'WAN_NOT_CONFIGURED',
-      errorMessage: 'WAN_API_BASE_URL and WAN_API_TOKEN are required unless GPU_WORKER_SIMULATE=true.',
-    }
+    return createStageFailure(
+      'wan',
+      'WAN_NOT_CONFIGURED',
+      'WAN_API_BASE_URL and WAN_API_TOKEN are required unless GPU_WORKER_SIMULATE=true.',
+    )
   }
 
   const qwenResult = await requestQwenPromptRefinement(job, config, fetcher)
@@ -173,16 +203,21 @@ async function executeWanPipelineJob(job: WorkerJob, config: WorkerConfig, fetch
     return qwenResult
   }
 
-  return requestWanSpriteGeneration(job, qwenResult, config, fetcher)
+  const wanResult = await requestWanSpriteGeneration(job, qwenResult, config, fetcher)
+
+  return {
+    ...wanResult,
+    aiTrace: [...qwenResult.aiTrace, ...(wanResult.aiTrace ?? [])],
+  }
 }
 
 async function executeGatewayJob(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
   if (!config.gatewayUrl) {
-    return {
-      status: 'failed',
-      errorCode: 'GENERATION_GATEWAY_URL_MISSING',
-      errorMessage: 'GENERATION_GATEWAY_URL is required when GPU_WORKER_GENERATION_MODE=gateway.',
-    }
+    return createStageFailure(
+      'gateway',
+      'GENERATION_GATEWAY_URL_MISSING',
+      'GENERATION_GATEWAY_URL is required when GPU_WORKER_GENERATION_MODE=gateway.',
+    )
   }
 
   const responseResult = await postWithTimeout(fetcher, `${trimTrailingSlash(config.gatewayUrl)}${ensureLeadingSlash(config.gatewayGeneratePath)}`, {
@@ -212,7 +247,7 @@ async function executeGatewayJob(job: WorkerJob, config: WorkerConfig, fetcher: 
   }, config.gatewayTimeoutMs, 'GENERATION_GATEWAY', 'generation gateway')
 
   if (!responseResult.ok) {
-    return responseResult.failure
+    return withTrace(responseResult.failure, 'gateway')
   }
 
   const { response } = responseResult
@@ -223,10 +258,15 @@ async function executeGatewayJob(job: WorkerJob, config: WorkerConfig, fetcher: 
     return createFailedJobResult(
       `GENERATION_GATEWAY_HTTP_${response.status}`,
       readErrorMessage(body) ?? `Generation gateway request failed with ${response.status}.`,
+      [createAiTraceStep('gateway', 'failed', {
+        code: `GENERATION_GATEWAY_HTTP_${response.status}`,
+        message: readErrorMessage(body) ?? `Generation gateway request failed with ${response.status}.`,
+        response: body,
+      })],
     )
   }
 
-  return normalizeGenerationResponse(response, 'GENERATION_GATEWAY', 'Generation gateway')
+  return normalizeGenerationResponse(response, 'GENERATION_GATEWAY', 'Generation gateway', 'gateway')
 }
 
 interface QwenPipelineResult {
@@ -234,6 +274,7 @@ interface QwenPipelineResult {
   wanPrompt: string
   wanNegativePrompt: string
   background: string
+  aiTrace: AiTraceStep[]
 }
 
 async function requestQwenPromptRefinement(job: WorkerJob, config: WorkerConfig, fetcher: Fetcher) {
@@ -271,16 +312,20 @@ async function requestQwenPromptRefinement(job: WorkerJob, config: WorkerConfig,
   }, config.qwenTimeoutMs, 'QWEN', 'Qwen prompt refinement')
 
   if (!responseResult.ok) {
-    return responseResult.failure
+    return withTrace(responseResult.failure, 'qwen')
   }
 
   const { response } = responseResult
   const body = await readJsonSafely(response)
 
   if (!response.ok) {
+    const code = readNestedErrorCode(body) ?? `QWEN_HTTP_${response.status}`
+    const message = readErrorMessage(body) ?? `Qwen prompt refinement failed with ${response.status}.`
+
     return createFailedJobResult(
-      readNestedErrorCode(body) ?? `QWEN_HTTP_${response.status}`,
-      readErrorMessage(body) ?? `Qwen prompt refinement failed with ${response.status}.`,
+      code,
+      message,
+      [createAiTraceStep('qwen', 'failed', { code, message, response: body })],
     )
   }
 
@@ -320,21 +365,24 @@ async function requestWanSpriteGeneration(
   }, config.wanTimeoutMs, 'WAN', 'WAN sprite generation')
 
   if (!responseResult.ok) {
-    return responseResult.failure
+    return withTrace(responseResult.failure, 'wan')
   }
 
   const { response } = responseResult
 
   if (!response.ok) {
     const body = await readJsonSafely(response)
+    const code = readNestedErrorCode(body) ?? `WAN_HTTP_${response.status}`
+    const message = readErrorMessage(body) ?? `WAN sprite generation failed with ${response.status}.`
 
     return createFailedJobResult(
-      readNestedErrorCode(body) ?? `WAN_HTTP_${response.status}`,
-      readErrorMessage(body) ?? `WAN sprite generation failed with ${response.status}.`,
+      code,
+      message,
+      [createAiTraceStep('wan', 'failed', { code, message, response: body })],
     )
   }
 
-  return normalizeGenerationResponse(response, 'WAN', 'WAN sprite generation')
+  return normalizeGenerationResponse(response, 'WAN', 'WAN sprite generation', 'wan')
 }
 
 function normalizeWorkerJob(value: unknown): WorkerJob | null {
@@ -367,25 +415,30 @@ function normalizeWorkerJob(value: unknown): WorkerJob | null {
   }
 }
 
-function normalizeQwenResponse(body: unknown, expectedRequestId: string): QwenPipelineResult | ReturnType<typeof createFailedJobResult> {
+function normalizeQwenResponse(body: unknown, expectedRequestId: string): QwenPipelineResult | FailedJobResult {
   if (!isRecord(body)) {
-    return createFailedJobResult('QWEN_MALFORMED_RESPONSE', 'Qwen response was not valid JSON.')
+    return createStageFailure('qwen', 'QWEN_MALFORMED_RESPONSE', 'Qwen response was not valid JSON.', body)
   }
 
   if (body.ok !== true) {
-    return createFailedJobResult('QWEN_NOT_OK', 'Qwen response did not report ok=true.')
+    return createStageFailure('qwen', 'QWEN_NOT_OK', 'Qwen response did not report ok=true.', body)
   }
 
   const requestId = readString(body.request_id) ?? readString(body.requestId)
 
   if (requestId !== expectedRequestId) {
-    return createFailedJobResult('QWEN_REQUEST_ID_MISMATCH', 'Qwen response request_id did not match the worker job id.')
+    return createStageFailure(
+      'qwen',
+      'QWEN_REQUEST_ID_MISMATCH',
+      'Qwen response request_id did not match the worker job id.',
+      body,
+    )
   }
 
   const wanPrompt = readString(body.wan_prompt) ?? readString(body.wanPrompt)
 
   if (!wanPrompt) {
-    return createFailedJobResult('QWEN_MISSING_WAN_PROMPT', 'Qwen response did not include wan_prompt.')
+    return createStageFailure('qwen', 'QWEN_MISSING_WAN_PROMPT', 'Qwen response did not include wan_prompt.', body)
   }
 
   return {
@@ -393,10 +446,21 @@ function normalizeQwenResponse(body: unknown, expectedRequestId: string): QwenPi
     wanPrompt,
     wanNegativePrompt: readString(body.wan_negative_prompt) ?? readString(body.wanNegativePrompt) ?? '',
     background: readSpriteBackground(body) ?? 'transparent',
+    aiTrace: [
+      createAiTraceStep('qwen', 'success', {
+        message: 'Qwen prompt refinement completed.',
+        response: body,
+      }),
+    ],
   }
 }
 
-async function normalizeGenerationResponse(response: Response, errorPrefix: string, label: string) {
+async function normalizeGenerationResponse(
+  response: Response,
+  errorPrefix: string,
+  label: string,
+  stage: AiTraceStage,
+): Promise<ReadyJobResult | FailedJobResult> {
   const contentType = response.headers.get('content-type') ?? ''
 
   if (contentType.startsWith('image/')) {
@@ -405,19 +469,29 @@ async function normalizeGenerationResponse(response: Response, errorPrefix: stri
     return {
       status: 'ready' as const,
       sheetUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
+      aiTrace: [
+        createAiTraceStep(stage, 'success', {
+          message: `${label} returned an image response.`,
+          response: { contentType, bytes: buffer.byteLength },
+        }),
+      ],
     }
   }
 
   const body = await readJsonSafely(response)
 
   if (!isRecord(body)) {
-    return createFailedJobResult(`${errorPrefix}_MALFORMED_RESPONSE`, `${label} response was not valid JSON.`)
+    return createStageFailure(stage, `${errorPrefix}_MALFORMED_RESPONSE`, `${label} response was not valid JSON.`, body)
   }
 
   if (body.status === 'failed') {
+    const code = readString(body.errorCode) ?? readString(body.error_code) ?? `${errorPrefix}_JOB_FAILED`
+    const message = readString(body.errorMessage) ?? readString(body.error_message) ?? `${label} reported a failed job.`
+
     return createFailedJobResult(
-      readString(body.errorCode) ?? readString(body.error_code) ?? `${errorPrefix}_JOB_FAILED`,
-      readString(body.errorMessage) ?? readString(body.error_message) ?? `${label} reported a failed job.`,
+      code,
+      message,
+      [createAiTraceStep(stage, 'failed', { code, message, response: body })],
     )
   }
 
@@ -428,13 +502,19 @@ async function normalizeGenerationResponse(response: Response, errorPrefix: stri
     readString(body.image_url)
 
   if (!sheetUrl) {
-    return createFailedJobResult(`${errorPrefix}_MISSING_SHEET`, `${label} did not return a sprite sheet.`)
+    return createStageFailure(stage, `${errorPrefix}_MISSING_SHEET`, `${label} did not return a sprite sheet.`, body)
   }
 
   return {
     status: 'ready' as const,
     sheetUrl,
     sourceImageUrl: readString(body.sourceImageUrl) ?? readString(body.source_image_url) ?? undefined,
+    aiTrace: [
+      createAiTraceStep(stage, 'success', {
+        message: `${label} returned a sprite sheet.`,
+        response: body,
+      }),
+    ],
   }
 }
 
@@ -445,7 +525,7 @@ async function postWithTimeout(
   timeoutMs: number,
   errorPrefix: string,
   label: string,
-): Promise<{ ok: true; response: Response } | { ok: false; failure: ReturnType<typeof createFailedJobResult> }> {
+): Promise<{ ok: true; response: Response } | { ok: false; failure: FailedJobResult }> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -477,17 +557,121 @@ async function readJsonSafely(response: Response): Promise<unknown> {
   }
 }
 
-function createFailedJobResult(errorCode: string, errorMessage: string) {
+function createFailedJobResult(
+  errorCode: string,
+  errorMessage: string,
+  aiTrace: AiTraceStep[] = [],
+): FailedJobResult {
   return {
     status: 'failed' as const,
     errorCode,
     errorMessage,
+    aiTrace,
   }
+}
+
+function createStageFailure(
+  stage: AiTraceStage,
+  errorCode: string,
+  errorMessage: string,
+  response?: unknown,
+): FailedJobResult {
+  return createFailedJobResult(
+    errorCode,
+    errorMessage,
+    [createAiTraceStep(stage, 'failed', { code: errorCode, message: errorMessage, response })],
+  )
+}
+
+function withTrace(result: FailedJobResult, stage: AiTraceStage): FailedJobResult {
+  if (result.aiTrace.length > 0) {
+    return result
+  }
+
+  return {
+    ...result,
+    aiTrace: [
+      createAiTraceStep(stage, 'failed', {
+        code: result.errorCode,
+        message: result.errorMessage,
+      }),
+    ],
+  }
+}
+
+function appendTrace(result: FailedJobResult, previousTrace: AiTraceStep[] | undefined): FailedJobResult {
+  return {
+    ...result,
+    aiTrace: [...(previousTrace ?? []), ...result.aiTrace],
+  }
+}
+
+function createAiTraceStep(
+  stage: AiTraceStage,
+  status: AiTraceStep['status'],
+  details: {
+    code?: string
+    message?: string
+    response?: unknown
+  } = {},
+): AiTraceStep {
+  return {
+    stage,
+    status,
+    code: details.code,
+    message: details.message,
+    responseSummary: summarizeAiTraceResponse(details.response),
+    response: sanitizeAiTraceResponse(details.response),
+  }
+}
+
+function summarizeAiTraceResponse(response: unknown) {
+  if (response === undefined) {
+    return undefined
+  }
+
+  try {
+    return JSON.stringify(sanitizeAiTraceResponse(response)).slice(0, 800)
+  } catch {
+    return undefined
+  }
+}
+
+function sanitizeAiTraceResponse(value: unknown, depth = 0): unknown {
+  if (value === undefined || value === null || typeof value === 'number' || typeof value === 'boolean') {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    if (/^data:image\//u.test(value)) {
+      return `${value.slice(0, 32)}...[image-data:${value.length}]`
+    }
+
+    return value.length > 500 ? `${value.slice(0, 500)}...[truncated:${value.length}]` : value
+  }
+
+  if (depth >= 3) {
+    return '[max-depth]'
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => sanitizeAiTraceResponse(item, depth + 1))
+  }
+
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, 40)
+        .map(([key, item]) => [key, sanitizeAiTraceResponse(item, depth + 1)]),
+    )
+  }
+
+  return String(value)
 }
 
 async function persistGeneratedImages(
   job: WorkerJob,
-  result: ReturnType<typeof createFailedJobResult> | { status: 'ready'; sheetUrl: string; sourceImageUrl?: string },
+  result: FailedJobResult | ReadyJobResult,
   config: WorkerConfig,
   fetcher: Fetcher,
 ) {
@@ -500,7 +684,10 @@ async function persistGeneratedImages(
   }
 
   if (!config.imagePublicBaseUrl) {
-    return createFailedJobResult('IMAGE_STORAGE_NOT_CONFIGURED', 'IMAGE_PUBLIC_BASE_URL is required when image storage is enabled.')
+    return appendTrace(
+      createStageFailure('storage', 'IMAGE_STORAGE_NOT_CONFIGURED', 'IMAGE_PUBLIC_BASE_URL is required when image storage is enabled.'),
+      result.aiTrace,
+    )
   }
 
   const storedSheetUrl = await persistDataUrl({
@@ -516,7 +703,10 @@ async function persistGeneratedImages(
   })
 
   if (!storedSheetUrl) {
-    return createFailedJobResult('IMAGE_STORAGE_FAILED', 'Generated image could not be stored.')
+    return appendTrace(
+      createStageFailure('storage', 'IMAGE_STORAGE_FAILED', 'Generated image could not be stored.'),
+      result.aiTrace,
+    )
   }
 
   return {
@@ -828,7 +1018,7 @@ function dataUrlToBlob(value: string) {
   const match = /^data:([^;,]+);base64,(.+)$/u.exec(value)
 
   if (!match) {
-    return createFailedJobResult('INVALID_IMAGE_DATA_URL', 'AI worker jobs require a base64 data URL source image.')
+    return createStageFailure('qwen', 'INVALID_IMAGE_DATA_URL', 'AI worker jobs require a base64 data URL source image.')
   }
 
   return {
@@ -1145,6 +1335,12 @@ async function selfTest() {
 
   assert.equal(wanResult.status, 'ready')
   assert.equal(wanResult.sheetUrl, 'http://assets.test/generated/job-wan-test-static-sheet.png')
+  assert.deepEqual(wanResult.aiTrace?.map((step) => [step.stage, step.status]), [
+    ['qwen', 'success'],
+    ['wan', 'success'],
+  ])
+  assert.match(wanResult.aiTrace?.[0]?.responseSummary ?? '', /green platform sprite/)
+  assert.match(wanResult.aiTrace?.[1]?.responseSummary ?? '', /sheet_url/)
   assert.equal(await readFile(join(storageDir, 'job-wan-test-static-sheet.png'), 'utf8'), 'png')
   assert.equal(wanCalls[0].url, 'http://qwen.test/v1/prompts/refine')
   assert.equal((wanCalls[0].init?.headers as Record<string, string>)['X-Internal-Token'], 'qwen-token')

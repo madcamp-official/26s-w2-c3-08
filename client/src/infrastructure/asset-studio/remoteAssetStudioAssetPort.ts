@@ -48,7 +48,7 @@ async function requestAssets(
   }
 
   if (!response.ok) {
-    return createFailure('server_unavailable', '서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.', true)
+    return mapHttpError(response.status, await readJsonSafely(response))
   }
 
   return normalizeAssetsResponse(response, input, session)
@@ -75,7 +75,7 @@ async function requestCreateAsset(
   }
 
   if (!response.ok) {
-    return createFailure('server_unavailable', '에셋 생성 요청을 완료하지 못했어요.', true)
+    return mapHttpError(response.status, await readJsonSafely(response))
   }
 
   let body: unknown
@@ -161,6 +161,40 @@ function createAssetBody(payload: AssetStudioSubmitPayload) {
     height_cells: payload.heightCells,
     remix_of_id: payload.remixOfId,
   }
+}
+
+async function readJsonSafely(response: Response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+function mapHttpError(status: number, body: unknown): AssetStudioResult<never> {
+  const message = readBackendErrorMessage(body)
+
+  if (status === 401 || status === 403) {
+    return createFailure('authentication', message ?? '로그인이 필요해요. 다시 로그인해주세요.', true)
+  }
+
+  if (status === 404) {
+    return createFailure('not_found', message ?? '에셋을 찾을 수 없어요.', true)
+  }
+
+  if (status >= 500) {
+    return createFailure('server_unavailable', message ?? '서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.', true)
+  }
+
+  return createFailure('validation', message ?? '에셋 생성 요청을 확인해주세요.', false)
+}
+
+function readBackendErrorMessage(body: unknown) {
+  if (!isRecord(body) || !isRecord(body.error)) {
+    return undefined
+  }
+
+  return readString(body.error.message)
 }
 
 function unwrapAssets(body: unknown): Array<Record<string, unknown>> | null {

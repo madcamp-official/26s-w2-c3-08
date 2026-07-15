@@ -330,6 +330,7 @@ export function toWarehouseScreenProps(
 
 export function createNoopWarehouseScreenCallbacks(): WarehouseScreenCallbacks {
   return {
+    onGoLogin: () => undefined,
     onGoMain: () => undefined,
     onChangeTab: () => undefined,
     onChangeFilter: () => undefined,

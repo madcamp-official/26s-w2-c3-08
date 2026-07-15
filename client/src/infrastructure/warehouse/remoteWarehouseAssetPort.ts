@@ -1,5 +1,6 @@
 import type { LoginSession } from '../../pages/login/loginControllerCore'
 import type {
+  WarehouseAiTraceStep,
   WarehouseAssetCategory,
   WarehouseReviewAction,
 } from '../../pages/warehouse/WarehouseScreen'
@@ -311,6 +312,9 @@ function normalizeAsset(
     widthCells: readNumber(asset.widthCells) ?? readNumber(asset.width_cells),
     heightCells: readNumber(asset.heightCells) ?? readNumber(asset.height_cells),
     sprites: normalizeSprites(asset.sprites, status, category),
+    errorCode: readString(asset.errorCode) ?? readString(asset.error_code) ?? null,
+    errorMessage: readString(asset.errorMessage) ?? readString(asset.error_message) ?? null,
+    aiTrace: normalizeAiTrace(asset.aiTrace) ?? normalizeAiTrace(asset.ai_trace),
   }
 }
 
@@ -339,10 +343,69 @@ function normalizeSprites(
             action,
             status,
             lastRegenAt: readString(sprite.lastRegenAt) ?? readString(sprite.last_regen_at) ?? null,
+            errorCode: readString(sprite.errorCode) ?? readString(sprite.error_code) ?? null,
+            errorMessage: readString(sprite.errorMessage) ?? readString(sprite.error_message) ?? null,
+            aiTrace: normalizeAiTrace(sprite.aiTrace) ?? normalizeAiTrace(sprite.ai_trace),
           },
         ]
       : []
   })
+}
+
+function normalizeAiTrace(value: unknown): WarehouseAiTraceStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  return value.filter(isRecord).flatMap((step) => {
+    const stage = normalizeAiStage(readString(step.stage))
+    const status = normalizeAiStatus(readString(step.status))
+
+    if (!stage || !status) {
+      return []
+    }
+
+    return [
+      {
+        stage,
+        status,
+        code: readString(step.code),
+        message: readString(step.message),
+        responseSummary:
+          readString(step.responseSummary) ??
+          readString(step.response_summary) ??
+          summarizeTraceResponse(step.response),
+      },
+    ]
+  })
+}
+
+function normalizeAiStage(value: string | undefined): WarehouseAiTraceStep['stage'] | null {
+  if (value === 'qwen' || value === 'wan' || value === 'gateway' || value === 'storage') {
+    return value
+  }
+
+  return value ? 'unknown' : null
+}
+
+function normalizeAiStatus(value: string | undefined): WarehouseAiTraceStep['status'] | null {
+  if (value === 'success' || value === 'failed') {
+    return value
+  }
+
+  return null
+}
+
+function summarizeTraceResponse(value: unknown) {
+  if (value === undefined) {
+    return undefined
+  }
+
+  try {
+    return JSON.stringify(value).slice(0, 800)
+  } catch {
+    return undefined
+  }
 }
 
 function normalizeCategory(value: string | undefined): WarehouseAssetCategory | 'item' | null {

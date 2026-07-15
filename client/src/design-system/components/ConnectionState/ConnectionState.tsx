@@ -7,6 +7,7 @@ import styles from './ConnectionState.module.css'
 
 export type ConnectionStatus =
   | 'online'
+  | 'authentication'
   | 'offline'
   | 'reconnecting'
   | 'server_unavailable'
@@ -14,6 +15,7 @@ export type ConnectionStatus =
 
 const titles: Record<ConnectionStatus, string> = {
   online: '연결됨',
+  authentication: '로그인이 필요함',
   offline: '오프라인',
   reconnecting: '재연결 중',
   server_unavailable: '서버에 연결할 수 없음',
@@ -30,7 +32,11 @@ export interface ConnectionStateProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export function ConnectionState({ status, message, action, className, ...props }: ConnectionStateProps) {
-  const isBlocking = status === 'offline' || status === 'server_unavailable' || status === 'malformed_response'
+  const isBlocking =
+    status === 'authentication' ||
+    status === 'offline' ||
+    status === 'server_unavailable' ||
+    status === 'malformed_response'
   const badgeState = status === 'online' ? 'ready' : status === 'reconnecting' ? 'reconnecting' : 'offline'
 
   return (

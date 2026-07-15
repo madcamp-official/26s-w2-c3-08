@@ -109,6 +109,7 @@ const iconButtonSizes: IconButtonSize[] = ['small', 'medium', 'large']
 const badgeStates: BadgeState[] = ['queued', 'generating', 'ready', 'failed', 'offline', 'reconnecting']
 const connectionStatuses: ConnectionStatus[] = [
   'online',
+  'authentication',
   'offline',
   'reconnecting',
   'server_unavailable',

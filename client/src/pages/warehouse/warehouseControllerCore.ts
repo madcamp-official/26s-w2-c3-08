@@ -2,6 +2,7 @@ import type { LoginDataMode, LoginSession, StoragePort } from '../login/loginCon
 import type {
   WarehouseAssetAction,
   WarehouseAssetCategory,
+  WarehouseAiTraceStep,
   WarehouseAssetStatus,
   WarehouseAssetViewModel,
   WarehouseFilter,
@@ -16,6 +17,7 @@ export const WAREHOUSE_REGEN_COOLDOWN_MS = 5 * 60 * 1000
 
 export type WarehouseConnectionStatus =
   | 'online'
+  | 'authentication'
   | 'offline'
   | 'reconnecting'
   | 'server_unavailable'
@@ -50,6 +52,9 @@ export interface WarehouseAssetSpriteRecord {
   action: WarehouseReviewAction
   status: 'queued' | 'generating' | 'ready' | 'failed'
   lastRegenAt?: string | null
+  errorCode?: string | null
+  errorMessage?: string | null
+  aiTrace?: WarehouseAiTraceStep[]
 }
 
 export interface WarehouseAssetRecord {
@@ -65,6 +70,9 @@ export interface WarehouseAssetRecord {
   widthCells: number | null
   heightCells: number | null
   sprites: WarehouseAssetSpriteRecord[]
+  errorCode?: string | null
+  errorMessage?: string | null
+  aiTrace?: WarehouseAiTraceStep[]
 }
 
 export interface WarehouseAssetPort {
@@ -94,7 +102,9 @@ export interface AssetJobUpdateEvent {
   assetId: string
   status: 'queued' | 'generating' | 'ready' | 'failed'
   action?: WarehouseReviewAction
+  errorCode?: string
   errorMessage?: string
+  aiTrace?: WarehouseAiTraceStep[]
   updatedAtMs?: number
 }
 
@@ -252,6 +262,10 @@ export function createWarehouseScreenCallbacks(
   runtime: WarehouseControllerRuntime,
 ): WarehouseScreenCallbacks {
   return {
+    onGoLogin: () => {
+      runtime.sessionStoragePort.clearSession()
+      runtime.routePort.navigateLogin()
+    },
     onGoMain: () => runtime.routePort.navigateMain(),
     onChangeTab: (tab) => changeWarehouseTab(runtime, tab),
     onChangeFilter: (filter) => changeWarehouseFilter(runtime, filter),
@@ -475,11 +489,17 @@ export function handleWarehouseAssetJobEvent(
       return {
         ...asset,
         status: event.status,
+        errorCode: event.action === undefined ? event.errorCode ?? asset.errorCode : asset.errorCode,
+        errorMessage: event.action === undefined ? event.errorMessage ?? asset.errorMessage : asset.errorMessage,
+        aiTrace: event.action === undefined ? event.aiTrace ?? asset.aiTrace : asset.aiTrace,
         sprites: asset.sprites.map((sprite) =>
           event.action === undefined || sprite.action === event.action
             ? {
                 ...sprite,
                 status: event.status,
+                errorCode: event.errorCode ?? sprite.errorCode,
+                errorMessage: event.errorMessage ?? sprite.errorMessage,
+                aiTrace: event.aiTrace ?? sprite.aiTrace,
                 lastRegenAt:
                   event.action === undefined || sprite.action === event.action
                     ? new Date(event.updatedAtMs ?? state.nowMs).toISOString()
@@ -539,7 +559,8 @@ export function mapWarehouseAssetToViewModel(
     statusText: getAssetStatusText(asset.status),
     estimateText: getAssetEstimateText(asset.status),
     progress: asset.status === 'generating' ? 48 : undefined,
-    errorText: asset.status === 'failed' ? '에셋 생성에 실패했어요. 다시 시도할 수 있어요.' : undefined,
+    errorText: asset.status === 'failed' ? formatGenerationError(asset) : undefined,
+    aiTrace: asset.aiTrace,
     isEquipped: asset.category === 'avatar' && session?.avatarAssetId === asset.id,
     isSystem: asset.isSystem,
     createdAtText: formatCreatedAt(asset.createdAt, nowMs),
@@ -637,6 +658,8 @@ function getAssetActions(asset: WarehouseAssetRecord, nowMs: number): WarehouseA
         id: sprite.action,
         label: getActionLabel(sprite.action),
         status: 'available',
+        errorText: formatSpriteGenerationError(sprite),
+        aiTrace: sprite.aiTrace,
       }
     }
 
@@ -655,6 +678,8 @@ function getAssetActions(asset: WarehouseAssetRecord, nowMs: number): WarehouseA
       id: sprite.action,
       label: getActionLabel(sprite.action),
       status: 'available',
+      errorText: formatSpriteGenerationError(sprite),
+      aiTrace: sprite.aiTrace,
     }
   })
 }
@@ -726,6 +751,10 @@ function setWarehouseError(runtime: WarehouseControllerRuntime, error: Warehouse
 }
 
 function mapErrorToConnectionStatus(error: WarehouseControllerError): WarehouseConnectionStatus {
+  if (error.kind === 'authentication') {
+    return 'authentication'
+  }
+
   if (error.kind === 'offline') {
     return 'offline'
   }
@@ -739,6 +768,30 @@ function mapErrorToConnectionStatus(error: WarehouseControllerError): WarehouseC
   }
 
   return 'server_unavailable'
+}
+
+function formatGenerationError(asset: Pick<WarehouseAssetRecord, 'errorCode' | 'errorMessage'>) {
+  return [
+    asset.errorMessage ?? '에셋 생성에 실패했어요. 다시 시도할 수 있어요.',
+    asset.errorCode ? `오류 코드: ${asset.errorCode}` : undefined,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(' ')
+}
+
+function formatSpriteGenerationError(
+  sprite: Pick<WarehouseAssetSpriteRecord, 'status' | 'errorCode' | 'errorMessage'>,
+) {
+  if (sprite.status !== 'failed' && !sprite.errorMessage && !sprite.errorCode) {
+    return undefined
+  }
+
+  return [
+    sprite.errorMessage ?? (sprite.status === 'failed' ? '이 액션 생성에 실패했어요.' : undefined),
+    sprite.errorCode ? `오류 코드: ${sprite.errorCode}` : undefined,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(' ')
 }
 
 function hasAsset(assets: WarehouseAssetRecord[], assetId: string) {

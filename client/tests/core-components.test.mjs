@@ -98,7 +98,7 @@ assert.match(tooltipSource, /aria-describedby/)
 assert.match(tooltipSource, /onFocus/)
 assert.match(tooltipSource, /onMouseEnter/)
 
-for (const status of ['online', 'offline', 'reconnecting', 'server_unavailable', 'malformed_response']) {
+for (const status of ['online', 'authentication', 'offline', 'reconnecting', 'server_unavailable', 'malformed_response']) {
   assert.match(connectionSource, new RegExp(`['"]${status}['"]`), `ConnectionState missing ${status}`)
 }
 

@@ -145,8 +145,19 @@ export interface AssetJob {
   status: AssetStatus
   targetType?: string
   outputAssetId?: string | null
+  action?: AssetSpriteAction | null
   errorCode?: string | null
   errorMessage?: string | null
+  aiTrace?: AssetAiTraceStep[]
+}
+
+export interface AssetAiTraceStep {
+  stage: 'qwen' | 'wan' | 'gateway' | 'storage' | 'unknown'
+  status: 'success' | 'failed'
+  code?: string
+  message?: string
+  responseSummary?: string
+  response?: unknown
 }
 
 export interface CreateAvatarAssetRequest {
@@ -338,8 +349,14 @@ export const assetJobSchema = defineSchema<AssetJob>('assetJobSchema', (value, s
     status: assetStatusSchema.parse(record.status),
     targetType: readOptionalString(record, 'targetType', schemaName),
     outputAssetId: readOptionalNullableString(record, 'outputAssetId', schemaName),
+    action: parseOptionalAssetSpriteAction(record.action, schemaName),
     errorCode: readOptionalNullableString(record, 'errorCode', schemaName),
     errorMessage: readOptionalNullableString(record, 'errorMessage', schemaName),
+    aiTrace: record.aiTrace === undefined
+      ? undefined
+      : readArray(record.aiTrace, schemaName, 'aiTrace').map((step, index) =>
+          parseAssetAiTraceStep(step, schemaName, `aiTrace[${index}]`),
+        ),
   }
 })
 
@@ -911,6 +928,47 @@ function readAttrs(value: unknown, schemaName: string, path: string): AssetAttrs
   }
 
   return attrs
+}
+
+function parseOptionalAssetSpriteAction(
+  value: unknown,
+  schemaName: string,
+): AssetSpriteAction | null | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (value === null) {
+    return null
+  }
+
+  return parseEnumValue(value, assetSpriteActionValues, schemaName, 'action')
+}
+
+function parseAssetAiTraceStep(
+  value: unknown,
+  schemaName: string,
+  path: string,
+): AssetAiTraceStep {
+  const record = asRecord(value, schemaName, path)
+  const stageValue = typeof record.stage === 'string' ? record.stage : undefined
+  const stage =
+    stageValue === 'qwen' ||
+    stageValue === 'wan' ||
+    stageValue === 'gateway' ||
+    stageValue === 'storage'
+      ? stageValue
+      : 'unknown'
+  const status = parseEnumValue(record.status, ['success', 'failed'] as const, schemaName, `${path}.status`)
+
+  return {
+    stage,
+    status,
+    code: readOptionalString(record, 'code', schemaName),
+    message: readOptionalString(record, 'message', schemaName),
+    responseSummary: readOptionalString(record, 'responseSummary', schemaName),
+    response: record.response,
+  }
 }
 
 function readStringRecord(value: unknown, schemaName: string, path: string): Record<string, string> {

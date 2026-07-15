@@ -3,6 +3,7 @@ import type {
   AssetJobUpdateEvent,
   AssetJobUpdates,
 } from '../../pages/warehouse/warehouseControllerCore'
+import type { WarehouseAiTraceStep } from '../../pages/warehouse/WarehouseScreen'
 import type { LoginSession } from '../../pages/login/loginControllerCore'
 import { createSocketIoRemoteRealtimeAdapters } from '../realtime/socketIoRemoteAdapters'
 import type { V2RealtimeConnectionStatus } from '../realtime/socketIoTransport'
@@ -41,7 +42,10 @@ export function createRemoteAssetJobUpdates({
         listener({
           assetId: job.outputAssetId ?? job.id,
           status: job.status,
+          action: job.action ?? undefined,
+          errorCode: job.errorCode ?? undefined,
           errorMessage: job.errorMessage ?? undefined,
+          aiTrace: normalizeAiTrace(job.aiTrace),
         } satisfies AssetJobUpdateEvent)
       })
       const stopPolling = startAssetJobPolling({
@@ -243,7 +247,9 @@ function normalizePolledJob(job: Record<string, unknown>): AssetJobUpdateEvent |
     assetId,
     status,
     action: normalizeAction(readString(job.action)) ?? undefined,
+    errorCode: readString(job.errorCode) ?? readString(job.error_code) ?? undefined,
     errorMessage: readString(job.errorMessage) ?? readString(job.error_message) ?? undefined,
+    aiTrace: normalizeAiTrace(job.aiTrace) ?? normalizeAiTrace(job.ai_trace),
     updatedAtMs: readNumber(job.updatedAtMs) ?? readNumber(job.updated_at_ms) ?? undefined,
   }
 }
@@ -332,6 +338,62 @@ function normalizeAction(value: string | undefined): AssetJobUpdateEvent['action
   }
 
   return null
+}
+
+function normalizeAiTrace(value: unknown): WarehouseAiTraceStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  return value.filter(isRecord).flatMap((step) => {
+    const stage = normalizeAiStage(readString(step.stage))
+    const status = normalizeAiStatus(readString(step.status))
+
+    if (!stage || !status) {
+      return []
+    }
+
+    return [
+      {
+        stage,
+        status,
+        code: readString(step.code),
+        message: readString(step.message),
+        responseSummary:
+          readString(step.responseSummary) ??
+          readString(step.response_summary) ??
+          summarizeTraceResponse(step.response),
+      },
+    ]
+  })
+}
+
+function normalizeAiStage(value: string | undefined): WarehouseAiTraceStep['stage'] | null {
+  if (value === 'qwen' || value === 'wan' || value === 'gateway' || value === 'storage') {
+    return value
+  }
+
+  return value ? 'unknown' : null
+}
+
+function normalizeAiStatus(value: string | undefined): WarehouseAiTraceStep['status'] | null {
+  if (value === 'success' || value === 'failed') {
+    return value
+  }
+
+  return null
+}
+
+function summarizeTraceResponse(value: unknown) {
+  if (value === undefined) {
+    return undefined
+  }
+
+  try {
+    return JSON.stringify(value).slice(0, 800)
+  } catch {
+    return undefined
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

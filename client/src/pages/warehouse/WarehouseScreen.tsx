@@ -43,6 +43,16 @@ export interface WarehouseAssetAction {
   cooldownText?: string
   progress?: number
   disabledReason?: string
+  errorText?: string
+  aiTrace?: WarehouseAiTraceStep[]
+}
+
+export interface WarehouseAiTraceStep {
+  stage: 'qwen' | 'wan' | 'gateway' | 'storage' | 'unknown'
+  status: 'success' | 'failed'
+  code?: string
+  message?: string
+  responseSummary?: string
 }
 
 export interface WarehouseAssetViewModel {
@@ -56,6 +66,7 @@ export interface WarehouseAssetViewModel {
   estimateText?: string
   progress?: number
   errorText?: string
+  aiTrace?: WarehouseAiTraceStep[]
   isEquipped?: boolean
   isSystem?: boolean
   createdAtText: string
@@ -64,6 +75,7 @@ export interface WarehouseAssetViewModel {
 }
 
 export interface WarehouseScreenCallbacks {
+  onGoLogin: () => void
   onGoMain: () => void
   onChangeTab: (tab: WarehouseTab) => void
   onChangeFilter: (filter: WarehouseFilter) => void
@@ -109,6 +121,7 @@ export function WarehouseScreen({
   connectionStatus = 'online',
   connectionMessage,
   refreshing = false,
+  onGoLogin,
   onGoMain,
   onChangeTab,
   onChangeFilter,
@@ -185,7 +198,13 @@ export function WarehouseScreen({
           <ConnectionState
             status={connectionStatus}
             message={connectionMessage}
-            action={connectionStatus === 'reconnecting' ? undefined : { label: '다시 시도', onPress: onRefresh }}
+            action={
+              connectionStatus === 'reconnecting'
+                ? undefined
+                : connectionStatus === 'authentication'
+                  ? { label: '다시 로그인', onPress: onGoLogin }
+                  : { label: '다시 시도', onPress: onRefresh }
+            }
           />
         ) : null}
 
@@ -484,6 +503,9 @@ export function AssetReviewModal({
             {asset.errorText ? (
               <ErrorState title="에셋 생성에 실패했어요." message={asset.errorText} />
             ) : null}
+            {asset.aiTrace && asset.aiTrace.length > 0 ? (
+              <AiPipelineTrace title="AI 생성 단계" steps={asset.aiTrace} />
+            ) : null}
             {isMalformed ? (
               <ErrorState
                 title="에셋 데이터를 읽을 수 없어요."
@@ -510,6 +532,12 @@ export function AssetReviewModal({
                     <span>{getActionStatusText(activeActionModel)}</span>
                     {activeActionModel.progress !== undefined ? (
                       <ProgressBar value={activeActionModel.progress} label={`${activeActionModel.label} 재생성 진행률`} />
+                    ) : null}
+                    {activeActionModel.errorText ? (
+                      <span className={styles.disabledReason}>{activeActionModel.errorText}</span>
+                    ) : null}
+                    {activeActionModel.aiTrace && activeActionModel.aiTrace.length > 0 ? (
+                      <AiPipelineTrace title={`${activeActionModel.label} AI 응답`} steps={activeActionModel.aiTrace} />
                     ) : null}
                     <CooldownButton
                       status={activeActionModel.status}
@@ -603,6 +631,32 @@ function SummaryMetric({ label, value }: { label: string; value: number }) {
   )
 }
 
+function AiPipelineTrace({
+  title,
+  steps,
+}: {
+  title: string
+  steps: WarehouseAiTraceStep[]
+}) {
+  return (
+    <section className={styles.aiTrace} aria-label={title} data-v2-component="ai-pipeline-trace">
+      <h4>{title}</h4>
+      <ol>
+        {steps.map((step, index) => (
+          <li key={`${step.stage}-${index}`} data-v2-state={step.status}>
+            <Badge state={step.status === 'success' ? 'ready' : 'failed'} label={getAiStageLabel(step.stage)} />
+            <div>
+              <strong>{step.code ?? (step.status === 'success' ? '응답 확인' : '실패')}</strong>
+              {step.message ? <p>{step.message}</p> : null}
+              {step.responseSummary ? <code>{step.responseSummary}</code> : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
 function getWarehouseSummary(assets: WarehouseAssetViewModel[]) {
   return {
     total: assets.length,
@@ -635,6 +689,7 @@ function getShellState(
   connectionStatus: ConnectionStatus,
 ) {
   if (
+    connectionStatus === 'authentication' ||
     connectionStatus === 'offline' ||
     connectionStatus === 'server_unavailable' ||
     connectionStatus === 'malformed_response' ||
@@ -655,6 +710,10 @@ function getShellState(
 }
 
 function getShellStatusLabel(connectionStatus: ConnectionStatus) {
+  if (connectionStatus === 'authentication') {
+    return '로그인이 필요함'
+  }
+
   if (connectionStatus === 'offline') {
     return '오프라인'
   }
@@ -712,6 +771,18 @@ function getCategoryLabel(category: WarehouseAssetCategory) {
   }
 
   return labels[category]
+}
+
+function getAiStageLabel(stage: WarehouseAiTraceStep['stage']) {
+  const labels: Record<WarehouseAiTraceStep['stage'], string> = {
+    qwen: 'Qwen LLM',
+    wan: 'WAN 모델',
+    gateway: 'AI 게이트웨이',
+    storage: '이미지 저장',
+    unknown: 'AI 단계',
+  }
+
+  return labels[stage]
 }
 
 function getActionStatusText(action: WarehouseAssetAction) {

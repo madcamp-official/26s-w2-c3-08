@@ -492,6 +492,18 @@ describe("V2 HTTP API contract", () => {
 
     expect(avatarCategoryMismatchResponse.body.error.code).toBe("ASSET_CATEGORY_MISMATCH");
 
+    const missingSessionGenerateResponse = await request(app)
+      .post("/api/assets/generate")
+      .send({
+        user_id: "missing-session-user",
+        category: "avatar",
+        name: "세션 없는 아바타",
+        image: "data:image/png;base64,AA==",
+      })
+      .expect(401);
+
+    expect(missingSessionGenerateResponse.body.error.code).toBe("SESSION_REQUIRED");
+
     const avatarResponse = await request(app)
       .post("/api/assets/generate")
       .set("Authorization", `Bearer ${session.token}`)
@@ -655,11 +667,13 @@ describe("V2 HTTP API contract", () => {
       .send({
         status: "ready",
         sheetUrl: "https://assets.example.test/avatar-idle.png",
+        sourceImageUrl: "https://assets.example.test/worker-generated-avatar-preview.png",
       })
       .expect(200);
 
     expect(workerResultResponse.body.job.status).toBe("ready");
     expect(workerResultResponse.body.asset.status).toBe("ready");
+    expect(workerResultResponse.body.asset.sourceImageUrl).toBe(avatar.sourceImageUrl);
     expect(
       workerResultResponse.body.asset.sprites.find((sprite: { action: string }) => sprite.action === "idle"),
     ).toEqual(
@@ -678,6 +692,91 @@ describe("V2 HTTP API contract", () => {
       ]),
     );
     unsubscribePushedJobs();
+  });
+
+  it("preserves worker Qwen and WAN diagnostics on failed asset jobs", async () => {
+    const app = createApp();
+    const sessionResponse = await request(app)
+      .post("/api/session")
+      .send({ nickname: "AI진단" })
+      .expect(200);
+    const session = sessionResponse.body.session;
+
+    const assetResponse = await request(app)
+      .post("/api/assets/generate")
+      .set("Authorization", `Bearer ${session.token}`)
+      .send({
+        user_id: session.id,
+        category: "platform",
+        name: "진단 플랫폼",
+        image: "data:image/png;base64,AA==",
+      })
+      .expect(202);
+    const assetId = assetResponse.body.asset.id;
+
+    const claimResponse = await request(app)
+      .get("/api/ai/jobs/next")
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "diagnostic-worker")
+      .expect(200);
+
+    const aiTrace = [
+      {
+        stage: "qwen",
+        status: "failed",
+        code: "QWEN_NOT_CONFIGURED",
+        message: "QWEN_BASE_URL and QWEN_API_TOKEN are required.",
+        responseSummary: "{\"ready\":false}"
+      }
+    ];
+
+    const failedResultResponse = await request(app)
+      .post(`/api/ai/jobs/${encodeURIComponent(claimResponse.body.job.id)}/result`)
+      .set("Authorization", "Bearer dev-worker-token")
+      .set("x-worker-id", "diagnostic-worker")
+      .send({
+        status: "failed",
+        errorCode: "QWEN_NOT_CONFIGURED",
+        errorMessage: "Qwen credentials are missing.",
+        aiTrace
+      })
+      .expect(200);
+
+    expect(failedResultResponse.body.job).toEqual(
+      expect.objectContaining({
+        outputAssetId: assetId,
+        status: "failed",
+        errorCode: "QWEN_NOT_CONFIGURED",
+        errorMessage: "Qwen credentials are missing.",
+        aiTrace
+      })
+    );
+    expect(failedResultResponse.body.asset).toEqual(
+      expect.objectContaining({
+        id: assetId,
+        status: "failed",
+        errorCode: "QWEN_NOT_CONFIGURED",
+        errorMessage: "Qwen credentials are missing.",
+        aiTrace
+      })
+    );
+
+    const failedJobsResponse = await request(app)
+      .get(`/api/asset-jobs?user_id=${encodeURIComponent(session.id)}`)
+      .set("Authorization", `Bearer ${session.token}`)
+      .expect(200);
+
+    expect(failedJobsResponse.body.jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outputAssetId: assetId,
+          status: "failed",
+          errorCode: "QWEN_NOT_CONFIGURED",
+          errorMessage: "Qwen credentials are missing.",
+          aiTrace
+        })
+      ])
+    );
   });
 
   it("rejects stale asset worker results after lease rollover", async () => {

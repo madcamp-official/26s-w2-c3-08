@@ -21,6 +21,18 @@ interface AssetSprite {
   sheetUrl: string | null;
   frameCount: number | null;
   lastRegenAt: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  aiTrace?: AssetAiTraceStep[];
+}
+
+interface AssetAiTraceStep {
+  stage: string;
+  status: "success" | "failed";
+  code?: string;
+  message?: string;
+  responseSummary?: string;
+  response?: unknown;
 }
 
 interface Asset {
@@ -40,6 +52,9 @@ interface Asset {
   isPublic: boolean;
   createdAt: string;
   sprites: AssetSprite[];
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  aiTrace?: AssetAiTraceStep[];
 }
 
 interface RoomSummary {
@@ -445,6 +460,16 @@ const assetGenerateSchema = z.object({
   remix_of_id: z.string().nullable().optional()
 });
 
+const workerAiTraceStepSchema = z.object({
+  stage: z.string().min(1),
+  status: z.enum(["success", "failed"]),
+  code: z.string().min(1).optional(),
+  message: z.string().optional(),
+  responseSummary: z.string().optional(),
+  response_summary: z.string().optional(),
+  response: z.unknown().optional()
+}).passthrough();
+
 const workerResultSchema = z.object({
   status: z.enum(["ready", "failed"]),
   sheetUrl: z.string().min(1).optional(),
@@ -454,7 +479,9 @@ const workerResultSchema = z.object({
   errorCode: z.string().min(1).nullable().optional(),
   error_code: z.string().min(1).nullable().optional(),
   errorMessage: z.string().min(1).nullable().optional(),
-  error_message: z.string().min(1).nullable().optional()
+  error_message: z.string().min(1).nullable().optional(),
+  aiTrace: z.array(workerAiTraceStepSchema).optional(),
+  ai_trace: z.array(workerAiTraceStepSchema).optional()
 });
 
 const createRoomSchema = z.object({
@@ -710,7 +737,8 @@ apiRoutes.post("/ai/jobs/:jobId/result", (req, res) => {
     sheetUrl: body.sheetUrl ?? body.sheet_url ?? null,
     sourceImageUrl: body.sourceImageUrl ?? body.source_image_url ?? null,
     errorCode: body.errorCode ?? body.error_code ?? null,
-    errorMessage: body.errorMessage ?? body.error_message ?? null
+    errorMessage: body.errorMessage ?? body.error_message ?? null,
+    aiTrace: normalizeWorkerAiTrace(body.aiTrace ?? body.ai_trace)
   });
 
   if (!result.ok) {
@@ -1299,10 +1327,16 @@ function handleAssetGenerate(req: Request, res: Response, forcedCategory?: Asset
     return;
   }
 
+  const session = resolveActionSession(userId ?? undefined, req, res);
+
+  if (session === null) {
+    return;
+  }
+
   const now = new Date().toISOString();
   const asset: Asset = {
     id: crypto.randomUUID(),
-    creatorId: userId,
+    creatorId: session.id,
     isSystem: false,
     category: body.category,
     name: body.name ?? (body.category === "avatar" ? "새 아바타" : "새 에셋"),
@@ -1316,7 +1350,10 @@ function handleAssetGenerate(req: Request, res: Response, forcedCategory?: Asset
     status: "queued",
     isPublic: true,
     createdAt: now,
-    sprites: createSpriteJobs(body.category, now)
+    sprites: createSpriteJobs(body.category, now),
+    errorCode: null,
+    errorMessage: null,
+    aiTrace: []
   };
 
   assets.set(asset.id, asset);
@@ -1739,12 +1776,18 @@ function queueAssetGeneration(asset: Asset, now: Date) {
 
   asset.status = "generating";
   asset.createdAt = isoNow;
+  asset.errorCode = null;
+  asset.errorMessage = null;
+  asset.aiTrace = [];
   asset.sprites = asset.sprites.map((sprite) => ({
     ...sprite,
     status: "queued",
     sheetUrl: null,
     frameCount: null,
-    lastRegenAt: isoNow
+    lastRegenAt: isoNow,
+    errorCode: null,
+    errorMessage: null,
+    aiTrace: []
   }));
 }
 
@@ -1792,6 +1835,7 @@ function completeAssetJob(
     sourceImageUrl: string | null;
     errorCode: string | null;
     errorMessage: string | null;
+    aiTrace: AssetAiTraceStep[];
   }
 ) {
   const target = resolveAssetJob(jobId);
@@ -1816,16 +1860,22 @@ function completeAssetJob(
   assetJobLeases.delete(jobId);
 
   if (payload.status === "failed") {
+    const diagnostics = createGenerationDiagnostics(payload);
+
     if (sprite === null) {
       asset.status = "failed";
+      applyDiagnostics(asset, diagnostics);
       asset.sprites = asset.sprites.map((candidateSprite) => ({
         ...candidateSprite,
-        status: candidateSprite.status === "ready" ? "ready" : "failed"
+        status: candidateSprite.status === "ready" ? "ready" : "failed",
+        ...(candidateSprite.status === "ready" ? {} : diagnostics)
       }));
     } else {
       sprite.status = "failed";
       sprite.lastRegenAt = now;
+      applyDiagnostics(sprite, diagnostics);
       asset.status = "failed";
+      applyDiagnostics(asset, diagnostics);
     }
 
     emitAssetJobUpdated(asset, sprite);
@@ -1834,25 +1884,27 @@ function completeAssetJob(
 
   const outputUrl = payload.sheetUrl ?? payload.sourceImageUrl ?? asset.sourceImageUrl;
 
-  if (payload.sourceImageUrl !== null) {
-    asset.sourceImageUrl = payload.sourceImageUrl;
-  }
-
   if (sprite === null) {
     asset.status = "ready";
+    clearDiagnostics(asset);
     asset.sprites = asset.sprites.map((candidateSprite) => ({
       ...candidateSprite,
       status: "ready",
       sheetUrl: outputUrl,
       frameCount: candidateSprite.action === "static" ? 1 : candidateSprite.frameCount ?? 8,
-      lastRegenAt: candidateSprite.lastRegenAt ?? now
+      lastRegenAt: candidateSprite.lastRegenAt ?? now,
+      errorCode: null,
+      errorMessage: null,
+      aiTrace: []
     }));
   } else {
     sprite.status = "ready";
     sprite.sheetUrl = outputUrl;
     sprite.frameCount = sprite.action === "static" ? 1 : sprite.frameCount ?? 8;
     sprite.lastRegenAt = now;
+    clearDiagnostics(sprite);
     asset.status = asset.sprites.every((candidateSprite) => candidateSprite.status === "ready") ? "ready" : "generating";
+    clearDiagnostics(asset);
   }
 
   emitAssetJobUpdated(asset, sprite);
@@ -1873,6 +1925,59 @@ function resolveAssetJob(jobId: string) {
   }
 
   return null;
+}
+
+function normalizeWorkerAiTrace(value: unknown): AssetAiTraceStep[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((step): step is Record<string, unknown> => typeof step === "object" && step !== null && !Array.isArray(step))
+    .map((step) => ({
+      stage: typeof step.stage === "string" && step.stage.length > 0 ? step.stage : "unknown",
+      status: step.status === "success" ? "success" : "failed",
+      code: typeof step.code === "string" && step.code.length > 0 ? step.code : undefined,
+      message: typeof step.message === "string" ? step.message : undefined,
+      responseSummary:
+        typeof step.responseSummary === "string"
+          ? step.responseSummary
+          : typeof step.response_summary === "string"
+            ? step.response_summary
+            : undefined,
+      response: step.response
+    }));
+}
+
+function createGenerationDiagnostics(payload: {
+  errorCode: string | null;
+  errorMessage: string | null;
+  aiTrace: AssetAiTraceStep[];
+}) {
+  return {
+    errorCode: payload.errorCode ?? "GENERATION_FAILED",
+    errorMessage: payload.errorMessage ?? "에셋 생성에 실패했어요.",
+    aiTrace: payload.aiTrace
+  };
+}
+
+function applyDiagnostics(
+  target: Pick<Asset | AssetSprite, "errorCode" | "errorMessage" | "aiTrace">,
+  diagnostics: {
+    errorCode: string;
+    errorMessage: string;
+    aiTrace: AssetAiTraceStep[];
+  }
+) {
+  target.errorCode = diagnostics.errorCode;
+  target.errorMessage = diagnostics.errorMessage;
+  target.aiTrace = diagnostics.aiTrace;
+}
+
+function clearDiagnostics(target: Pick<Asset | AssetSprite, "errorCode" | "errorMessage" | "aiTrace">) {
+  target.errorCode = null;
+  target.errorMessage = null;
+  target.aiTrace = [];
 }
 
 function isWholeAssetGenerationPending(asset: Asset) {
@@ -1981,6 +2086,10 @@ function canReadAssetJob(userId: string | null, asset: Asset) {
 function toAssetJob(asset: Asset, sprite: AssetSprite | null) {
   const status = sprite?.status ?? asset.status;
   const updatedAt = sprite?.lastRegenAt ?? asset.createdAt;
+  const diagnostics = sprite ?? asset;
+  const errorCode = status === "failed" ? diagnostics.errorCode ?? "GENERATION_FAILED" : null;
+  const errorMessage = status === "failed" ? diagnostics.errorMessage ?? "에셋 생성에 실패했어요." : null;
+  const aiTrace = diagnostics.aiTrace ?? [];
 
   return {
     id: sprite === null ? `job-${asset.id}-asset` : `job-${asset.id}-sprite-${sprite.action}`,
@@ -1992,10 +2101,12 @@ function toAssetJob(asset: Asset, sprite: AssetSprite | null) {
     outputAssetId: asset.id,
     output_asset_id: asset.id,
     action: sprite?.action ?? null,
-    errorCode: status === "failed" ? "GENERATION_FAILED" : null,
-    error_code: status === "failed" ? "GENERATION_FAILED" : null,
-    errorMessage: status === "failed" ? "에셋 생성에 실패했어요." : null,
-    error_message: status === "failed" ? "에셋 생성에 실패했어요." : null,
+    errorCode,
+    error_code: errorCode,
+    errorMessage,
+    error_message: errorMessage,
+    aiTrace,
+    ai_trace: aiTrace,
     updatedAtMs: Date.parse(updatedAt),
     updated_at_ms: Date.parse(updatedAt)
   };
