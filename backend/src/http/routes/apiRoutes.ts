@@ -1886,7 +1886,7 @@ function completeAssetJob(
 
   if (sprite === null) {
     asset.status = "ready";
-    clearDiagnostics(asset);
+    clearDiagnostics(asset, payload.aiTrace);
     asset.sprites = asset.sprites.map((candidateSprite) => ({
       ...candidateSprite,
       status: "ready",
@@ -1895,16 +1895,16 @@ function completeAssetJob(
       lastRegenAt: candidateSprite.lastRegenAt ?? now,
       errorCode: null,
       errorMessage: null,
-      aiTrace: []
+      aiTrace: payload.aiTrace
     }));
   } else {
     sprite.status = "ready";
     sprite.sheetUrl = outputUrl;
     sprite.frameCount = sprite.action === "static" ? 1 : sprite.frameCount ?? 8;
     sprite.lastRegenAt = now;
-    clearDiagnostics(sprite);
+    clearDiagnostics(sprite, payload.aiTrace);
     asset.status = asset.sprites.every((candidateSprite) => candidateSprite.status === "ready") ? "ready" : "generating";
-    clearDiagnostics(asset);
+    clearDiagnostics(asset, payload.aiTrace);
   }
 
   emitAssetJobUpdated(asset, sprite);
@@ -1974,10 +1974,13 @@ function applyDiagnostics(
   target.aiTrace = diagnostics.aiTrace;
 }
 
-function clearDiagnostics(target: Pick<Asset | AssetSprite, "errorCode" | "errorMessage" | "aiTrace">) {
+function clearDiagnostics(
+  target: Pick<Asset | AssetSprite, "errorCode" | "errorMessage" | "aiTrace">,
+  aiTrace: AssetAiTraceStep[] = []
+) {
   target.errorCode = null;
   target.errorMessage = null;
-  target.aiTrace = [];
+  target.aiTrace = aiTrace;
 }
 
 function isWholeAssetGenerationPending(asset: Asset) {

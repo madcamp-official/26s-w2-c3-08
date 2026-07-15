@@ -660,6 +660,21 @@ describe("V2 HTTP API contract", () => {
       ]),
     );
 
+    const successAiTrace = [
+      {
+        stage: "qwen",
+        status: "success",
+        message: "Qwen prompt refinement completed.",
+        responseSummary: "wan_prompt: runner avatar idle pose"
+      },
+      {
+        stage: "wan",
+        status: "success",
+        message: "WAN sprite generation completed.",
+        responseSummary: "sheet_url: https://assets.example.test/avatar-idle.png"
+      }
+    ];
+
     const workerResultResponse = await request(app)
       .post(`/api/ai/jobs/${encodeURIComponent(claimedJobResponse.body.job.id)}/result`)
       .set("Authorization", "Bearer dev-worker-token")
@@ -668,11 +683,14 @@ describe("V2 HTTP API contract", () => {
         status: "ready",
         sheetUrl: "https://assets.example.test/avatar-idle.png",
         sourceImageUrl: "https://assets.example.test/worker-generated-avatar-preview.png",
+        aiTrace: successAiTrace,
       })
       .expect(200);
 
     expect(workerResultResponse.body.job.status).toBe("ready");
+    expect(workerResultResponse.body.job.aiTrace).toEqual(successAiTrace);
     expect(workerResultResponse.body.asset.status).toBe("ready");
+    expect(workerResultResponse.body.asset.aiTrace).toEqual(successAiTrace);
     expect(workerResultResponse.body.asset.sourceImageUrl).toBe(avatar.sourceImageUrl);
     expect(
       workerResultResponse.body.asset.sprites.find((sprite: { action: string }) => sprite.action === "idle"),
@@ -680,6 +698,7 @@ describe("V2 HTTP API contract", () => {
       expect.objectContaining({
         status: "ready",
         sheetUrl: "https://assets.example.test/avatar-idle.png",
+        aiTrace: successAiTrace,
       }),
     );
     expect(pushedJobs).toEqual(
