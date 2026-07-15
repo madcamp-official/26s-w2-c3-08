@@ -3,7 +3,9 @@
 //   ComfyUI I2V → Stage 5 파이프라인 → 시트 PNG.
 // idle을 먼저 처리하면 그 키높이를 캐시해 같은 에셋의 다른 액션이 스케일 기준으로 재사용(단일 워커 순차 시).
 import type { Category } from "shared/schemas";
+import { ACTIONS, type ActionName, type ActionSpec } from "shared/actions";
 import { selectKeyColorFromPng } from "../chroma/selectKeyColor.js";
+import { detectLimbsFromPng, type LimbDetection } from "../anatomy/detectLimbs.js";
 import { compositeOnChroma } from "../image/composite.js";
 import { resolveGenResolution, resolveGenDuration } from "../generation/index.js";
 import { pipelineConfig } from "../config/index.js";
@@ -56,10 +58,19 @@ export class Orchestrator {
   /** 잡 1건 처리 → 시트. 실패는 throw(상위 워커 루프가 fail 보고). */
   async run(job: JobPayload, sourcePng: Buffer): Promise<SpriteSheet> {
     const chroma = await selectKeyColorFromPng(sourcePng);
+    const limbs = await detectLimbsFromPng(sourcePng);
+    const spec = ACTIONS[job.action as ActionName] as ActionSpec | undefined;
+    const motionHint = stripAbsentLimbClauses(job.motionHint, spec, limbs);
+    const limbNegativeExtra = [
+      ...(limbs.hasArms ? [] : ["arms", "hands"]),
+      ...(limbs.hasLegs ? [] : ["legs", "feet"]),
+    ];
+    this.log.info("limb detection", { job: job.jobId, hasArms: limbs.hasArms, hasLegs: limbs.hasLegs });
+
     const appearance = await this.getAppearance(job, sourcePng);
     const { positive, negative } = assemblePrompt(
       appearance,
-      { motionHint: job.motionHint, poseHint: job.poseHint, negativeExtra: job.negativeExtra },
+      { motionHint, poseHint: job.poseHint, negativeExtra: [...(job.negativeExtra ?? []), ...limbNegativeExtra] },
       chroma.name,
     );
 
@@ -90,6 +101,7 @@ export class Orchestrator {
       wanPrompt: positive,
       wanNegativePrompt: negative,
       chromaKeyHex: chroma.hex,
+      chromaMargin: chroma.rgbMargin,
     };
     const ctx: PipelineContext = {
       job: assetJob, config: pipelineConfig, frames: rawFrames, scratch: new Map(), log: this.log,
@@ -147,6 +159,23 @@ export class Orchestrator {
     this.appearanceCache.set(job.assetId, appearance);
     return appearance;
   }
+}
+
+/**
+ * 원본에 팔/다리가 없다고 판단되면(anatomy/detectLimbs) job.motionHint에서 그 clause를 뺀다.
+ * 지금까지 모든 액션이 "arms swinging" 등을 무조건 요구해 사지 없는 캐릭터도 Wan이 팔다리를
+ * 만들어내는 원인이었다 — spec의 clause 원문을 그대로 substring 제거하므로 오탐 없이 안전.
+ * (server가 monster 속도별 override 문자열을 보낸 경우엔 clause가 애초에 없어 무해한 no-op.)
+ */
+function stripAbsentLimbClauses(motionHint: string, spec: ActionSpec | undefined, limbs: LimbDetection): string {
+  let out = motionHint;
+  if (spec?.motionHintArms && !limbs.hasArms) {
+    out = out.replace(`, ${spec.motionHintArms}`, "").replace(spec.motionHintArms, "");
+  }
+  if (spec?.motionHintLegs && !limbs.hasLegs) {
+    out = out.replace(`, ${spec.motionHintLegs}`, "").replace(spec.motionHintLegs, "");
+  }
+  return out;
 }
 
 /** 카테고리 → Qwen asset_type (prompts.py 규칙과 맞춤). */

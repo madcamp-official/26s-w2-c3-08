@@ -9,7 +9,7 @@
 // 인증: WORKER_TOKEN 환경변수가 있으면 x-worker-token 헤더로 검증(없으면 개발용으로 통과).
 import express, { Router, type Request, type Response, type NextFunction } from "express";
 import { type Category } from "shared/schemas";
-import { deriveActions, ACTIONS, type ActionName } from "shared/actions";
+import { deriveActions, ACTIONS, fullMotionHint, type ActionName } from "shared/actions";
 import { prisma, jsonSafe } from "../prisma.js";
 import { submitAsset } from "../asset/queue.js";
 import { saveSheetPng } from "../asset/storage.js";
@@ -47,7 +47,7 @@ function buildJobPayload(sprite: { id: bigint; action: string; prompt: string | 
   const spec = ACTIONS[action];
   // attrs별 motionHint override(예: 빠른 보행 → briskly)를 반영해 이 액션의 힌트를 꺼낸다.
   const derived = deriveActions(asset.category as Category, asset.attrs as never);
-  const motionHint = derived.find((d) => d.name === action)?.motionHint ?? spec.motionHint;
+  const motionHint = derived.find((d) => d.name === action)?.motionHint ?? fullMotionHint(spec);
   return jsonSafe({
     jobId: sprite.id,
     assetId: asset.id,

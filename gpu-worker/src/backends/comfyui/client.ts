@@ -10,6 +10,7 @@ import { pngToFrame } from "../../image/raster.js";
 import type { RgbaFrame } from "../../pipeline/types.js";
 import type { GenerationBackend, GenerationRequest } from "../types.js";
 import { pipelineConfig } from "../../config/index.js";
+import { fetchWithTimeout } from "../../net/fetchWithTimeout.js";
 import {
   applyOverridesByTitle,
   findNodeIdByTitle,
@@ -48,7 +49,7 @@ export class ComfyUIBackend implements GenerationBackend {
 
   async healthCheck(): Promise<{ ok: boolean; detail?: string }> {
     try {
-      const res = await fetch(`${this.baseUrl}/system_stats`);
+      const res = await fetchWithTimeout(`${this.baseUrl}/system_stats`, {}, pipelineConfig.network.comfyHealthTimeoutMs);
       if (!res.ok) return { ok: false, detail: `system_stats HTTP ${res.status}` };
       return { ok: true };
     } catch (e) {
@@ -76,7 +77,11 @@ export class ComfyUIBackend implements GenerationBackend {
     const form = new FormData();
     form.set("image", new Blob([new Uint8Array(png)], { type: "image/png" }), `start_${Date.now()}.png`);
     form.set("overwrite", "true");
-    const res = await fetch(`${this.baseUrl}/upload/image`, { method: "POST", body: form });
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/upload/image`,
+      { method: "POST", body: form },
+      pipelineConfig.network.comfyRequestTimeoutMs,
+    );
     if (!res.ok) throw new Error(`comfyui upload/image HTTP ${res.status}: ${await safeText(res)}`);
     const body = (await res.json()) as { name: string; subfolder?: string };
     return { name: body.name, subfolder: body.subfolder ?? "" };
@@ -102,11 +107,15 @@ export class ComfyUIBackend implements GenerationBackend {
 
   /** POST /prompt → prompt_id. node_errors 있으면 즉시 실패. */
   private async queuePrompt(wf: ComfyWorkflow): Promise<string> {
-    const res = await fetch(`${this.baseUrl}/prompt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: wf, client_id: this.clientId }),
-    });
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/prompt`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: wf, client_id: this.clientId }),
+      },
+      pipelineConfig.network.comfyRequestTimeoutMs,
+    );
     if (!res.ok) throw new Error(`comfyui /prompt HTTP ${res.status}: ${await safeText(res)}`);
     const body = (await res.json()) as { prompt_id?: string; node_errors?: Record<string, unknown> };
     if (body.node_errors && Object.keys(body.node_errors).length > 0) {
@@ -120,7 +129,11 @@ export class ComfyUIBackend implements GenerationBackend {
   private async waitForHistory(promptId: string): Promise<Record<string, { images?: ComfyImageRef[] }>> {
     const deadline = Date.now() + this.timeoutMs;
     while (Date.now() < deadline) {
-      const res = await fetch(`${this.baseUrl}/history/${promptId}`);
+      const res = await fetchWithTimeout(
+        `${this.baseUrl}/history/${promptId}`,
+        {},
+        pipelineConfig.network.comfyPollRequestTimeoutMs,
+      );
       if (res.ok) {
         const hist = (await res.json()) as Record<string, HistoryEntry>;
         const entry = hist[promptId];
@@ -154,7 +167,11 @@ export class ComfyUIBackend implements GenerationBackend {
   /** GET /view?filename&subfolder&type → PNG 바이트 */
   private async viewImage(img: ComfyImageRef): Promise<Buffer> {
     const qs = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder, type: img.type });
-    const res = await fetch(`${this.baseUrl}/view?${qs}`);
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/view?${qs}`,
+      {},
+      pipelineConfig.network.comfyRequestTimeoutMs,
+    );
     if (!res.ok) throw new Error(`comfyui /view HTTP ${res.status} for ${img.filename}`);
     return Buffer.from(await res.arrayBuffer());
   }

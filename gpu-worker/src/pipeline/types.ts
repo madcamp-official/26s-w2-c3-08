@@ -35,6 +35,8 @@ export interface AssetJob {
   wanNegativePrompt: string;
   /** 자동 선택된 크로마키 키색 (#RRGGBB) */
   chromaKeyHex: string;
+  /** 키색과 그림 색 간 최소 정규화 RGB 거리(0~1). 크로마키 갇힌-배경 회수의 margin 게이트용 */
+  chromaMargin: number;
 }
 
 /**

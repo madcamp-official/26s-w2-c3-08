@@ -24,8 +24,15 @@ export type ActionName = (typeof ACTION)[keyof typeof ACTION];
  * static camera, no forward movement, seamless loop.  ← 액션 무관 전역. 액션별 차이는 아래 필드로.
  */
 export interface ActionSpec {
-  /** 프롬프트의 "모션" 부분 (영어). deriveActions가 attrs로 override 가능(예: fast → briskly). */
-  motionHint: string;
+  /**
+   * 프롬프트의 "모션" 부분 중 사지 유무와 무관하게 항상 참인 서술(영어).
+   * deriveActions가 attrs로 override 가능(예: fast → briskly, 이 경우 motionHintArms/Legs는 무시됨).
+   */
+  motionHintCore: string;
+  /** motionHintCore에 얹는 팔 동작 서술 — gpu-worker가 원본에 팔이 없다고 판단하면 뺀다(anatomy 판단). */
+  motionHintArms?: string;
+  /** motionHintCore에 얹는 다리 동작 서술 — 다리 없다고 판단하면 뺀다. */
+  motionHintLegs?: string;
   /** 반복 재생(loop 버킷) vs 1회성(oneShot 버킷) — 생성 길이·루프 처리 분기. */
   loop: boolean;
   /** 1회성이 시작 포즈로 정확히 복귀해야 하나 (이음새·재생 안정). loop면 무의미. */
@@ -38,42 +45,51 @@ export interface ActionSpec {
   negativeExtra?: string[];
 }
 
+/** motionHintCore + Arms + Legs를 하나의 문자열로 합친다 — 사지 판단 전(서버 측) 기본 완전판. */
+export function fullMotionHint(spec: Pick<ActionSpec, "motionHintCore" | "motionHintArms" | "motionHintLegs">): string {
+  return [spec.motionHintCore, spec.motionHintArms, spec.motionHintLegs].filter(Boolean).join(", ");
+}
+
 export const ACTIONS: Record<ActionName, ActionSpec> = {
   idle: {
-    motionHint: "standing still, subtle breathing motion, gentle natural sway, minimal movement",
+    motionHintCore: "standing still, subtle breathing motion, gentle natural sway, minimal movement",
     loop: true,
     returnsToStart: false,
     durationSec: 2,
     poseHint: "neutral resting stance, weight centered",
   },
   walk: {
-    motionHint: "walking in place, steady natural gait, arms swinging",
+    motionHintCore: "walking in place, steady natural gait",
+    motionHintArms: "arms swinging",
     loop: true,
     returnsToStart: false,
     poseHint: "in-place walk cycle, feet return to the same spot each loop",
   },
   onair: {
     // 1회성 held 포즈 (루프 아님) — 이전 버그: loop:true 하드코딩으로 loop 버킷(3s) 탔음
-    motionHint: "jumping pose held in mid-air, limbs slightly spread, floating in place",
+    motionHintCore: "jumping pose held in mid-air, floating in place",
+    motionHintArms: "arms spread",
+    motionHintLegs: "legs spread",
     loop: false,
     returnsToStart: false,
     poseHint: "single held mid-air pose, no walk cycle, feet off the ground",
     negativeExtra: ["walking", "ground contact", "running"],
   },
   fly: {
-    motionHint: "hovering in place, gentle bobbing up and down, wings or body flutter",
+    motionHintCore: "hovering in place, gentle bobbing up and down, wings or body flutter",
     loop: true,
     returnsToStart: false,
     poseHint: "hover bob, stays in one spot",
   },
   climb: {
-    motionHint: "clinging to a vertical surface, slow crawling motion in place",
+    motionHintCore: "clinging to a vertical surface, slow crawling motion in place",
     loop: true,
     returnsToStart: false,
   },
   attack: {
     // 1회성 — 시작 포즈로 정확 복귀
-    motionHint: "quickly performs a throwing or shooting motion, small recoil, returns exactly to the starting pose",
+    motionHintCore: "quickly performs an attack motion, small recoil, returns exactly to the starting pose",
+    motionHintArms: "throwing or shooting motion with an arm",
     loop: false,
     returnsToStart: true,
     poseHint: "brief windup, strike, then exact return to the idle pose",

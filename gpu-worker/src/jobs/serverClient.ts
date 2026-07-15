@@ -4,6 +4,8 @@
 //   POST /api/ai/jobs/:id/result      → 시트 PNG(raw, image/png) + ?frameCount&frameW&frameH
 //   POST /api/ai/jobs/:id/fail        → { errorMsg }
 import type { Category } from "shared/schemas";
+import { fetchWithTimeout } from "../net/fetchWithTimeout.js";
+import { pipelineConfig } from "../config/index.js";
 
 /** /api/ai/jobs/next 페이로드 (routes.ts buildJobPayload와 1:1). */
 export interface JobPayload {
@@ -46,7 +48,11 @@ export class ServerClient {
 
   /** 다음 잡 claim. 큐가 비면 null. */
   async claimNext(): Promise<JobPayload | null> {
-    const res = await fetch(`${this.baseUrl}/api/ai/jobs/next`, { headers: this.authHeaders() });
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/api/ai/jobs/next`,
+      { headers: this.authHeaders() },
+      pipelineConfig.network.serverRequestTimeoutMs,
+    );
     if (res.status === 204) return null;
     if (!res.ok) throw new Error(`jobs/next HTTP ${res.status}: ${await safeText(res)}`);
     return (await res.json()) as JobPayload;
@@ -57,7 +63,7 @@ export class ServerClient {
     const url = /^https?:\/\//i.test(sourceImageUrl)
       ? sourceImageUrl
       : new URL(sourceImageUrl, `${this.baseUrl}/`).toString();
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, pipelineConfig.network.serverRequestTimeoutMs);
     if (!res.ok) throw new Error(`source image HTTP ${res.status}: ${url}`);
     return Buffer.from(await res.arrayBuffer());
   }
@@ -69,21 +75,25 @@ export class ServerClient {
       frameW: String(meta.frameW),
       frameH: String(meta.frameH),
     });
-    const res = await fetch(`${this.baseUrl}/api/ai/jobs/${jobId}/result?${qs}`, {
-      method: "POST",
-      headers: { ...this.authHeaders(), "Content-Type": "image/png" },
-      body: new Uint8Array(sheetPng),
-    });
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/api/ai/jobs/${jobId}/result?${qs}`,
+      { method: "POST", headers: { ...this.authHeaders(), "Content-Type": "image/png" }, body: new Uint8Array(sheetPng) },
+      pipelineConfig.network.serverUploadTimeoutMs,
+    );
     if (!res.ok) throw new Error(`jobs/${jobId}/result HTTP ${res.status}: ${await safeText(res)}`);
   }
 
   /** 실패 보고 (재큐 or failed는 백엔드가 판단). */
   async postFail(jobId: string, errorMsg: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/api/ai/jobs/${jobId}/fail`, {
-      method: "POST",
-      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ errorMsg: errorMsg.slice(0, 500) }),
-    });
+    const res = await fetchWithTimeout(
+      `${this.baseUrl}/api/ai/jobs/${jobId}/fail`,
+      {
+        method: "POST",
+        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ errorMsg: errorMsg.slice(0, 500) }),
+      },
+      pipelineConfig.network.serverRequestTimeoutMs,
+    );
     if (!res.ok) throw new Error(`jobs/${jobId}/fail HTTP ${res.status}: ${await safeText(res)}`);
   }
 }

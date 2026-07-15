@@ -3,12 +3,22 @@
     "alphaThreshold": 16,
     "noiseCutoffRatio": 0.01
   },
+  "anatomy": {
+    "alphaThreshold": 16,
+    "minReachRatio": 0.12,
+    "directionTracebackSteps": 6,
+    "armYThreshold": 0.65,
+    "legYThreshold": 0.55
+  },
   "chromaKey": {
     "colorDistanceThreshold": 0.12,
     "borderBandPx": 4,
     "despill": true,
     "failVarianceThreshold": 0.06,
     "failFrameRatio": 0.5,
+    "enclosedReclaimMarginGate": 0.9,
+    "enclosedReclaimMaxThreshold": 0.28,
+    "enclosedReclaimMarginFrac": 0.6,
     "candidates": [
       { "name": "green", "hex": "#00FF00" },
       { "name": "magenta", "hex": "#FF00FF" },
@@ -61,6 +71,13 @@
   "output": {
     "frameCount": 8,
     "tilePx": 64
+  },
+  "network": {
+    "serverRequestTimeoutMs": 15000,
+    "serverUploadTimeoutMs": 60000,
+    "comfyHealthTimeoutMs": 5000,
+    "comfyRequestTimeoutMs": 30000,
+    "comfyPollRequestTimeoutMs": 10000
   },
   "llmGateway": {
     "maxConcurrency": 6,

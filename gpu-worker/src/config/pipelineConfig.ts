@@ -14,6 +14,18 @@ const PipelineConfigSchema = z.object({
     /** 전체 불투명 면적 대비 이 비율 미만인 연결요소는 노이즈로 무시 */
     noiseCutoffRatio: z.number().min(0).max(1),
   }),
+  anatomy: z.object({
+    /** alpha > 이 값인 픽셀만 불투명(실루엣)으로 취급 (0~255) */
+    alphaThreshold: z.number().int().min(0).max(255),
+    /** 골격 끝점이 몸 중심(root)에서 이 비율(bbox 대각선 대비) 이상 떨어져야 "사지 후보"로 본다 */
+    minReachRatio: z.number().min(0).max(1),
+    /** 끝점의 뻗은 방향을 잴 때 골격을 거슬러 올라갈 걸음 수(픽셀 단위, 경로가 짧으면 자동 축소) */
+    directionTracebackSteps: z.number().int().positive(),
+    /** 끝점의 bbox 내 상대 y가 이 값 미만이면서 수평 방향으로 뻗었으면 팔 후보 */
+    armYThreshold: z.number().min(0).max(1),
+    /** 끝점의 bbox 내 상대 y가 이 값 초과면서 수직 방향으로 뻗었으면 다리 후보 */
+    legYThreshold: z.number().min(0).max(1),
+  }),
   chromaKey: z.object({
     /** 정규화 거리(0~1) 이하면 "배경과 같은 색"으로 flood fill 대상 */
     colorDistanceThreshold: z.number().min(0).max(1),
@@ -25,6 +37,12 @@ const PipelineConfigSchema = z.object({
     failVarianceThreshold: z.number().min(0).max(1),
     /** 의심 프레임 비율이 이 값을 넘으면 이 액션 생성 자체를 실패 처리 */
     failFrameRatio: z.number().min(0).max(1),
+    /** 갇힌-배경 회수를 켤 최소 margin(정규화 RGB, 키색-캐릭터 거리). 이하이면 회수 off(색색 캐릭터 보호) */
+    enclosedReclaimMarginGate: z.number().min(0).max(1),
+    /** 회수 임계 상한 — margin이 커도 이 값 넘게 공격적으로는 안 지움(캐릭터 경계 보호) */
+    enclosedReclaimMaxThreshold: z.number().min(0).max(1),
+    /** 회수 임계 = min(상한, margin × 이 비율). margin에 비례해 자동 조정 */
+    enclosedReclaimMarginFrac: z.number().min(0).max(1),
     /** 키 색 자동 선택 후보 — 그림 색과 HSV 거리가 가장 먼 것 채택 */
     candidates: z.array(z.object({ name: z.string(), hex: HexColor })).min(1),
   }),
@@ -97,6 +115,18 @@ const PipelineConfigSchema = z.object({
   output: z.object({
     frameCount: z.number().int().positive(),
     tilePx: z.number().int().positive(),
+  }),
+  network: z.object({
+    /** 백엔드 GET/POST 짧은 호출(잡 claim·fail 보고) 타임아웃 */
+    serverRequestTimeoutMs: z.number().int().positive(),
+    /** 시트 업로드(postResult) — 페이로드 커서 더 넉넉히 */
+    serverUploadTimeoutMs: z.number().int().positive(),
+    /** ComfyUI 헬스체크 — 죽어있으면 즉시 알아채야 하므로 짧게 */
+    comfyHealthTimeoutMs: z.number().int().positive(),
+    /** ComfyUI 짧은 호출(업로드·큐잉·view) 타임아웃 */
+    comfyRequestTimeoutMs: z.number().int().positive(),
+    /** /history 폴링 1회 호출 타임아웃(전체 상한은 backend.generateTimeoutMs가 별도 관리) */
+    comfyPollRequestTimeoutMs: z.number().int().positive(),
   }),
   llmGateway: z.object({
     /** 게이트웨이 QWEN_MAX_CONCURRENCY와 반드시 맞출 것 (실측 전 잠정값) */
