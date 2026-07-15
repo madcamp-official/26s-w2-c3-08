@@ -194,9 +194,24 @@ export abstract class PhysicsRoom extends Room {
 
   onCreate(): void {
     this.setPatchRate(1000 / TUNING.net.sendRateHz);   // 상태 브로드캐스트 30Hz (기본 20Hz→끊김 완화)
-    const def = this.worldDef();
+    this.loadWorld(this.worldDef());
+
+    let acc = 0;
+    this.setSimulationInterval((dt) => {
+      acc += dt;
+      while (acc >= FIXED_MS) { acc -= FIXED_MS; this.fixedTick(); }
+    });
+  }
+
+  /** 월드 구축/교체. 재호출 시 기존 파츠를 비우고 다시 만든다(레이스 병합맵 로드용). */
+  protected loadWorld(def: WorldDef): void {
     this.terrainBase = def.terrain;
     this.line = def.line;
+    this.monstersRt.clear(); this.blocksRt.clear(); this.itemsRt.clear();
+    this.projectilesRt.clear(); this.carryDefs.clear(); this.carryRespawn.clear();
+    this.claims = [];
+    this.state.monsters.clear(); this.state.blocks.clear(); this.state.items.clear();
+    this.state.projectiles.clear(); this.state.carryables.clear();
     for (const bs of def.blocks) {
       this.blocksRt.set(bs.id, createBlock(bs));
       const st = new BlockState();
@@ -223,12 +238,6 @@ export abstract class PhysicsRoom extends Room {
       st.kind = it.kind; st.x = it.x; st.y = it.y;
       this.state.items.set(it.id, st);
     }
-
-    let acc = 0;
-    this.setSimulationInterval((dt) => {
-      acc += dt;
-      while (acc >= FIXED_MS) { acc -= FIXED_MS; this.fixedTick(); }
-    });
   }
 
   /** 동적 블록 포함 현재 지형 */

@@ -16,7 +16,8 @@
     "./visual": "./visual/index.ts",
     "./build": "./build/index.ts",
     "./pool": "./pool/index.ts",
-    "./imaging": "./imaging/index.ts"
+    "./imaging": "./imaging/index.ts",
+    "./race": "./race/index.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"

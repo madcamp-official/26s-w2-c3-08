@@ -3,6 +3,7 @@
 // 콘솔·게임·네트워크 코드 전부가 프로덕션 번들에서 제외된다.
 import { createRoot } from "react-dom/client";
 import { Console } from "./Console.js";
+import "./raceCommands.js";   // race 명령 자기 등록 (commands.ts 비침습)
 
 export function mountDevConsole(): void {
   const el = document.createElement("div");
