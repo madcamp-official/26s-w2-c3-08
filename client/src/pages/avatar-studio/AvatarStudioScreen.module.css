@@ -10,10 +10,25 @@
 }
 
 .workspace {
-  width: min(100%, 720px);
+  width: 100%;
+  max-width: calc(var(--spacing-16) * 10);
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+  justify-self: center;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--spacing-4);
-  place-items: center;
+  align-items: stretch;
+  justify-items: center;
+  padding-block: var(--spacing-2);
+}
+
+.workspace [data-v2-component='drawing-viewport'] {
+  --drawing-viewport-max-inline: calc(var(--spacing-16) * 8);
+
+  width: 100%;
+  height: 100%;
 }
 
 .workspaceMeta,
@@ -28,6 +43,124 @@
 .formPanel {
   display: grid;
   gap: var(--spacing-4);
+}
+
+.currentColor {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: var(--spacing-10) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--semantic-color-studio-tool-surface);
+}
+
+.currentColor > span {
+  width: var(--spacing-10);
+  height: var(--spacing-10);
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--avatar-current-color);
+}
+
+.currentColor[data-transparent='true'] > span {
+  background:
+    linear-gradient(to bottom right, transparent 45%, var(--semantic-color-status-error) 45%, var(--semantic-color-status-error) 55%, transparent 55%),
+    var(--semantic-color-surface-panel);
+}
+
+.currentColor div {
+  min-width: 0;
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+.currentColor strong,
+.currentColor small {
+  overflow-wrap: anywhere;
+}
+
+.currentColor strong {
+  font-size: var(--typography-size-caption);
+}
+
+.currentColor small {
+  color: var(--semantic-color-text-secondary);
+  font-size: var(--typography-size-caption);
+  font-weight: var(--typography-weight-bold);
+}
+
+.paintPreview {
+  position: relative;
+  width: min(58%, calc(var(--spacing-16) * 4));
+  height: min(72%, calc(var(--spacing-16) * 7));
+}
+
+.paintPreview span {
+  position: absolute;
+  display: block;
+  background: var(--avatar-paint-color);
+}
+
+.paintPreview[data-transparent='true'] span {
+  border: 1px dashed var(--semantic-color-border-strong);
+  background: transparent;
+}
+
+.paintPreview span[data-part='head'] {
+  inset-block-start: 4%;
+  inset-inline-start: 50%;
+  width: 34%;
+  aspect-ratio: 1;
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-full);
+  transform: translateX(-50%);
+}
+
+.paintPreview span[data-part='body'] {
+  inset-block-start: 28%;
+  inset-inline-start: 50%;
+  width: 22%;
+  height: 34%;
+  border: 1px solid var(--semantic-color-border-strong);
+  border-radius: var(--radius-full);
+  transform: translateX(-50%);
+}
+
+.paintPreview span[data-part='arm-left'],
+.paintPreview span[data-part='arm-right'],
+.paintPreview span[data-part='leg-left'],
+.paintPreview span[data-part='leg-right'] {
+  width: 10%;
+  height: 32%;
+  border-radius: var(--radius-full);
+  transform-origin: top center;
+}
+
+.paintPreview span[data-part='arm-left'] {
+  inset-block-start: 34%;
+  inset-inline-start: 30%;
+  transform: rotate(24deg);
+}
+
+.paintPreview span[data-part='arm-right'] {
+  inset-block-start: 34%;
+  inset-inline-end: 30%;
+  transform: rotate(-24deg);
+}
+
+.paintPreview span[data-part='leg-left'] {
+  inset-block-start: 59%;
+  inset-inline-start: 39%;
+  transform: rotate(12deg);
+}
+
+.paintPreview span[data-part='leg-right'] {
+  inset-block-start: 59%;
+  inset-inline-end: 39%;
+  transform: rotate(-12deg);
 }
 
 .canvasNote {

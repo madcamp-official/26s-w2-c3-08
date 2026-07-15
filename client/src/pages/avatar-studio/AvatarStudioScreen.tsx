@@ -2,11 +2,9 @@ import type { CSSProperties } from 'react'
 import {
   AVATAR_VISIBLE_HEIGHT,
   AVATAR_VISIBLE_WIDTH,
-  AVATAR_WORKSPACE_HEIGHT,
-  AVATAR_WORKSPACE_WIDTH,
 } from 'shared'
 
-import { Badge, TextArea, TextField, Toast, type ToastTone } from '../../design-system/components'
+import { TextArea, TextField, Toast, type ToastTone } from '../../design-system/components'
 import { Button, Inline, Stack } from '../../design-system/primitives'
 import { StudioShell } from '../../design-system/shells'
 import {
@@ -124,8 +122,6 @@ export function AvatarStudioScreen({
   swatches,
   selectedSwatchId,
   recentSwatchIds,
-  checkerMode,
-  gridVisible,
   dirtyState,
   sourceAvatarName,
   submitDisabledReason,
@@ -146,8 +142,6 @@ export function AvatarStudioScreen({
   onBrushSizeChange,
   onOpacityChange,
   onSelectColor,
-  onToggleCheckerMode,
-  onToggleGrid,
   onUndo,
   onRedo,
   onClear,
@@ -165,6 +159,7 @@ export function AvatarStudioScreen({
     '--studio-right-panel-width': `${layout.rightPanelWidth}px`,
   } as CSSProperties
   const submitting = state === 'submitting'
+  const selectedSwatch = getSelectedSwatch(swatches, selectedSwatchId)
 
   return (
     <>
@@ -200,17 +195,14 @@ export function AvatarStudioScreen({
             brushSizePresets={brushSizePresets}
             opacity={opacity}
             swatches={swatches}
+            selectedSwatch={selectedSwatch}
             selectedSwatchId={selectedSwatchId}
             recentSwatchIds={recentSwatchIds}
-            checkerMode={checkerMode}
-            gridVisible={gridVisible}
             resizingTools={layout.resizing === 'tools'}
             onToolChange={onToolChange}
             onBrushSizeChange={onBrushSizeChange}
             onOpacityChange={onOpacityChange}
             onSelectColor={onSelectColor}
-            onToggleCheckerMode={onToggleCheckerMode}
-            onToggleGrid={onToggleGrid}
             onUndo={onUndo}
             onRedo={onRedo}
             onClear={onClear}
@@ -230,27 +222,23 @@ export function AvatarStudioScreen({
           >
             <DrawingViewport
               label="아바타 캔버스"
-              workspaceSize={{ width: AVATAR_WORKSPACE_WIDTH, height: AVATAR_WORKSPACE_HEIGHT }}
+              workspaceSize={{ width: AVATAR_VISIBLE_WIDTH, height: AVATAR_VISIBLE_HEIGHT }}
               visibleFrame={{
-                x: AVATAR_VISIBLE_WIDTH,
-                y: AVATAR_VISIBLE_HEIGHT,
+                x: 0,
+                y: 0,
                 width: AVATAR_VISIBLE_WIDTH,
                 height: AVATAR_VISIBLE_HEIGHT,
               }}
-              checkerMode={checkerMode}
-              gridVisible={gridVisible}
-              outsideDim
+              checkerMode="light"
+              gridVisible={false}
+              outsideDim={false}
+              surface="paper"
+              showVisibleFrame={false}
               status={submitting ? 'disabled' : activeTool === 'move' ? 'move' : dirtyState === 'blank' ? 'blank' : 'drawing'}
               toolLabel={getToolLabel(tools, activeTool)}
-            />
-            <div className={styles.workspaceMeta}>
-              <Badge state={state === 'submitFailed' || state === 'offline' ? 'failed' : submitting ? 'generating' : 'ready'} label={getStateLabel(state)} />
-              <Badge state="ready" label={`${AVATAR_VISIBLE_WIDTH}x${AVATAR_VISIBLE_HEIGHT}`} />
-              <Badge state={gridVisible ? 'ready' : 'queued'} label={gridVisible ? '격자 켜짐' : '격자 꺼짐'} />
-            </div>
-            <p className={styles.canvasNote}>
-              보이는 영역은 256x512이고, 작업 영역은 768x1536입니다. 체커와 격자는 내보내기에 포함되지 않습니다.
-            </p>
+            >
+              <AvatarPaintPreview selectedSwatch={selectedSwatch} />
+            </DrawingViewport>
           </section>
         }
         rightPanel={
@@ -350,17 +338,14 @@ interface AvatarToolsPanelProps {
   brushSizePresets: number[]
   opacity: number
   swatches: PaletteSwatchModel[]
+  selectedSwatch: PaletteSwatchModel
   selectedSwatchId: string
   recentSwatchIds: string[]
-  checkerMode: CheckerMode
-  gridVisible: boolean
   resizingTools: boolean
   onToolChange: (toolId: StudioToolId) => void
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
   onSelectColor: (swatchId: string) => void
-  onToggleCheckerMode: () => void
-  onToggleGrid: () => void
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
@@ -377,17 +362,14 @@ function AvatarToolsPanel({
   brushSizePresets,
   opacity,
   swatches,
+  selectedSwatch,
   selectedSwatchId,
   recentSwatchIds,
-  checkerMode,
-  gridVisible,
   resizingTools,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
   onSelectColor,
-  onToggleCheckerMode,
-  onToggleGrid,
   onUndo,
   onRedo,
   onClear,
@@ -451,22 +433,15 @@ function AvatarToolsPanel({
             onChange={(event) => onOpacityChange(Number(event.currentTarget.value))}
           />
         </label>
+        <CurrentColor swatch={selectedSwatch} />
         <PaletteGrid
-          label="팔레트"
+          label="색상"
           swatches={swatches}
           selectedSwatchId={selectedSwatchId}
           recentSwatchIds={recentSwatchIds}
           disabled={state === 'submitting'}
           onSelect={onSelectColor}
         />
-        <Inline gap="small">
-          <Button size="small" variant="secondary" onClick={onToggleCheckerMode}>
-            {checkerMode === 'light' ? '어두운 체커' : '밝은 체커'}
-          </Button>
-          <Button size="small" variant="secondary" onClick={onToggleGrid}>
-            {gridVisible ? '격자 끄기' : '격자 켜기'}
-          </Button>
-        </Inline>
         <PanelResizeHandle
           axis="vertical"
           label="도구 블록 세로 크기 조절"
@@ -478,25 +453,54 @@ function AvatarToolsPanel({
   )
 }
 
-function getToolLabel(tools: ToolButtonProps['tool'][], activeTool: StudioToolId) {
-  return tools.find((tool) => tool.id === activeTool)?.label ?? '펜'
+function CurrentColor({ swatch }: { swatch: PaletteSwatchModel }) {
+  const style = {
+    '--avatar-current-color': swatch.value,
+  } as CSSProperties
+
+  return (
+    <section className={styles.currentColor} style={style} data-transparent={swatch.transparent ? 'true' : 'false'}>
+      <span aria-hidden="true" />
+      <div>
+        <strong>현재 색상</strong>
+        <small>{swatch.name}</small>
+      </div>
+    </section>
+  )
 }
 
-function getStateLabel(state: AvatarStudioScreenState) {
-  const labels: Record<AvatarStudioScreenState, string> = {
-    default: '편집 가능',
-    loadMine: '내 아바타 불러오기',
-    loadOthers: '남이 만든 아바타',
-    loadedUnchanged: '수정 필요',
-    loadedChanged: '수정됨',
-    invalidName: '이름 확인',
-    submitting: '저장 중',
-    submitSuccess: '저장 완료',
-    submitFailed: '저장 실패',
-    offline: '오프라인',
-  }
+function AvatarPaintPreview({ selectedSwatch }: { selectedSwatch: PaletteSwatchModel }) {
+  const style = {
+    '--avatar-paint-color': selectedSwatch.value,
+  } as CSSProperties
 
-  return labels[state]
+  return (
+    <div
+      className={styles.paintPreview}
+      style={style}
+      data-transparent={selectedSwatch.transparent ? 'true' : 'false'}
+      aria-hidden="true"
+    >
+      <span data-part="head" />
+      <span data-part="body" />
+      <span data-part="arm-left" />
+      <span data-part="arm-right" />
+      <span data-part="leg-left" />
+      <span data-part="leg-right" />
+    </div>
+  )
+}
+
+function getSelectedSwatch(swatches: PaletteSwatchModel[], selectedSwatchId: string) {
+  return swatches.find((swatch) => swatch.id === selectedSwatchId) ?? swatches[0] ?? {
+    id: 'ink',
+    name: '잉크',
+    value: 'var(--semantic-color-text-primary)',
+  }
+}
+
+function getToolLabel(tools: ToolButtonProps['tool'][], activeTool: StudioToolId) {
+  return tools.find((tool) => tool.id === activeTool)?.label ?? '펜'
 }
 
 function getDirtyMessage(

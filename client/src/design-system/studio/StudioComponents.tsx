@@ -399,6 +399,8 @@ export interface DrawingViewportProps {
   outsideDim: boolean
   status: DrawingViewportStatus
   toolLabel: string
+  surface?: 'checker' | 'paper'
+  showVisibleFrame?: boolean
   children?: ReactNode
 }
 
@@ -411,6 +413,8 @@ export function DrawingViewport({
   outsideDim,
   status,
   toolLabel,
+  surface = 'checker',
+  showVisibleFrame = true,
   children,
 }: DrawingViewportProps) {
   const viewportRef = useRef<HTMLElement>(null)
@@ -506,6 +510,7 @@ export function DrawingViewport({
       data-checker-mode={checkerMode}
       data-grid-visible={gridVisible ? 'true' : 'false'}
       data-outside-dim={outsideDim ? 'true' : 'false'}
+      data-surface={surface}
       data-state={status}
     >
       <div className={styles.viewportFrame}>
@@ -522,7 +527,7 @@ export function DrawingViewport({
           </div>
         ) : null}
         {gridVisible ? <div className={styles.gridLayer} aria-hidden="true" data-v2-layer="grid" /> : null}
-        <div className={styles.visibleFrame} aria-hidden="true" data-v2-layer="visible-frame" />
+        {showVisibleFrame ? <div className={styles.visibleFrame} aria-hidden="true" data-v2-layer="visible-frame" /> : null}
       </div>
       <div className={styles.viewportStatus} ref={statusRef} role="status" aria-live="polite">
         <Badge state={status === 'disabled' ? 'failed' : status === 'blank' ? 'queued' : 'ready'} label={getViewportStatusLabel(status)} />

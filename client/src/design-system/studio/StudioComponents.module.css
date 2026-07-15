@@ -319,6 +319,12 @@
   background: var(--semantic-color-surface-panel);
 }
 
+.drawingViewport[data-surface='paper'] .viewportFrame,
+.drawingViewport[data-surface='paper'] .checkerLayer {
+  background: var(--semantic-color-surface-panel);
+  background-image: none;
+}
+
 .checkerLayer,
 .sourceLayer,
 .outsideDimLayer,

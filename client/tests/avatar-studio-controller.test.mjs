@@ -58,9 +58,12 @@ assert.match(drawingPortSource, /encodePngDataUrl/)
 assert.match(drawingPortSource, /width: imageData\.width/)
 assert.match(drawingPortSource, /height: imageData\.height/)
 assert.match(screenSource, /AVATAR_VISIBLE_WIDTH/)
-assert.match(screenSource, /AVATAR_WORKSPACE_WIDTH/)
+assert.match(screenSource, /surface="paper"/)
+assert.match(screenSource, /showVisibleFrame=\{false\}/)
+assert.match(screenSource, /workspaceSize=\{\{ width: AVATAR_VISIBLE_WIDTH, height: AVATAR_VISIBLE_HEIGHT \}\}/)
 assert.match(screenSource, /onPaste=\{\(event\) => event\.preventDefault\(\)\}/)
 assert.match(packageSource, /avatar-studio:check/)
+assert.doesNotMatch(screenSource, /어두운 체커|밝은 체커|격자 끄기|격자 켜기/)
 
 assert.doesNotMatch(
   screenSource,
