@@ -134,30 +134,42 @@ export function buildMonster(id: string, asset: string, a: MonsterAttrs, g: Buil
       rules.push({ when: { type: "always" }, do: { type: "chase", speed: chaseSpeed }, priority: 1 });
       break;
     case "sight":
-      // 부끄부끄식: 보이면 정지, 안 보이면 기본 이동. inSight 조건 사용.
-      rules.push({ when: { type: "inSight" }, do: { type: "idle" }, priority: 2 });
+      rules.push({ when: { type: "inSight" }, do: { type: "idle" }, priority: 2 }); // 부끄부끄
+      break;
+    case "flee":
+      rules.push({ when: { type: "playerWithin", dist: a.pursuit.range }, do: { type: "flee", speed: chaseSpeed }, priority: 1 });
       break;
     case "jump_sync":
       break; // TODO(builder): 점프 동기화 행동 미구현
     case "none": break;
   }
 
-  // 발사
+  // 발사 — trigger 게이팅(주기/근접/시야)
   if (a.shooter) {
-    rules.push({
-      when: { type: "periodic", ms: periodMs(a.shooter.period) },
-      do: { type: "shoot", aim: a.shooter.arc }, priority: 1,
-    });
+    const s = a.shooter;
+    const when: RuleSpec["when"] = s.trigger === "proximity" ? { type: "playerWithin", dist: s.range }
+      : s.trigger === "sight" ? { type: "inSight" }
+      : { type: "periodic", ms: periodMs(s.period) };
+    rules.push({ when, do: { type: "shoot", aim: s.arc }, priority: 1 });
   }
   // 주기 도약
   if (a.hop) {
     rules.push({ when: { type: "periodic", ms: 1500 }, do: { type: "hop", power: powerNum(a.hop.height) }, priority: 1 });
   }
-  // 분노: 밟히면 가속·추적 전환
-  if (a.enrage) {
-    rules.push({ when: { type: "stomped" }, do: { type: "enrage" }, priority: 3 });
+  // 분노
+  if (a.enrage) rules.push({ when: { type: "stomped" }, do: { type: "enrage" }, priority: 3 });
+  // 잠복→등장 / 순간이동 — best-effort(기존 ambush/teleportTo)
+  if (a.emerge) {
+    const when: RuleSpec["when"] = a.emerge.trigger === "proximity"
+      ? { type: "playerWithin", dist: a.emerge.range } : { type: "periodic", ms: periodMs(a.emerge.period) };
+    rules.push({ when, do: { type: "ambush" }, priority: 2 });
   }
-  // TODO(builder): splitOnDeath(죽음 훅 필요), shove(접촉→넉백 대응 미구현)
+  if (a.teleport) {
+    const when: RuleSpec["when"] = a.teleport.trigger === "on_hit"
+      ? { type: "hit" } : { type: "periodic", ms: periodMs(a.teleport.period) };
+    rules.push({ when, do: { type: "teleportTo" }, priority: 2 });
+  }
+  // TODO(builder): anchor(돌진 후 복귀)·splitOnDeath(죽음 훅)·shove(접촉→넉백)·explode 액션 — 미구현
 
   const vuln = {
     stomp: stompReactionToVuln(a.stompReaction.type),
@@ -176,5 +188,7 @@ function stompReactionToVuln(r: MonsterAttrs["stompReaction"]["type"]): StompRea
     case "stun": return "stun";
     case "spiky": return "hurtAttacker";     // 밟기 불가 = 밟은 쪽 피해
     case "trampoline": return "trampoline";
+    case "shell": return "shellify";         // 엉금 → 껍질
+    case "explode": return "die";            // TODO(builder): explode 액션 미구현 — 우선 die
   }
 }
