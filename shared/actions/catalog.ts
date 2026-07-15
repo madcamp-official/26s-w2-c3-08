@@ -68,6 +68,10 @@ export const ACTIONS: Record<ActionName, ActionSpec> = {
     returnsToStart: false,
     durationSec: 2,
     poseHint: "neutral resting stance, weight centered",
+    // 실측(2026-07-16, 마리오 idle/walk 반복 검증)으로 프레임1이 정지 소스 이미지에 너무 가까워
+    // 나머지와 결이 다르게 뻣뻣해 보임 확인 — loop 액션도 bestLoopWindow가 자체 탐색하긴 하나
+    // 이음새 매끄러움만 최적화할 뿐 "초반 품질"은 안 봐서 무조건 3프레임 스킵으로 안전하게 제거.
+    skipLeadFrames: 3,
   },
   walk: {
     motionHintCore: "walking in place, steady natural gait",
@@ -75,6 +79,7 @@ export const ACTIONS: Record<ActionName, ActionSpec> = {
     loop: true,
     returnsToStart: false,
     poseHint: "in-place walk cycle, feet return to the same spot each loop",
+    skipLeadFrames: 3, // idle과 동일 사유(위 주석 참조)
   },
   onair: {
     // 1회성 held 포즈 (루프 아님) — 이전 버그: loop:true 하드코딩으로 loop 버킷(3s) 탔음
