@@ -15,12 +15,15 @@ export interface GuaranteedRule {
 
 /**
  * 매 게임 카테고리별 랜덤 공용 제공 개수. (2026-07-14)
- * background = 예외(무제한, 여기 없음) · avatar = 맵 배치 대상 아님 · item = 미정(TBD).
+ * 규칙: 방 시작 시 1회 추첨 · 방 전체 동일 세트 · 중복 없음(서로 다른 것) ·
+ *   풀 소스 = 전 유저 에셋 + 시스템 기본 에셋(현재 비공개 미지원이라 유저 에셋 전부 대상).
+ * background = 예외(무제한, 여기 없음) · avatar = 맵 배치 대상 아님.
  * 보장 포함(GUARANTEED_POOL_RULES)은 이 개수와 별도로 먼저 확보.
  */
 export const RANDOM_POOL_COUNTS: Partial<Record<Category, number>> = {
   block: 30,
   monster: 10,
+  item: 5,
 };
 
 export const GUARANTEED_POOL_RULES: GuaranteedRule[] = [
