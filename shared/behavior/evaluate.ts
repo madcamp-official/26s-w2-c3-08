@@ -9,6 +9,8 @@ export interface CompiledRule {
   priority: number;
   windupMs: number;
   id: number;
+  /** 행동 종류 이름(spec.do.type) — 패턴별 사운드/연출 식별용(§actionChanged) */
+  type: string;
 }
 
 export function compileRules(specs: RuleSpec[]): CompiledRule[] {
@@ -18,6 +20,7 @@ export function compileRules(specs: RuleSpec[]): CompiledRule[] {
     priority: s.priority ?? 0,
     windupMs: s.windupMs ?? 0,
     id: i,
+    type: s.do.type,
   }));
 }
 
@@ -43,6 +46,12 @@ export function stepRules(rules: CompiledRule[], ctx: Ctx): void {
   const maxP = Math.max(...active.map((r) => r.priority));
   const top = active.filter((r) => r.priority === maxP);
   const chosen = top.length === 1 ? top[0] : top[Math.floor(ctx.rng() * top.length)];
+
+  // 선택된 행동이 바뀐 순간(=패턴 전환)만 1회 통지 — 매 틱 반복 실행과는 별개(§actionChanged, 사운드/연출용)
+  if (ctx.mem["__lastActionId"] !== chosen.id) {
+    ctx.mem["__lastActionId"] = chosen.id;
+    ctx.emit("actionChanged", { type: chosen.type, ruleId: chosen.id });
+  }
 
   if (chosen.windupMs > 0) {
     ctx.mem["__windupRule"] = chosen.id;

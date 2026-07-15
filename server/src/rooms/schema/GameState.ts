@@ -13,6 +13,10 @@ export class PlayerState extends Schema {
   @type("uint8") pound: number = 0;      // 0/1/2
   @type("boolean") crouch = false;
   @type("boolean") slide = false;
+  @type("boolean") grounded = true;      // 다른 플레이어 점프/착지 사운드 재현용 (§listener)
+  @type("int8") touchingWall: number = 0; // 0/1/-1 — grounded와 조합해 벽잡기(클링) 재현
+  @type("boolean") dead = false;         // 다른 플레이어 사망(피격) 사운드 재현용
+  @type("uint16") wallJumpSeq: number = 0; // 벽점프 발동 누적 카운터(순간 플래그는 30hz relay가 놓칠 수 있어 카운터로)
   @type("boolean") invincible = false;
   @type("boolean") frozen = false;       // 아이템 획득 0.4초
   @type("uint8") sizeStage: number = 2;
@@ -39,6 +43,8 @@ export class MonsterState extends Schema {
   // 선딜 (§23): 시작 시 서버가 실행 절대시각 예약 → 클라가 재생속도 조절
   @type("string") windupAnim = "";
   @type("number") windupEndsAt = 0;      // 서버 clock 기준 ms
+  // 현재 선택된 행동 종류(behavior evaluate.ts actionChanged) — 클라가 전환 시점에 패턴별 사운드/연출 재생
+  @type("string") currentAction = "";
 }
 
 export class BlockState extends Schema {

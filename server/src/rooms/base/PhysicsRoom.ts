@@ -15,6 +15,8 @@ import {
   type ProjectileSpec, type ProjectileInstance, spawnProjectile, stepProjectile,
   type LineBounds, checkLineExit,
 } from "shared/parts";
+import { parseAttrs } from "shared/schemas";
+import { buildMonster } from "shared/build";
 import { compileRules, stepRules, type Ctx } from "shared/behavior";
 import {
   GameState, PlayerState, MonsterState, BlockState, ItemState, ProjectileState,
@@ -50,6 +52,7 @@ export abstract class PhysicsRoom extends Room {
   protected carryDefs = new Map<string, CarryableDef>();
   protected carryRespawn = new Map<string, number>();
   protected clock_ = 0;
+  protected spawnSeq = 0;   // 개발자 콘솔 spawnmonster 등 런타임 스폰 ID 시퀀스
 
   protected abstract worldDef(): WorldDef;
 
@@ -59,6 +62,32 @@ export abstract class PhysicsRoom extends Room {
       const p = this.state.players.get(client.sessionId);
       if (!p) return;
       Object.assign(p, m);
+    },
+    // ── 개발자 콘솔: 런타임 몬스터 스폰 (테스트용, §spawnmonster) ──
+    // attrs는 MonsterAttrs 원본 JSON — 서버가 검증(parseAttrs) 후 buildMonster로 조립.
+    spawnMonster: (_client: Client, m: { attrs: unknown; x: number; y: number }) => {
+      let attrs;
+      try {
+        attrs = parseAttrs("monster", m.attrs);
+      } catch (e) {
+        console.warn("[spawnMonster] attrs 검증 실패:", e instanceof Error ? e.message : e);
+        return;
+      }
+      const id = `spawn_${this.spawnSeq++}`;
+      const w = attrs.size.w * TUNING.world.tileSize;
+      const h = attrs.size.h * TUNING.world.tileSize;
+      let spec;
+      try {
+        spec = buildMonster(id, "spawned", attrs, { x: m.x, y: m.y, w, h });
+      } catch (e) {
+        console.warn("[spawnMonster] buildMonster 실패:", e instanceof Error ? e.message : e);
+        return;
+      }
+      this.monstersRt.set(id, createMonster(spec));
+      const st = new MonsterState();
+      st.asset = spec.asset; st.x = spec.x; st.y = spec.y; st.w = spec.w; st.h = spec.h; st.hp = spec.hp;
+      this.state.monsters.set(id, st);
+      console.log(`[spawnMonster] OK id=${id} x=${spec.x} y=${spec.y} w=${spec.w} h=${spec.h} hp=${spec.hp} rules=${spec.rules.length} (총 몬스터 ${this.state.monsters.size}마리)`);
     },
     // ── 이벤트: 클라 확정 → 서버 relay/확정 ──
     hitMonster: (client: Client, m: { monsterId: string; hitId: string }) => {
@@ -240,6 +269,7 @@ export abstract class PhysicsRoom extends Room {
         else if (kind === "revived") st.stunned = false;
         else if (kind === "hide") st.hidden = true;
         else if (kind === "emerge") st.hidden = false;
+        else if (kind === "actionChanged") st.currentAction = String(data.type ?? "");
       };
       stepMonster(m, target, playerList, terrain, FIXED_MS, Math.random, this.state.switchOn, emit);
       if (m.alive) {

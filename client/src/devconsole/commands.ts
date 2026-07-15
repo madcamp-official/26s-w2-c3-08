@@ -2,7 +2,13 @@
 import { joinBaseworld, leaveBaseworld, getRoom } from "../rooms/baseworld/connect.js";
 import { startGame, stopGame, getScene } from "../rooms/baseworld/boot.js";
 import { TUNING, tuningDiff } from "shared/physics";
-import { CATEGORIES, defaultAttrsByCategory, type Category } from "shared/schemas";
+import { CATEGORIES, defaultAttrsByCategory, defaultMonsterAttrs, type MonsterAttrs } from "shared/schemas";
+import { toggleMapEditor } from "../mapeditor/mount.js";
+import { SOUNDS, EFFECTS, type SoundName, type EffectName } from "shared/effects";
+import { playSound } from "../audio/sfx.js";
+import { unlockAudio } from "../audio/zzfx.js";
+import { playEffect } from "../fx/effects.js";
+import { getAudioSettings, setSfxVolume, setMuted, toggleMuted } from "../audio/settings.js";
 
 // 백엔드 HTTP 베이스 URL — Colyseus WS와 같은 호스트/포트(2567)에서 API가 돈다.
 // connect.ts의 SERVER_URL(ws://...)을 http로 치환하거나 VITE_SERVER_URL을 직접 사용.
@@ -13,6 +19,48 @@ const HTTP_BASE: string = (() => {
   if (ws) return ws.replace(/^ws/, "http").replace(/\/$/, "");
   return `${location.protocol}//${location.hostname}:2567`;
 })();
+
+// 몬스터 옵션 축별 테스트 프리셋 (§spawnmonster). 기본형(defaultMonsterAttrs)에서 축 하나씩만 바꿔
+// 각 옵션을 독립적으로 검증할 수 있게 함. note는 buildRuntimePart.ts의 TODO(builder) 미구현 표시.
+interface MonsterPreset { desc: string; note?: string; attrs: () => MonsterAttrs }
+const base = defaultMonsterAttrs;
+const MONSTER_PRESETS: Record<string, MonsterPreset> = {
+  walk: { desc: "기본 보행형(왕복) — 밟으면 즉사 (굼바)", attrs: () => base() },
+  stationary: { desc: "고정형(제자리)", attrs: () => ({ ...base(), locomotion: { type: "stationary" } }) },
+  fly: { desc: "비행형 — 이동 시 flap 사운드", attrs: () => ({ ...base(), locomotion: { type: "fly" } }) },
+  climb: { desc: "등반형(벽·천장 기어감) — 이동 시 crawl 사운드", attrs: () => ({ ...base(), locomotion: { type: "climb" } }) },
+  chase: { desc: "상시 추적 — 진입 시 aggro 사운드", attrs: () => ({ ...base(), pursuit: { type: "always" } }) },
+  proximity: { desc: "근접 감지 추적 — 다가가면 aggro 사운드", attrs: () => ({ ...base(), pursuit: { type: "proximity", range: "near" } }) },
+  sight: { desc: "시야형(부끄부끄식) — 보면 정지, 안 보면 이동", attrs: () => ({ ...base(), pursuit: { type: "sight" } }) },
+  jumpsync: { desc: "점프 동기화 추적", note: "빌더 미구현 — 추적 동작 없음", attrs: () => ({ ...base(), pursuit: { type: "jump_sync" } }) },
+  stun: { desc: "밟으면 기절 후 부활 — monsterStunned 사운드", attrs: () => ({ ...base(), stompReaction: { type: "stun", respawn: "short" } }) },
+  spiky: { desc: "밟기 불가 — 밟으면 오히려 플레이어 피해", attrs: () => ({ ...base(), stompReaction: { type: "spiky" } }) },
+  trampoline: { desc: "밟으면 크게 튕김", attrs: () => ({ ...base(), stompReaction: { type: "trampoline" } }) },
+  shooter_straight: { desc: "직선 발사(주기) — shoot 사운드", attrs: () => ({ ...base(), shooter: { trigger: "periodic", period: "normal", arc: "straight", range: "normal" } }) },
+  shooter_homing: { desc: "유도 발사(주기)", attrs: () => ({ ...base(), shooter: { trigger: "periodic", period: "normal", arc: "homing", range: "normal" } }) },
+  shooter_proximity: { desc: "근접 감지 시 발사", attrs: () => ({ ...base(), shooter: { trigger: "proximity", period: "normal", arc: "straight", range: "near" } }) },
+  hop: { desc: "주기적 도약 — hop 사운드", attrs: () => ({ ...base(), hop: { height: "high" } }) },
+  enrage: { desc: "밟으면 분노(가속+추적 전환) — enrage 사운드", attrs: () => ({ ...base(), enrage: true }) },
+  emerge: { desc: "잠복→등장(뻐끔플라워식, 주기)", attrs: () => ({ ...base(), emerge: { trigger: "periodic", period: "normal", range: "normal" } }) },
+  teleport: { desc: "순간이동(주기) — teleport 사운드", attrs: () => ({ ...base(), teleport: { trigger: "periodic", period: "normal" } }) },
+  flee: { desc: "보면 도망(다가가면 반대로 도주)", attrs: () => ({ ...base(), pursuit: { type: "flee", range: "near" } }) },
+  shell: { desc: "밟으면 등껍질로 변함(엉금엉금) — shell 사운드", attrs: () => ({ ...base(), stompReaction: { type: "shell" } }) },
+  explode: { desc: "밟으면 폭발(폭탄병)", note: "빌더 미구현 — 우선 즉사로 대체 처리", attrs: () => ({ ...base(), stompReaction: { type: "explode", radius: "normal" } }) },
+  anchor: { desc: "돌진 후 원위치 복귀(사슬·와글와글)", note: "빌더 미구현 — 복귀 동작 없음", attrs: () => ({ ...base(), anchor: true }) },
+  split: { desc: "사망 시 분열", note: "빌더 미구현 — 분열 동작 없음", attrs: () => ({ ...base(), splitOnDeath: true }) },
+  shove: { desc: "접촉 시 넉백(피해 대신)", note: "빌더 미구현 — 넉백 동작 없음", attrs: () => ({ ...base(), shove: true }) },
+  immortal: { desc: "무적 — 처치 불가(항상 spiky 고정)", attrs: () => ({ ...base(), immortal: true, hp: 1, stompReaction: { type: "spiky" } }) },
+  hp2: { desc: "다중 타격(2회 필요)", attrs: () => ({ ...base(), hp: 2 }) },
+  hp3: { desc: "다중 타격(3회 필요)", attrs: () => ({ ...base(), hp: 3 }) },
+  boss: {
+    desc: "복합형(보행+추적+발사+도약+분노) — 여러 사운드 동시 확인용",
+    attrs: () => ({
+      ...base(), pursuit: { type: "proximity", range: "far" },
+      shooter: { trigger: "periodic", period: "normal", arc: "straight", range: "normal" },
+      hop: { height: "low" }, enrage: true, hp: 3,
+    }),
+  },
+};
 
 export interface CmdCtx { print: (line: string) => void }
 export interface Command {
@@ -188,6 +236,105 @@ export const COMMANDS: Record<string, Command> = {
       } catch (e) {
         ctx.print(`네트워크 오류: ${e instanceof Error ? e.message : String(e)} (HTTP_BASE=${HTTP_BASE})`);
       }
+    },
+  },
+  spawnmonster: {
+    usage: "spawnmonster <프리셋|list> [x] [y]",
+    desc: "몬스터 옵션별 테스트 스폰 (join 후 사용). 프리셋 목록: spawnmonster list",
+    run: (args, ctx) => {
+      const room = getRoom();
+      const sc = getScene();
+      if (!room || !sc) { ctx.print("게임 미실행 — join 먼저"); return; }
+      const [name, xs, ys] = args;
+      if (!name || name === "list") {
+        ctx.print(`몬스터 프리셋 ${Object.keys(MONSTER_PRESETS).length}개 (옵션 축별 1개씩 — 전부 개별 테스트 가능):`);
+        for (const [key, p] of Object.entries(MONSTER_PRESETS)) {
+          ctx.print(`  spawnmonster ${key.padEnd(16)} ${p.desc}${p.note ? `  ⚠️ ${p.note}` : ""}`);
+        }
+        ctx.print("좌표 생략 시 내 앞(오른쪽 150px, 위 100px)에 스폰. 예) spawnmonster fly 800 400");
+        return;
+      }
+      const preset = MONSTER_PRESETS[name];
+      if (!preset) { ctx.print(`알 수 없는 프리셋: ${name} (spawnmonster list)`); return; }
+      const b = sc.me.body;
+      const x = xs !== undefined ? Number(xs) : b.x + 150;
+      const y = ys !== undefined ? Number(ys) : b.y - 100;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { ctx.print("사용법: spawnmonster <프리셋> [x] [y]"); return; }
+      room.send("spawnMonster", { attrs: preset.attrs(), x, y });
+      ctx.print(`스폰 요청: ${name} @ (${Math.round(x)}, ${Math.round(y)})${preset.note ? `  ⚠️ ${preset.note}` : ""}`);
+    },
+  },
+  mapedit: {
+    usage: "mapedit",
+    desc: "맵 에디터 열기/닫기 토글 (UI 셸 검증 전용 — 더미 에셋, 저장 없음)",
+    run: (_a, ctx) => {
+      const opened = toggleMapEditor();
+      ctx.print(opened ? "맵 에디터 열림" : "맵 에디터 닫는 중…");
+    },
+  },
+  playsound: {
+    usage: "playsound <이름|list>",
+    desc: "사운드 단독 재생(오디션용, 게임 미실행 상태에서도 가능)",
+    run: (args, ctx) => {
+      unlockAudio(); // 콘솔 입력 자체가 사용자 제스처라 여기서 해제
+      const name = args[0];
+      if (!name || name === "list") {
+        ctx.print(`사운드 ${SOUNDS.length}개: ${SOUNDS.join(", ")}`);
+        return;
+      }
+      if (!(SOUNDS as readonly string[]).includes(name)) {
+        ctx.print(`알 수 없는 사운드: ${name} (playsound list)`);
+        return;
+      }
+      playSound(name as SoundName);
+      ctx.print(`재생: ${name}`);
+    },
+  },
+  playeffect: {
+    usage: "playeffect <이름|list> [x] [y]",
+    desc: "이펙트 단독 재생(오디션용). join 후 사용 — 좌표 생략 시 내 위치",
+    run: (args, ctx) => {
+      const sc = getScene();
+      if (!sc) { ctx.print("게임 미실행 — join 먼저 (이펙트는 씬이 필요함)"); return; }
+      const name = args[0];
+      if (!name || name === "list") {
+        ctx.print(`이펙트 ${EFFECTS.length}개: ${EFFECTS.join(", ")}`);
+        return;
+      }
+      if (!(EFFECTS as readonly string[]).includes(name)) {
+        ctx.print(`알 수 없는 이펙트: ${name} (playeffect list)`);
+        return;
+      }
+      const b = sc.me.body;
+      const x = args[1] !== undefined ? Number(args[1]) : b.x;
+      const y = args[2] !== undefined ? Number(args[2]) : b.y;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { ctx.print("사용법: playeffect <이름> [x] [y]"); return; }
+      playEffect(sc, name as EffectName, x, y);
+      ctx.print(`재생: ${name} @ (${Math.round(x)}, ${Math.round(y)})`);
+    },
+  },
+  volume: {
+    usage: "volume [0-100]",
+    desc: "효과음 볼륨 조회/설정 (설정 화면 연결 전 임시 — localStorage 저장됨)",
+    run: (args, ctx) => {
+      if (args.length === 0) {
+        const s = getAudioSettings();
+        ctx.print(`볼륨 ${Math.round(s.sfxVolume * 100)}% · ${s.muted ? "뮤트 중" : "뮤트 아님"}`);
+        return;
+      }
+      const pct = Number(args[0]);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) { ctx.print("사용법: volume <0~100>"); return; }
+      setSfxVolume(pct / 100);
+      ctx.print(`볼륨 → ${pct}%`);
+    },
+  },
+  mute: {
+    usage: "mute [on|off]",
+    desc: "효과음 뮤트 토글/설정",
+    run: (args, ctx) => {
+      if (args[0] === "on") { setMuted(true); ctx.print("뮤트 on"); return; }
+      if (args[0] === "off") { setMuted(false); ctx.print("뮤트 off"); return; }
+      ctx.print(`뮤트 ${toggleMuted() ? "on" : "off"}`);
     },
   },
   clear: { usage: "clear", desc: "출력 지우기", run: () => {} },

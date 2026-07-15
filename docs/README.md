@@ -16,6 +16,7 @@
 | [visual-language.md](KJH/visual-language.md) | 시각 언어 — 테두리/오라/오버레이로 역할·위험·충돌 가독성(속성→시각 태그 `deriveVisualTags`) | 🔧 |
 | [screen-design.md](KJH/screen-design.md) | 화면 설계 + **게임 규칙 + UI 모션 가이드**(2026-07-14 보충) — 전 플로우 초안화. 담당 분담·API 미정 명시. **🔧 진행 중** | 🔧 |
 | [dev-console.md](KJH/dev-console.md) | 개발자 콘솔 + baseworld 테스트 방 설계 (VITE_DEV_CONSOLE 스위치) | ✅ |
+| [sfx-coverage-todo.md](KJH/sfx-coverage-todo.md) | 사운드·이펙트 옵션별 매핑 커버리지 — 완료분/구조적 선행작업(블록 emit 통로)/스키마 안정화 대기분 | 🔧 |
 
 ## LSJ
 

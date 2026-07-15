@@ -52,6 +52,9 @@ export interface Avatar {
   invincibleLeftMs: number;
   // 연출 트리거 (렌더가 소비)
   fx: Set<string>;           // "ceilBonk" | "jumped" | "landed" ...
+  // 벽점프 발동 횟수 — relay send-rate(30hz)가 순간 플래그(단일 틱)를 놓칠 수 있어 누적 카운터로 전송(§listener).
+  // 다른 플레이어 클라가 증가분을 감지해 벽점프 사운드 재현.
+  wallJumpSeq: number;
 }
 
 export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = TUNING): Avatar {
@@ -66,6 +69,7 @@ export function createAvatar(x: number, y: number, hitboxH: number, t: Tuning = 
     freezeLeftMs: 0, stunLeftMs: 0,
     speedMult: 1, speedMultLeftMs: 0, invincibleLeftMs: 0,
     fx: new Set(),
+    wallJumpSeq: 0,
   };
 }
 
@@ -210,6 +214,7 @@ export function stepAvatar(a: Avatar, input: AvatarInput, dtMs: number, terrain:
     a.jumpBufferLeftMs = 0;
     a.wallCoyoteLeftMs = 0;   // 소진(연타 방지)
     a.fx.add("wallJump");
+    a.wallJumpSeq++;
   }
 
   // ── 점프 (내려찍기 점프 배수 / 밟기 직후 강화 — 선입력 버퍼가 창에 적용돼 씹힘 방지) ──

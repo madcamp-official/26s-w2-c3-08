@@ -14,5 +14,12 @@ export const SOUNDS = [
   "jump", "land", "stomp", "hurt", "die", "pickup", "switch", "break",
   "shoot", "hop", "charge", "teleport", "emerge", "enrage", "stun",
   "shell", "revive", "bump", "boing", "slam_start", "slam_hit", "throw",
+  "aggro",     // 몬스터 추적 시작 (chase 진입)
+  "flap",      // 비행 몬스터 이동 시작
+  "crawl",     // 등반 몬스터 이동 시작
+  "wallKick",  // 플레이어 벽점프
+  "wallGrab",  // 플레이어 벽 잡기(클링 시작)
+  "slide",     // 플레이어 경사 슬라이딩 시작
+  "powerUp",   // 아이템: 강화형(sizeUp/hpUp) 획득
 ] as const;
 export type SoundName = (typeof SOUNDS)[number];

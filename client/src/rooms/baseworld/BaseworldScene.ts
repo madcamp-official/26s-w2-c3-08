@@ -19,6 +19,10 @@ import {
 } from "../../netphysics/interpolate.js";
 import { sendAvatarState } from "../../netphysics/reconcile.js";
 import { createSquash, setSquash, stepSquash, type SquashState } from "../../netphysics/squash.js";
+import { feedback, monsterPatternChanged } from "../../fx/dispatch.js";
+import { unlockAudio } from "../../audio/zzfx.js";
+import { setListenerPosition } from "../../audio/listener.js";
+import { playSound } from "../../audio/sfx.js";
 
 const FIXED_MS = 1000 / TUNING.world.tickRate;
 
@@ -47,6 +51,13 @@ export class BaseworldScene extends Phaser.Scene {
   keys!: Record<"left" | "right" | "jump" | "down" | "run" | "grab", Phaser.Input.Keyboard.Key[]>;
   players = new Map<string, View>();
   monsters = new Map<string, View>();
+  /** 몬스터 사운드/연출용 상태 전이 추적 (MonsterState 필드 엣지 감지 — 서버 emit이 클라에 직접 안 옴) */
+  monsterFx = new Map<string, { alive: boolean; stunned: boolean; hidden: boolean; action: string }>();
+  /** 다른 플레이어(고스트) 사운드용 상태 전이 추적 — PlayerState에 없는 필드(dead·wallJump)는 재현 불가(TODO) */
+  playerFx = new Map<string, {
+    grounded: boolean; slide: boolean; pound: number;
+    clinging: boolean; dead: boolean; invincible: boolean; wallJumpSeq: number;
+  }>();
   projectiles = new Map<string, Phaser.GameObjects.Rectangle>();
   itemRects = new Map<string, Phaser.GameObjects.Rectangle>();
   carryRects = new Map<string, Phaser.GameObjects.Rectangle>();
@@ -75,6 +86,9 @@ export class BaseworldScene extends Phaser.Scene {
   monsterHitSeq = 0;
   // 자기 스프라이트 연출 (유예 포함): kind/dir/amount/남은ms
   selfFx = { kind: "none" as "none" | "stomped" | "shift" | "squeeze" | "ceil", dir: 1, amt: 8, left: 0, centered: false };
+  prevGrounded = false;   // 착지·점프 전이 감지(사운드/이펙트)
+  prevClinging = false;   // 벽 잡기(클링) 전이 감지
+  prevSlide = false;      // 경사 슬라이딩 전이 감지
 
   constructor(room: Room) {
     super("baseworld");
@@ -133,6 +147,9 @@ export class BaseworldScene extends Phaser.Scene {
       grab: [kb.addKey(K.K)],
     };
     kb.disableGlobalCapture();
+    // 오디오 자동재생 정책: 첫 제스처에서 해제
+    this.input.keyboard!.once("keydown", unlockAudio);
+    this.input.once("pointerdown", unlockAudio);
 
     // 내 아바타
     this.myRect = this.add.rectangle(0, 0, this.me.body.w, this.me.body.h, 0x4488ff).setOrigin(0.5, 1).setDepth(5);
@@ -146,13 +163,13 @@ export class BaseworldScene extends Phaser.Scene {
       const v = this.makeView(p.x, p.y, p.w, p.h, 0xff5555, p.nickname || id.slice(0, 4));
       this.players.set(id, v);
     });
-    $(this.room.state).players.onRemove((_p: PlayerNet, id: string) => this.dropView(this.players, id));
+    $(this.room.state).players.onRemove((_p: PlayerNet, id: string) => { this.dropView(this.players, id); this.playerFx.delete(id); });
     // 몬스터
     $(this.room.state).monsters.onAdd((m: MonsterNet, id: string) => {
       const v = this.makeView(m.x, m.y, m.w, m.h, 0xcc66ff, m.asset);
       this.monsters.set(id, v);
     });
-    $(this.room.state).monsters.onRemove((_m: MonsterNet, id: string) => this.dropView(this.monsters, id));
+    $(this.room.state).monsters.onRemove((_m: MonsterNet, id: string) => { this.dropView(this.monsters, id); this.monsterFx.delete(id); });
     // 발사체
     $(this.room.state).projectiles.onAdd((pr: ProjNet, id: string) => {
       this.projectiles.set(id, this.add.rectangle(pr.x, pr.y, TUNING.sizes.projectile, TUNING.sizes.projectile, 0xffaa33).setOrigin(0.5, 1).setDepth(4));
@@ -186,6 +203,7 @@ export class BaseworldScene extends Phaser.Scene {
         const spec = TESTMAP.items.find((i) => i.id === m.itemId)
           ?? ({ id: m.itemId, kind: this.room.state.items.get(m.itemId)?.kind ?? "speed", x: 0, y: 0 } as ItemSpec);
         applyItem(this.me, spec);
+        feedback.pickup(this, this.me.body.x, this.me.body.y, spec.kind);
       }
     });
     this.room.onMessage("tp", (m: { sessionId: string; x: number; y: number }) => {
@@ -276,6 +294,25 @@ export class BaseworldScene extends Phaser.Scene {
 
     stepAvatar(this.me, input, FIXED_MS, terrain);
 
+    // ── 사운드/이펙트 배선: 착지·점프 전이 ──
+    if (b.grounded && !this.prevGrounded) {
+      // 내려찍기 착지는 일반 착지보다 무거운 임팩트로 대체(둘 다 안 겹치게)
+      if (this.me.fx.has("poundLand")) feedback.poundLand(this, b.x, b.y);
+      else feedback.land(this, b.x, b.y);
+    } else if (!b.grounded && this.prevGrounded && b.vy < 0) {
+      feedback.jump(this, b.x, b.y);
+    }
+    this.prevGrounded = b.grounded;
+
+    // ── 사운드/이펙트: 벽 잡기(클링) 전이 ──
+    const clinging = !b.grounded && b.touchingWall !== 0;
+    if (clinging && !this.prevClinging) feedback.wallGrab(this, b.x, b.y);
+    this.prevClinging = clinging;
+
+    // ── 사운드/이펙트: 경사 슬라이딩 전이 ──
+    if (this.me.slide && !this.prevSlide) feedback.slideStart(this, b.x, b.y);
+    this.prevSlide = this.me.slide;
+
     // ── PvP: 자기 화면 판정 (§14) ──
     const GRACE = TUNING.push.visualGraceMs;
     // 정지(백그라운드) 고스트는 밀기·밟기·서기 판정에서 제외 = 충돌 통과 (B)
@@ -312,6 +349,7 @@ export class BaseworldScene extends Phaser.Scene {
       this.me.fx.add("stompedOther");
       setSquash(ghostViews[stompedIdx].squash, "stomped");   // 밟힌 상대 찌부 (내 화면)
       ghostViews[stompedIdx].fxLeftMs = GRACE;
+      feedback.headstompAttacker(this, ghosts[stompedIdx].x, ghosts[stompedIdx].y);
       if (this.me.pound !== 0) {
         // B: 내려찍기로 플레이어 밟음 → 큰 바운스 + 내려찍기 종료 (강화점프 창은 checkIStomped가 이미 설정)
         b.vy = TUNING.stomp.poundBounceVelocity;
@@ -319,6 +357,7 @@ export class BaseworldScene extends Phaser.Scene {
       }
     }
     const stompedMe = checkStompedMe(this.me, ghosts);
+    if (stompedMe) feedback.headstompVictim(this, b.x, b.y);
     headStand(b, ghosts);
     // 아래→위 충돌: 상승 중 상대 몸 밑면에 머리 박음 = 천장 판정(마리오식) → 상승 취소 + 천장 연출
     if (b.vy < 0) {
@@ -356,7 +395,10 @@ export class BaseworldScene extends Phaser.Scene {
     }
     // 자기 스프라이트 연출 (우선순위: 밟힘 > 천장 > shift 유예)
     if (stompedMe) { this.selfFx = { kind: "stomped", dir: 1, amt: 0, left: GRACE, centered: false }; }
-    else if (this.me.fx.has("ceilBonk")) { this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE, centered: false }; }
+    else if (this.me.fx.has("ceilBonk")) {
+      this.selfFx = { kind: "ceil", dir: 1, amt: 0, left: GRACE, centered: false };
+      feedback.ceilBonk(this, b.x, b.y - b.h);
+    }
     if (this.selfFx.left > 0) {
       if (this.selfFx.kind === "shift") setSquash(this.mySquash, "shift", this.selfFx.dir, this.selfFx.amt);
       else if (this.selfFx.kind === "squeeze") setSquash(this.mySquash, "squeeze", this.selfFx.dir, this.selfFx.amt || TUNING.push.squeezeRatio, this.selfFx.centered ? 0 : b.w);
@@ -389,6 +431,7 @@ export class BaseworldScene extends Phaser.Scene {
         this.localMonHits.set(id, { count: effHits + 1, at: this.time.now });   // 로컬 즉시 확정
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
         if (v) setSquash(v.squash, "stomped");
+        feedback.stomp(this, mx, my);
         if (prevPound === 2 && willKill) {
           // 내려찍기로 죽임 → 원작대로 튕김 없이 flatten(pound가 계속 내려감)
         } else if (prevPound === 2) {
@@ -454,6 +497,7 @@ export class BaseworldScene extends Phaser.Scene {
           if (standing && impl.onStand) impl.onStand(b, TUNING, propSpec);
           if (touching && impl.onTouch) {
             const side = standing ? "top" : bonkHead ? "bottom" : b.x < r.x + r.w / 2 ? "right" : "left";
+            if (propSpec.type === "trampoline" && side === "top") feedback.spring(this, r.x + r.w / 2, r.y);
             impl.onTouch(b, r, side, TUNING, propSpec);
           }
         }
@@ -461,7 +505,7 @@ export class BaseworldScene extends Phaser.Scene {
     });
     // 물성 부수효과 플래그 소비
     const flags = b as unknown as { __takeDamage?: boolean; __die?: boolean; __toggleSwitch?: boolean };
-    if (flags.__toggleSwitch) { this.room.send("toggleSwitch", {}); flags.__toggleSwitch = false; }
+    if (flags.__toggleSwitch) { this.room.send("toggleSwitch", {}); flags.__toggleSwitch = false; feedback.toggleSwitch(this, this.me.body.x, this.me.body.y); }
     if (flags.__die) { flags.__die = false; this.die(); }
     if (flags.__takeDamage) { flags.__takeDamage = false; this.takeHit(); }
 
@@ -494,11 +538,14 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 압사 (§35-L) ──
     if (b.crushed && this.me.freezeLeftMs <= 0) this.die();
 
+    // ── 사운드: 자기 이벤트 플래그 (avatar.ts a.fx) ──
+    if (this.me.fx.has("wallJump")) feedback.wallKick(this, b.x, b.y);
+
     // ── 상태 송신 (relay) ──
     this.sendAcc += FIXED_MS;
     if (this.sendAcc >= 1000 / TUNING.net.sendRateHz) {
       this.sendAcc = 0;
-      sendAvatarState(this.room, this.me, this.tick);
+      sendAvatarState(this.room, this.me, this.tick, this.dead);
     }
     this.me.fx.clear();
   }
@@ -508,6 +555,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.me.hp -= 1;
     this.me.invincibleLeftMs = 1500; // 피격 무적 (마리오식)
     if (this.me.hp <= 0) this.die();
+    else feedback.hurt(this, this.me.body.x, this.me.body.y);
   }
 
   die(): void {
@@ -515,6 +563,9 @@ export class BaseworldScene extends Phaser.Scene {
     this.deadUntil = this.time.now + 1200;
     clearItemEffects(this.me);       // (라인 이탈과 동일하게 정리 — 단일 라인 테스트맵)
     this.myRect.setVisible(false);
+    feedback.die(this, this.me.body.x, this.me.body.y);
+    // dead 중엔 fixedTick의 주기 relay가 통째로 스킵되므로(§261), 전이 즉시 1회 명시 전송
+    sendAvatarState(this.room, this.me, this.tick, true);
   }
 
   respawn(): void {
@@ -534,6 +585,8 @@ export class BaseworldScene extends Phaser.Scene {
     // 무적=노랑 / 내려찍기·공중스핀=주황(애니메이션 없어 구별용) / 평상=파랑
     this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55
       : this.me.pound !== 0 ? 0xffcc33 : 0x4488ff;
+    // 오디오 리스너 = 로컬 플레이어 위치 (거리감쇠·좌우팬 기준점)
+    setListenerPosition(b.x, b.y);
     // 고스트 플레이어
     this.room.state.players.forEach((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId) return;
@@ -553,6 +606,36 @@ export class BaseworldScene extends Phaser.Scene {
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);   // 찌부/shift 앵커 적용(내 몸과 동일)
       v.rect.setAlpha(v.stale ? 0.35 : 1);   // 정지 = 반투명 (통과 중임을 표시)
       v.label.setPosition(v.ghost.x, v.ghost.y - p.h - 4);
+      // ── 사운드: 다른 플레이어 전이 감지 (PlayerState 필드만으로 재현 — listener.ts가 거리감쇠 적용) ──
+      if (v.stale) return; // 백그라운드 정지 중엔 소리도 쉼(B)
+      const clinging = !p.grounded && p.touchingWall !== 0;
+      const pfx = this.playerFx.get(id);
+      if (!pfx) {
+        this.playerFx.set(id, {
+          grounded: p.grounded, slide: p.slide, pound: p.pound,
+          clinging, dead: p.dead, invincible: p.invincible, wallJumpSeq: p.wallJumpSeq,
+        });
+      } else {
+        if (p.dead && !pfx.dead) {
+          feedback.die(this, v.ghost.x, v.ghost.y);
+        } else {
+          // 사망 프레임엔 착지/점프 등 다른 전이와 안 겹치게 else로 분리
+          if (p.grounded && !pfx.grounded) {
+            if (pfx.pound === 2 && p.pound === 0) feedback.poundLand(this, v.ghost.x, v.ghost.y);
+            else feedback.land(this, v.ghost.x, v.ghost.y);
+          } else if (!p.grounded && pfx.grounded && p.vy < 0) {
+            feedback.jump(this, v.ghost.x, v.ghost.y);
+          }
+          if (p.slide && !pfx.slide) feedback.slideStart(this, v.ghost.x, v.ghost.y);
+          if (!pfx.pound && p.pound === 1) playSound("slam_start", { x: v.ghost.x, y: v.ghost.y });
+          if (clinging && !pfx.clinging) feedback.wallGrab(this, v.ghost.x, v.ghost.y);
+          if (p.wallJumpSeq !== pfx.wallJumpSeq) feedback.wallKick(this, v.ghost.x, v.ghost.y);
+          // invincible 전이 = 피격 순간(사망과 동시 발생 시 위 dead 분기가 우선 처리되어 안 겹침)
+          if (p.invincible && !pfx.invincible) feedback.hurt(this, v.ghost.x, v.ghost.y);
+        }
+        pfx.grounded = p.grounded; pfx.slide = p.slide; pfx.pound = p.pound;
+        pfx.clinging = clinging; pfx.dead = p.dead; pfx.invincible = p.invincible; pfx.wallJumpSeq = p.wallJumpSeq;
+      }
     });
     // 몬스터 (dead reckoning)
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
@@ -567,6 +650,18 @@ export class BaseworldScene extends Phaser.Scene {
       v.rect.setScale(v.squash.sx, v.squash.sy);
       v.rect.fillColor = m.stunned ? 0x999999 : m.windupAnim ? 0xff8888 : 0xcc66ff;
       v.label.setPosition(v.ghost.x, v.ghost.y - m.h - 4);
+      // ── 사운드/이펙트: MonsterState 전이 감지 (서버 emit이 클라로 직접 안 와서 상태값으로 엣지 검출) ──
+      const prevFx = this.monsterFx.get(id);
+      if (!prevFx) {
+        this.monsterFx.set(id, { alive: m.alive, stunned: m.stunned, hidden: m.hidden, action: m.currentAction });
+      } else {
+        if (prevFx.alive && !m.alive) feedback.monsterDie(this, v.ghost.x, v.ghost.y);
+        else if (!prevFx.alive && m.alive) feedback.monsterRespawn(this, v.ghost.x, v.ghost.y);
+        if (!prevFx.stunned && m.stunned) feedback.monsterStunned(this, v.ghost.x, v.ghost.y);
+        if (prevFx.hidden && !m.hidden) feedback.monsterEmerge(this, v.ghost.x, v.ghost.y);
+        if (prevFx.action !== m.currentAction) monsterPatternChanged(this, m.currentAction, v.ghost.x, v.ghost.y);
+        prevFx.alive = m.alive; prevFx.stunned = m.stunned; prevFx.hidden = m.hidden; prevFx.action = m.currentAction;
+      }
     });
     // 발사체·아이템·블록 (발사체는 dead reckoning, 피격 판정은 서버 좌표 유지)
     this.room.state.projectiles.forEach((pr: ProjNet, id: string) => {
@@ -667,8 +762,8 @@ export class BaseworldScene extends Phaser.Scene {
 }
 
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
-interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number }
-interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number }
+interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number; slide: boolean; grounded: boolean; touchingWall: number; dead: boolean; wallJumpSeq: number; invincible: boolean }
+interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number; currentAction: string }
 interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
 interface CarryNet { x: number; y: number; alive: boolean; heldBy: string }
