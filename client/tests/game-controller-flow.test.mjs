@@ -103,6 +103,39 @@ async function testMapBuildToResultsFlow({
   assert.deepEqual(runtime.routeChanges.at(-1), ['results', 'room-flow'])
 }
 
+async function testValidationFailureCanOverrideClearedState({
+  createInitialGamePhaseControllerState,
+  recordGameValidation,
+}) {
+  const runtime = createRuntime(createInitialGamePhaseControllerState, {
+    routeState: { kind: 'validation', roomId: 'room-flow', segmentId: 'segment-flow' },
+  })
+
+  runtime.state.session = session
+  runtime.state.currentUserId = session.id
+  runtime.state.validationState = 'cleared'
+  runtime.state.currentSegment = {
+    ...segment,
+    isValidated: true,
+    validatedAt: '2026-07-14T00:02:00.000Z',
+    clearTimeMs: 61_400,
+  }
+
+  const result = await recordGameValidation(runtime, false)
+
+  assert.equal(result.ok, true)
+  assert.equal(runtime.state.validationState, 'failedRecorded')
+  assert.equal(runtime.calls.validateMapSegment, 1)
+  assert.equal(runtime.calls.validationPayloads[0].cleared, false)
+  assert.deepEqual(runtime.realtime.validationResults.at(-1), {
+    roomId: 'room-flow',
+    userId: 'user-a',
+    cleared: false,
+    segmentHash: 'hash-flow',
+    clearTimeMs: 0,
+  })
+}
+
 async function testServerRaceRankIsPreserved({
   createInitialGamePhaseControllerState,
   loadGameRaceResults,
@@ -618,6 +651,7 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
       getRoomSnapshot: 0,
       saveMapSegment: 0,
       validateMapSegment: 0,
+      validationPayloads: [],
       mergeRoomMap: 0,
       getMergedMap: 0,
       finishRace: 0,
@@ -675,15 +709,16 @@ function createRuntime(createInitialGamePhaseControllerState, options = {}) {
       async getMapSegment() {
         return { ok: true, value: segment }
       },
-      async validateMapSegment() {
+      async validateMapSegment(_session, payload) {
         runtime.calls.validateMapSegment += 1
+        runtime.calls.validationPayloads.push(payload)
         return {
           ok: true,
           value: {
             ...segment,
-            isValidated: true,
+            isValidated: payload.cleared,
             validatedAt: '2026-07-14T00:02:00.000Z',
-            clearTimeMs: 61_400,
+            clearTimeMs: payload.clearTimeMs,
             roomPhase: 'merging',
           },
         }
@@ -810,6 +845,7 @@ function createRaceResult(roomPhase) {
 
 await testBootSnapshotRoutesToServerPhase(core)
 await testMapBuildToResultsFlow(core)
+await testValidationFailureCanOverrideClearedState(core)
 await testServerRaceRankIsPreserved(core)
 await testRealtimeRaceTimerSignals(core)
 await testRealtimeResultsFinalRoutesAndIgnoresLateRaceCountdown(core)

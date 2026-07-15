@@ -163,12 +163,17 @@ async function submitMapBuild(page: Page, roomId: string) {
 }
 
 async function recordValidationFailure(page: Page, roomId: string) {
+  const failureButton = page.getByRole('button', { name: '실패로 진행' })
+
+  await expect(failureButton).toBeVisible()
+  await expect(failureButton).toBeEnabled()
+
   const responsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST' &&
     response.url().includes(`/api/rooms/${roomId}/segments/validate`),
   )
 
-  await page.getByRole('button', { name: '실패로 진행' }).click()
+  await failureButton.click()
   const response = await responsePromise
 
   expect(response.status()).toBe(200)

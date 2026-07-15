@@ -266,7 +266,7 @@ export function ValidationScreen({
           <Button variant="secondary" disabled={state === 'cleared'} onClick={onReset}>
             처음부터 다시
           </Button>
-          <Button disabled={state === 'cleared'} onClick={onRecordFailure}>
+          <Button disabled={state === 'failedRecorded' || state === 'noSegment'} onClick={onRecordFailure}>
             실패로 진행
           </Button>
         </section>

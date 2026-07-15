@@ -517,6 +517,14 @@ export async function bootGamePhaseController(runtime: GamePhaseControllerRuntim
     }, 500)
   }
 
+  if (runtime.getState().routeKind === 'validation' && runtime.dataMode === 'remote') {
+    phaseSyncTimer = setInterval(() => {
+      if (runtime.getState().routeKind === 'validation') {
+        void loadGameRoomSnapshot(runtime)
+      }
+    }, 500)
+  }
+
   if (
     runtime.getState().routeKind === 'validation' &&
     runtime.getState().segmentId &&
