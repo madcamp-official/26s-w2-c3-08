@@ -1,17 +1,10 @@
-// 크기 토큰 — "유아틱하게 큼지막하게"(2026-07-14 지시). 색은 다루지 않음(검정 배경+흰 테두리만).
+// 크기 토큰 — "유아틱하게 큼지막하게"(2026-07-14 지시). 색은 design/tokens(YELLOW/INK)에서 관리.
 // 즉흥값 대신 여기서만 관리.
-export const RADIUS = 14;
-export const RADIUS_SM = 10;
-export const BORDER_W = 2;
 export const GAP = 12;
 export const PAD = 16;
 
 export const FONT_SM = 14;
 export const FONT_MD = 17;
-export const FONT_LG = 22;
-
-export const BTN_PAD_V = 12;
-export const BTN_PAD_H = 20;
 
 // 즐겨찾기 카드 — 정사각형(이미지 자리, 2026-07-14). 리사이즈 없음 — 접기(1줄)만.
 // 좌측 창고 카드도 동일 크기(2026-07-15) — 최소 폭은 카드 1개가 여유 있게 보이는 정도까지만 줄어들게.

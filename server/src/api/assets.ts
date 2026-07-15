@@ -9,6 +9,28 @@ import { prisma } from "../prisma.js";
 export function assetsRouter(): Router {
   const r = Router();
 
+  // 목록 조회 — 맵 에디터 창고용(2026-07-16 신규). 배치 가능 카테고리(block/monster/item)만.
+  // status 무관하게 전부 반환 — 스프라이트 시트 준비 전이어도 sourceImage로 창고 썸네일은 가능.
+  r.get("/api/assets", async (_req, res: Response) => {
+    const assets = await prisma.asset.findMany({
+      where: { category: { in: ["block", "monster", "item", "background"] } },
+      select: {
+        id: true, name: true, category: true, isSystem: true, creatorId: true,
+        widthCells: true, heightCells: true, sourceImageUrl: true,
+      },
+      orderBy: { id: "asc" },
+    });
+    res.json(assets.map((a) => ({
+      id: a.id.toString(),
+      name: a.name,
+      category: a.category,
+      mine: !a.isSystem && a.creatorId !== null,
+      w: a.widthCells ?? 1,
+      h: a.heightCells ?? 1,
+      sourceImageUrl: a.sourceImageUrl,
+    })));
+  });
+
   r.get("/api/assets/:id", async (req, res: Response) => {
     let id: bigint;
     try { id = BigInt(req.params.id); } catch { res.status(400).json({ error: "invalid id" }); return; }

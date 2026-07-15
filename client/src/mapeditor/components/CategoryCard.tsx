@@ -1,11 +1,21 @@
-// 창고·즐겨찾기 공용 카드 — 정사각형, 카테고리 대표색(옅은 반투명) 배경.
-// 모서리: 평소엔 카테고리 아이콘, 그 근처로 마우스를 가져가면 액션 버튼(+/✕)으로 전환.
-// 카드 전체 호버 시 즉시 상세 툴팁. 소유자는 "내가 만든" 것만 하단에 작게 표시.
-// 나중에 실제 에셋 이미지가 들어오면 이 대표색이 이미지 뒤 배경으로 남는 구조(2026-07-15).
+// 창고·즐겨찾기 공용 카드 — 손그림 SketchBox(chip 프리셋), 카테고리 대표색(옅은 반투명) 채움.
+// 액션 버튼(+/✕)은 모서리가 아니라 카드 "중앙"에 뜬다(2026-07-16 확정 변경).
+// 선택된 카드(즐겨찾기 붓 장전)는 선택 지속 중 계속 지글(useJiggle) — 호버가 아니라 selected로 판단.
+// 호버 시 카드 아래에 상세정보 팝업(이름/카테고리/크기/소유구분/공용라벨), 팝업 테두리는 항상 지글.
 import { forwardRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import type { PlaceholderCard } from "../testData.js";
-import { CATEGORY_COLOR, CATEGORY_ICON, GROUP_LABEL } from "../testData.js";
-import { BORDER_W, RADIUS } from "../sizeTokens.js";
+import { GROUP_LABEL } from "../testData.js";
+import { SketchBox } from "../../design/sketch/index.js";
+import { YELLOW, INK, WORLD } from "../../design/tokens/index.js";
+import { HTTP_BASE } from "../../net/rest.js";
+
+/** 카테고리 → 팔레트 WORLD 색(2026-07-16, testData의 임의색 대신 공식 팔레트 재사용) */
+const GROUP_COLOR: Record<PlaceholderCard["group"], string> = {
+  block: WORLD.device,
+  monster: WORLD.enemy,
+  item: WORLD.item,
+  background: WORLD.terrain,
+};
 
 export interface CategoryCardProps extends HTMLAttributes<HTMLDivElement> {
   card: PlaceholderCard;
@@ -22,8 +32,7 @@ export const CategoryCard = forwardRef<HTMLDivElement, CategoryCardProps>(functi
   ref,
 ) {
   const [hovered, setHovered] = useState(false);
-  const [nearCorner, setNearCorner] = useState(false);
-  const color = CATEGORY_COLOR[card.group];
+  const color = GROUP_COLOR[card.group];
 
   return (
     <div
@@ -35,29 +44,42 @@ export const CategoryCard = forwardRef<HTMLDivElement, CategoryCardProps>(functi
       }}
       onMouseLeave={(e) => {
         setHovered(false);
-        setNearCorner(false);
         rest.onMouseLeave?.(e);
       }}
-      style={{
-        position: "relative",
-        width: size,
-        height: size,
-        flexShrink: 0,
-        border: selected ? `${BORDER_W + 1}px solid #fff` : `${BORDER_W}px solid #fff`,
-        borderRadius: RADIUS,
-        background: hexToRgba(color, 0.28),
-        cursor: "grab",
-        userSelect: "none",
-        ...style,
-      }}
+      style={{ position: "relative", width: size, height: size, flexShrink: 0, userSelect: "none", ...style }}
     >
-      {/* 모서리 반응 영역 — 카드 전체가 아니라 이 근처에서만 아이콘↔액션 전환 */}
-      <div
-        onMouseEnter={() => setNearCorner(true)}
-        onMouseLeave={() => setNearCorner(false)}
-        style={{ position: "absolute", top: -10, right: -10, width: 34, height: 34 }}
+      <SketchBox
+        fill={hexToRgba(color, 0.24)}
+        stroke={INK}
+        preset="chip"
+        radius={10}
+        jiggle={!!selected}
+        center={false}
+        contentStyle={{ position: "relative", width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", cursor: "grab" }}
       >
-        {nearCorner ? (
+        {/* 실제 원본 그림 있으면 썸네일로 — 선택(장전) 중엔 회색조(2026-07-16 확정) */}
+        {card.sourceImageUrl && (
+          <img
+            src={`${HTTP_BASE}${card.sourceImageUrl}`}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute", inset: 8, width: "calc(100% - 16px)", height: "calc(100% - 16px)",
+              objectFit: "contain", pointerEvents: "none",
+              filter: selected ? "grayscale(1)" : "none",
+            }}
+          />
+        )}
+
+        <div style={cornerIconStyle} title={GROUP_LABEL[card.group]}>
+          {GROUP_LABEL[card.group][0]}
+        </div>
+
+        {card.mine && <div style={ownerStripStyle}>나의 에셋</div>}
+
+        {/* 액션 버튼 — 카드 중앙(호버 시에만 노출) */}
+        {hovered && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -66,22 +88,21 @@ export const CategoryCard = forwardRef<HTMLDivElement, CategoryCardProps>(functi
             }}
             disabled={actionDisabled}
             title={actionTitle}
-            style={{ ...cornerBtnStyle, opacity: actionDisabled ? 0.4 : 1, cursor: actionDisabled ? "default" : "pointer" }}
+            style={{ ...cornerBtnStyle, opacity: actionDisabled ? 0.45 : 1, cursor: actionDisabled ? "default" : "pointer" }}
           >
             {actionIcon}
           </button>
-        ) : (
-          <div style={cornerIconStyle} title={GROUP_LABEL[card.group]}>
-            {CATEGORY_ICON[card.group]}
-          </div>
         )}
-      </div>
-
-      {card.mine && <div style={ownerStripStyle}>나의 에셋</div>}
+      </SketchBox>
 
       {hovered && (
-        <div style={tooltipStyle}>
-          {card.label} · {GROUP_LABEL[card.group]} · {card.mine ? "내가 만든" : "공용"}
+        <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 8, zIndex: 20 }}>
+          <SketchBox fill={YELLOW.card} stroke={INK} preset="chip" radius={8} jiggle
+            contentStyle={{ padding: "6px 10px", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 11, color: INK }}>
+              {card.label} · {GROUP_LABEL[card.group]} · {card.w}×{card.h} · {card.mine ? "내가 만든" : "공용"}
+            </span>
+          </SketchBox>
         </div>
       )}
     </div>
@@ -97,25 +118,29 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 const cornerIconStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 13,
-  color: "#fff",
-  opacity: 0.85,
+  position: "absolute",
+  top: 4,
+  right: 6,
+  fontSize: 11,
+  fontWeight: 700,
+  color: INK,
+  opacity: 0.7,
   pointerEvents: "none",
 };
 
 const cornerBtnStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: 30,
+  height: 30,
   borderRadius: "50%",
-  background: "#000",
-  color: "#fff",
-  border: `${BORDER_W}px solid #fff`,
+  background: YELLOW.base,
+  color: INK,
+  border: `2px solid ${INK}`,
   fontSize: 14,
+  fontWeight: 700,
   padding: 0,
 };
 
@@ -126,24 +151,7 @@ const ownerStripStyle: CSSProperties = {
   bottom: 4,
   fontSize: 9,
   textAlign: "center",
-  background: "rgba(0,0,0,0.5)",
-  borderRadius: 4,
-  padding: "2px 0",
-  pointerEvents: "none",
-};
-
-const tooltipStyle: CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: "50%",
-  transform: "translateX(-50%)",
-  marginTop: 6,
-  background: "#000",
-  border: `${BORDER_W}px solid #fff`,
-  borderRadius: 6,
-  padding: "4px 8px",
-  fontSize: 11,
-  whiteSpace: "nowrap",
-  zIndex: 20,
+  color: INK,
+  opacity: 0.75,
   pointerEvents: "none",
 };

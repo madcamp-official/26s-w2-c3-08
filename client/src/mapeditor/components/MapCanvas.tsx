@@ -1,88 +1,251 @@
-// 맵 캔버스 — 패널·버튼에 가려지는 공간을 뺀 나머지 전체가 편집 영역(2026-07-15, 박스로 안 그림).
-// 휠 = 확대/축소(범위 제한, 커서 기준 줌), 우클릭 드래그 = 이동(팬, 범위 제한).
-// 지금은 배치 로직 없이 40×20 타일 테스트 격자만 표시.
+// 맵 캔버스 — <canvas> 2D 렌더 + 입력. 배치(좌클릭)·삭제(우클릭)·팬(좌우 동시)·줌(휠)·깃발 드래그.
+// 연속배치/연속삭제(드래그 중 지나가는 타일마다 계속) + 판정 정밀도 차등(드래그 중엔 타일 중앙 부근만 인정).
+// 렌더는 CanvasRenderer.drawEditor, 상태는 editorStore. rAF 루프로 매 프레임 다시 그린다.
+//
+// 좌우 동시 팬: 마우스는 버튼 하나가 이미 눌린 채로 다른 버튼을 누르면 브라우저가 새 pointerdown을
+// 안 쏘고 pointermove의 buttons 비트마스크로만 알려준다 — 그래서 버튼 상태는 항상 e.buttons로 판정한다
+// (onPointerDown에서만 판정하면 두 번째 버튼 누름을 놓치는 버그가 있었음, 2026-07-16 수정).
+//
+// 리사이즈 깜빡임: canvas.width/height를 다시 쓰면 그 순간 내용이 즉시 지워지는데, 독립된 rAF 루프가
+// "다음 프레임"에야 다시 그려서 옆 패널이 스프링 애니메이션 중일 때마다 한 프레임씩 빈 화면이 보였다
+// — 리사이즈 직후 draw()를 즉시 동기 호출해서 해결(2026-07-16).
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { edgeTransition, fromCenter } from "../motionTokens.js";
+import { useEditorStore } from "../editorStore.js";
+import { drawEditor, type GhostInfo } from "../render/CanvasRenderer.js";
+import { GRID_W, GRID_H, EDITOR_TILE_PX as TILE, inBounds } from "../engine/grid.js";
+import { anchorToTopLeft, occupiedTiles, canPlace } from "../engine/placement.js";
+import { flagForbiddenTiles, bothFlagsForbidden } from "../engine/flags.js";
+import { playSound } from "../../audio/sfx.js";
+import { getSlotImage } from "../render/images.js";
 
-const EDITOR_TILE_PX = 48;
-const MAP_TILES_W = 40;
-const MAP_TILES_H = 20;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3;
-/** 휠 deltaY 1당 배율 변화량 */
+const WORLD_W = GRID_W * TILE;
+const WORLD_H = GRID_H * TILE;
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 2.5;
 const ZOOM_SENSITIVITY = 0.0015;
+/** 연속 드래그 중 타일 인정 범위 — 타일 중앙 기준 이 폭(0~1)만 인정(가장자리 스침 제외) */
+const DRAG_CENTER_WINDOW = 0.5;
 
-const WORLD_W = MAP_TILES_W * EDITOR_TILE_PX;
-const WORLD_H = MAP_TILES_H * EDITOR_TILE_PX;
+const BTN_LEFT = 1;
+const BTN_RIGHT = 2;
+
+interface Tile { x: number; y: number }
 
 export function MapCanvas({ index, closing }: { index: number; closing: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const centeredOnce = useRef(false);
-  const panStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    const el = hostRef.current;
-    if (!el) return;
-    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  // 카메라·뷰포트 (렌더 루프가 읽는 mutable 상태 — 리렌더 유발 안 함)
+  const pan = useRef({ x: 0, y: 0 });
+  const zoom = useRef(1);
+  const css = useRef({ w: 0, h: 0, dpr: 1 });
+  const centered = useRef(false);
+  const hover = useRef<Tile | null>(null);
+  const hoverFrac = useRef({ fx: 0.5, fy: 0.5 }); // 타일 내 상대위치(0~1) — 드래그 판정정밀도용
+  const drawRef = useRef<() => void>(() => {});
 
-  function clampPan(nx: number, ny: number, z: number, viewport: { w: number; h: number }) {
-    const ww = WORLD_W * z;
-    const wh = WORLD_H * z;
-    const minX = Math.min(0, viewport.w - ww);
-    const maxX = Math.max(0, viewport.w - ww);
-    const minY = Math.min(0, viewport.h - wh);
-    const maxY = Math.max(0, viewport.h - wh);
+  // 제스처 상태
+  const g = useRef({
+    buttons: 0, // 최신 e.buttons 비트마스크(1=좌,2=우)
+    panning: false,
+    dragMode: null as null | "place" | "erase",
+    flag: null as null | "start" | "end",
+    lastActedTile: null as string | null, // 연속배치/삭제 중복 방지
+    panLast: { x: 0, y: 0 },
+  });
+
+  function clampPan(nx: number, ny: number, z: number) {
+    const ww = WORLD_W * z, wh = WORLD_H * z;
+    const { w, h } = css.current;
+    const minX = Math.min(0, w - ww), maxX = Math.max(0, w - ww);
+    const minY = Math.min(0, h - wh), maxY = Math.max(0, h - wh);
     return { x: Math.min(maxX, Math.max(minX, nx)), y: Math.min(maxY, Math.max(minY, ny)) };
   }
 
-  // 처음 크기를 알게 되면 한 번만 중앙 정렬
+  /** 포인터 → 타일(+타일 내 상대위치 0~1, 격자 밖일 수 있음) */
+  function tileUnder(e: { clientX: number; clientY: number }): Tile {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const worldX = (e.clientX - rect.left - pan.current.x) / zoom.current;
+    const worldY = (e.clientY - rect.top - pan.current.y) / zoom.current;
+    const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
+    hoverFrac.current = { fx: worldX / TILE - tx, fy: worldY / TILE - ty };
+    return { x: tx, y: ty };
+  }
+
+  /** 드래그 중엔 타일 중앙 부근만 인정(가장자리 스침으로 옆 타일 오염 방지) */
+  function nearTileCenter(): boolean {
+    const { fx, fy } = hoverFrac.current;
+    const lo = (1 - DRAG_CENTER_WINDOW) / 2, hi = 1 - lo;
+    return fx >= lo && fx <= hi && fy >= lo && fy <= hi;
+  }
+
+  function inFlagZone(t: Tile, which: "start" | "end"): boolean {
+    const s = useEditorStore.getState();
+    const flag = which === "start" ? s.startFlag : s.endFlag;
+    return flagForbiddenTiles(flag).includes(`${t.x},${t.y}`);
+  }
+
+  /** 현재 타일에 배치/삭제 시도(단일클릭=판정 느슨, 연속드래그=중앙판정+중복타일 스킵) */
+  function actOnTile(t: Tile, mode: "place" | "erase", continuous: boolean) {
+    if (continuous) {
+      const key = `${t.x},${t.y}`;
+      if (key === g.current.lastActedTile) return;
+      if (!nearTileCenter()) return;
+      g.current.lastActedTile = key;
+    }
+    const s = useEditorStore.getState();
+    if (mode === "place") {
+      if (!inBounds(t.x, t.y)) return;
+      playSound(s.placeAtAnchor(t.x, t.y) ? "place" : "denied");
+    } else {
+      if (s.eraseAt(t.x, t.y)) playSound("erase");
+    }
+  }
+
+  // 캔버스 크기·DPR 추적 — 리사이즈 직후 즉시 재드로우(깜빡임 방지)
   useEffect(() => {
-    if (centeredOnce.current || size.w === 0) return;
-    centeredOnce.current = true;
-    setPan(clampPan((size.w - WORLD_W) / 2, (size.h - WORLD_H) / 2, 1, size));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size]);
+    const host = hostRef.current, canvas = canvasRef.current;
+    if (!host || !canvas) return;
+    const measure = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = host.clientWidth, h = host.clientHeight;
+      css.current = { w, h, dpr };
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      if (!centered.current && w > 0) {
+        centered.current = true;
+        pan.current = clampPan((w - WORLD_W) / 2, (h - WORLD_H) / 2, 1);
+      }
+      drawRef.current();
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
+
+  // rAF 렌더 루프 — draw()는 measure()에서도 직접 호출되므로 ref에 담아 공유
+  useEffect(() => {
+    const draw = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+      const { dpr } = css.current;
+      const z = zoom.current, px = pan.current.x, py = pan.current.y;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, css.current.w, css.current.h);
+      ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * px, dpr * py);
+
+      const s = useEditorStore.getState();
+      const items = Object.values(s.placements);
+
+      let ghost: GhostInfo | null = null;
+      const brush = s.brush();
+      const hv = hover.current;
+      if (brush && hv && inBounds(hv.x, hv.y) && brush.category !== "background" && brush.category !== "avatar") {
+        const tl = anchorToTopLeft(hv.x, hv.y, brush.h);
+        const occ = occupiedTiles(items);
+        const forb = bothFlagsForbidden(s.startFlag, s.endFlag);
+        ghost = { x: tl.x, y: tl.y, w: brush.w, h: brush.h, ok: canPlace(tl.x, tl.y, brush.w, brush.h, occ, forb) };
+      }
+
+      drawEditor(ctx, { placements: items, startFlag: s.startFlag, endFlag: s.endFlag, ghost, testing: false });
+
+      // 커스텀 커서 이미지 있으면 적용(로드 전엔 null → 기본 크로스헤어 유지)
+      const cursorImg = getSlotImage("cursor");
+      const wantCursor = cursorImg ? `url(${cursorImg.src}) 4 4, crosshair` : "crosshair";
+      if (canvas.style.cursor !== wantCursor) canvas.style.cursor = wantCursor;
+    };
+    drawRef.current = draw;
+
+    let raf = 0;
+    const frame = () => { draw(); raf = requestAnimationFrame(frame); };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   function onWheel(e: React.WheelEvent) {
     e.preventDefault();
-    const rect = hostRef.current!.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const worldX = (mx - pan.x) / zoom;
-    const worldY = (my - pan.y) / zoom;
-    const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * (1 - e.deltaY * ZOOM_SENSITIVITY)));
-    const nx = mx - worldX * nextZoom;
-    const ny = my - worldY * nextZoom;
-    setZoom(nextZoom);
-    setPan(clampPan(nx, ny, nextZoom, size));
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const worldX = (mx - pan.current.x) / zoom.current;
+    const worldY = (my - pan.current.y) / zoom.current;
+    const nz = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom.current * (1 - e.deltaY * ZOOM_SENSITIVITY)));
+    zoom.current = nz;
+    pan.current = clampPan(mx - worldX * nz, my - worldY * nz, nz);
   }
 
   function onPointerDown(e: React.PointerEvent) {
-    if (e.button !== 2) return; // 우클릭만 팬
     e.preventDefault();
-    panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
+    canvasRef.current!.setPointerCapture(e.pointerId);
+    const t = tileUnder(e);
+    hover.current = t;
+    g.current.buttons = e.buttons;
+
+    if ((g.current.buttons & BTN_LEFT) && (g.current.buttons & BTN_RIGHT)) {
+      startPanning(e);
+      return;
+    }
+    g.current.lastActedTile = null;
+    if (e.button === 0) {
+      if (inFlagZone(t, "start")) { g.current.flag = "start"; return; }
+      if (inFlagZone(t, "end")) { g.current.flag = "end"; return; }
+      g.current.dragMode = "place";
+      actOnTile(t, "place", false); // 단일 클릭 첫 타일 — 느슨한 판정으로 즉시 인정
+      g.current.lastActedTile = `${t.x},${t.y}`;
+    } else if (e.button === 2) {
+      g.current.dragMode = "erase";
+      actOnTile(t, "erase", false);
+      g.current.lastActedTile = `${t.x},${t.y}`;
+    }
   }
-  function onPointerMove(e: PointerEvent) {
-    if (!panStart.current) return;
-    const nx = panStart.current.panX + (e.clientX - panStart.current.x);
-    const ny = panStart.current.panY + (e.clientY - panStart.current.y);
-    setPan(clampPan(nx, ny, zoom, size));
+
+  function startPanning(e: { clientX: number; clientY: number }) {
+    g.current.panning = true;
+    g.current.dragMode = null;
+    g.current.flag = null;
+    g.current.panLast = { x: e.clientX, y: e.clientY };
   }
-  function onPointerUp() {
-    panStart.current = null;
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
+
+  function onPointerMove(e: React.PointerEvent) {
+    const t = tileUnder(e);
+    hover.current = t;
+    g.current.buttons = e.buttons;
+
+    // 드래그 도중 반대쪽 버튼이 추가로 눌리면 팬으로 전환(단일동작 취소)
+    if (!g.current.panning && (g.current.buttons & BTN_LEFT) && (g.current.buttons & BTN_RIGHT)) {
+      startPanning(e);
+      return;
+    }
+
+    if (g.current.panning) {
+      const dx = e.clientX - g.current.panLast.x, dy = e.clientY - g.current.panLast.y;
+      pan.current = clampPan(pan.current.x + dx, pan.current.y + dy, zoom.current);
+      g.current.panLast = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    if (g.current.flag) {
+      useEditorStore.getState().moveFlag(g.current.flag, t.x, t.y);
+      return;
+    }
+    if (g.current.dragMode) {
+      actOnTile(t, g.current.dragMode, true); // 연속배치/삭제 — 타일 중앙판정+중복스킵
+    }
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    g.current.buttons = e.buttons;
+    if (!(g.current.buttons & BTN_LEFT) && !(g.current.buttons & BTN_RIGHT)) {
+      g.current.panning = false;
+      g.current.dragMode = null;
+      g.current.flag = null;
+      g.current.lastActedTile = null;
+      try { canvasRef.current!.releasePointerCapture(e.pointerId); } catch { /* 이미 해제됨 */ }
+    }
   }
 
   return (
@@ -92,32 +255,16 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
       animate={closing ? "hidden" : "visible"}
       transition={edgeTransition(index, closing)}
       ref={hostRef}
-      onWheel={onWheel}
-      onPointerDown={onPointerDown}
-      onContextMenu={(e) => e.preventDefault()}
-      style={{
-        flex: 1,
-        minWidth: 0,
-        position: "relative",
-        overflow: "hidden",
-        background: "#000",
-      }}
+      style={{ flex: 1, minWidth: 0, position: "relative", overflow: "hidden", background: "#16212e" }}
     >
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: WORLD_W,
-          height: WORLD_H,
-          transformOrigin: "0 0",
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          border: "2px solid #fff",
-          backgroundImage:
-            "linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px)," +
-            "linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px)",
-          backgroundSize: `${EDITOR_TILE_PX}px ${EDITOR_TILE_PX}px`,
-        }}
+      <canvas
+        ref={canvasRef}
+        onWheel={onWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ display: "block", touchAction: "none", cursor: "crosshair" }}
       />
     </motion.div>
   );

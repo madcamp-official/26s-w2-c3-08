@@ -9,9 +9,11 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { GROUPS, type CardGroup, type PlaceholderCard } from "../testData.js";
 import { useEditorStore } from "../editorStore.js";
-import { BORDER_W, FAV_CARD_SIZE, FAVORITES_ONE_ROW_HEIGHT, GAP, PAD, RADIUS_SM } from "../sizeTokens.js";
+import { FAV_CARD_SIZE, FAVORITES_ONE_ROW_HEIGHT, GAP, PAD } from "../sizeTokens.js";
 import { edgeTransition, fromTop, springPop } from "../motionTokens.js";
 import { FavoriteGroupBox } from "./FavoriteGroupBox.js";
+import { SketchBox } from "../../design/sketch/index.js";
+import { YELLOW, INK } from "../../design/tokens/index.js";
 
 export function FavoritesPanel({ index, closing }: { index: number; closing: boolean }) {
   const collapsed = useEditorStore((s) => s.favoritesCollapsed);
@@ -41,14 +43,9 @@ export function FavoritesPanel({ index, closing }: { index: number; closing: boo
       initial="hidden"
       animate={closing ? "hidden" : "visible"}
       transition={edgeTransition(index, closing)}
-      style={{
-        flexShrink: 0,
-        background: "#000",
-        color: "#fff",
-        borderBottom: `${BORDER_W}px solid #fff`,
-        position: "relative",
-      }}
+      style={{ flexShrink: 0, position: "relative" }}
     >
+      <SketchBox fill={YELLOW.list} stroke={INK} preset="panel" center={false} style={{ width: "100%" }}>
       {/* 잘림은 이 안쪽 래퍼에서만 — 높이는 실측값으로 직접 스프링 애니메이션(layout FLIP 아님) */}
       <motion.div
         animate={{ height: collapsed ? FAVORITES_ONE_ROW_HEIGHT : contentHeight }}
@@ -57,7 +54,7 @@ export function FavoritesPanel({ index, closing }: { index: number; closing: boo
       >
         <div ref={contentRef} style={{ display: "flex", flexWrap: collapsed ? "nowrap" : "wrap", gap: GAP, padding: PAD }}>
           {activeGroups.length === 0 && (
-            <div style={{ opacity: 0.5, fontSize: 13, padding: 4 }}>
+            <div style={{ opacity: 0.6, fontSize: 13, padding: 4, color: INK }}>
               좌측 창고에서 [+ 즐겨찾기]로 에셋을 꺼내오세요.
             </div>
           )}
@@ -73,8 +70,9 @@ export function FavoritesPanel({ index, closing }: { index: number; closing: boo
           ))}
         </div>
       </motion.div>
+      </SketchBox>
 
-      {/* 접기 버튼 — 좌측 창고와 동일하게 가장자리 중앙(여기선 아래쪽 바깥 경계). 안쪽 래퍼 밖이라 절대 안 잘림. */}
+      {/* 접기 버튼 — 좌측 창고와 동일하게 가장자리 중앙(여기선 아래쪽 바깥 경계). SketchBox 밖이라 절대 안 잘림. */}
       <button
         onClick={toggleCollapsed}
         style={{ ...arrowBtnStyle, position: "absolute", bottom: -16, left: "50%", transform: "translateX(-50%)" }}
@@ -89,10 +87,10 @@ export function FavoritesPanel({ index, closing }: { index: number; closing: boo
 const arrowBtnStyle: React.CSSProperties = {
   width: 32,
   height: 32,
-  background: "#000",
-  color: "#fff",
-  border: `${BORDER_W}px solid #fff`,
-  borderRadius: RADIUS_SM,
+  background: YELLOW.card,
+  color: INK,
+  border: `2px solid ${INK}`,
+  borderRadius: 10,
   cursor: "pointer",
   fontSize: 14,
   lineHeight: 1,
