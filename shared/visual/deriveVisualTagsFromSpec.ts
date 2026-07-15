@@ -78,7 +78,7 @@ export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
   // ⚠️ 주황은 "지금 나(플레이어)가 무적이라 이 면이 안전함"만 의미(strokeFace의 iAmInvincible 전환).
   // vuln.invincible(몬스터가 처치 불가/환경형)은 완전히 다른 개념 — 접촉 시 대미지는 그대로 들어오므로
   // 여기서 orange로 매핑하면 "안전하다"는 오해를 준다(실사용 확인됨: 쿵쿵이가 항상 주황=위험 없어 보임).
-  // 처치 불가 여부는 표시하지 않음(과대 표시 방지 원칙) — 필요해지면 별도 오라로 추가.
+  // 처치 불가 여부는 색이 아니라 별도 오라(immortal)로 표시(2026-07-15 피드백).
   const hazardStyle: BorderStyle = shove ? "bumper" : "red";
 
   // "밟기 가능"(위험 없음)도 시각적으로 빈칸이 아니라 흰 실선으로 — 몬스터 몸도 부딪히는 대상이라
@@ -102,13 +102,18 @@ export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
   const chaseRule = spec.rules.find((r) => r.do.type === "chase" && r.when.type === "playerWithin");
   const detectRange = chaseRule?.when.dist as "near" | "normal" | "far" | undefined;
 
+  // 체력 무한(처치 불가)은 HP 핍이 의미 없다(hp=999 등 — 실제로 핍 수백 개가 그려지는 문제였음).
+  // 대신 별도 오라(immortal)로 항상 표시(§1, 2026-07-15 피드백).
+  const auras: AuraTag[] = [];
+  if (spec.vuln.invincible) auras.push("immortal");
+
   const overlays: OverlayTag[] = [];
-  if (spec.hp > 1) overlays.push("hpPips");
+  if (spec.hp > 1 && !spec.vuln.invincible) overlays.push("hpPips");
   if (hasRuleAction(spec.rules, "enrage")) overlays.push("enrage");
   if (hasRuleAction(spec.rules, "shoot")) overlays.push("shooter");
   if (hasRuleAction(spec.rules, "patrol")) overlays.push("moving");
   if (spec.splitOnDeath) overlays.push("split");
   if (detectRange) overlays.push("proximity");
 
-  return { faces, auras: [], overlays, detectRange };
+  return { faces, auras, overlays, detectRange };
 }

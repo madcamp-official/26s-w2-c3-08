@@ -158,9 +158,12 @@ export function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): voi
   }
 }
 
-/** 플레이어(§1.2 소속) — 내 아바타 회색, 다른 플레이어 흰색. squash 반영된 박스를 받아 그대로 그림. */
+/**
+ * 플레이어(§1.2 소속) — 내 아바타 흰색, 다른 플레이어 회색(2026-07-15 피드백으로 반전 —
+ * 원안은 회색/흰색이었으나 "내가 흰색"이 더 낫다는 판단). squash 반영된 박스를 그대로 그림.
+ */
 export function drawPlayerBorder(gfx: Phaser.GameObjects.Graphics, box: { left: number; top: number; w: number; h: number }, isSelf: boolean): void {
-  gfx.lineStyle(BORDER_WIDTH - 1, isSelf ? 0x9a9a9a : 0xffffff, 0.9);
+  gfx.lineStyle(BORDER_WIDTH - 1, isSelf ? 0xffffff : 0x9a9a9a, 0.9);
   gfx.strokeRect(box.left, box.top, box.w, box.h);
 }
 
@@ -224,11 +227,21 @@ export function drawGhostBlock(gfx: Phaser.GameObjects.Graphics, left: number, t
   for (let y = top; y < top + h; y += seg * 2) gfx.lineBetween(left + w, y, left + w, Math.min(y + seg, top + h));
 }
 
-/** 물음표 블록 등 아이템 주는 에셋 — 노란 발광 테두리(맥동) (§1.2 신규 구현) */
+/**
+ * 물음표 블록 등 아이템 주는 에셋 — 어디를 쳐야 하는지 표시(2026-07-15 피드백: 박스 전체 발광은
+ * "어디를 쳐야 할지" 안 알려줌). 실제 판정(BaseworldScene bonkHead)이 "아래에서 위로 머리를
+ * 부딪혀야" 발동하므로, 아랫면만 굵게 발광 + 그 아래 위쪽 화살표로 "여기를 아래에서 쳐라"를 알림.
+ * 옅은 전체 테두리는 유지하되(에셋임을 표시) 아랫면·화살표가 시선을 끌도록 더 강하게.
+ */
 export function drawItemGiverGlow(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, nowMs: number): void {
   const pulse = 0.6 + 0.3 * Math.sin(nowMs / 260);
-  gfx.lineStyle(BORDER_WIDTH - 1, 0xffee55, pulse);
+  gfx.lineStyle(2, 0xffee55, pulse * 0.5);
   gfx.strokeRect(left, top, w, h);
+  gfx.lineStyle(BORDER_WIDTH, 0xffee55, pulse);
+  gfx.lineBetween(left, top + h, left + w, top + h);
+  const cx = left + w / 2, ay = top + h + 5 + 3 * Math.sin(nowMs / 200);
+  gfx.fillStyle(0xffee55, pulse);
+  gfx.fillTriangle(cx - 5, ay + 6, cx + 5, ay + 6, cx, ay);
 }
 
 /** 아이템 스프링 확대·축소 펄스 배율 (§1.2 신규 구현) — 아이템 rect의 setScale에 곱해 쓴다 */
@@ -376,4 +389,18 @@ export function drawSplitMark(gfx: Phaser.GameObjects.Graphics, cx: number, topY
   const y = topY - 16;
   gfx.lineBetween(cx - 5, y - 5, cx, y + 5);
   gfx.lineBetween(cx + 5, y - 5, cx, y + 5);
+}
+
+/**
+ * 체력 무한(처치 불가) — 머리 위 다이아몬드(◇) 표시. HP 핍은 hp=999 같은 값에서 의미가 없어
+ * (실사용 확인: 핍 수백 개가 그려지는 문제) 대신 이 마크로 대체. §1(항상 표시) — 처치 가능
+ * 여부는 생존 판단에 중요한 정보라 근접/hover 게이팅 없이 항상 그림.
+ */
+export function drawImmortalMark(gfx: Phaser.GameObjects.Graphics, cx: number, topY: number): void {
+  const y = topY - 14, r = 5;
+  gfx.lineStyle(2, 0xdddddd, 0.9);
+  gfx.lineBetween(cx, y - r, cx + r, y);
+  gfx.lineBetween(cx + r, y, cx, y + r);
+  gfx.lineBetween(cx, y + r, cx - r, y);
+  gfx.lineBetween(cx - r, y, cx, y - r);
 }

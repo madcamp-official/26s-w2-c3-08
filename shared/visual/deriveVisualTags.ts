@@ -27,6 +27,7 @@ export type AuraTag =
   | "playerSelf" | "playerOther"
   | "switchToggler" | "switchAffected"
   | "itemGiver" | "item"
+  | "immortal"      // 처치 불가(체력 무한) 몬스터 — HP 핍 대신 별도 표시(2026-07-15)
   | "backgroundLayer";
 
 /** 맥락 표시(근접/hover/에디터) (§2) */
@@ -134,14 +135,18 @@ function monsterTags(a: MonsterAttrs): VisualTags {
     faces.top = "trampoline";
   }
 
+  // 체력 무한(처치 불가)은 HP 핍(타격 수 표시)이 의미가 없다(hp=999 등) — 대신 별도 오라로.
+  const auras: AuraTag[] = [];
+  if (a.immortal) auras.push("immortal");
+
   const overlays: OverlayTag[] = [];
-  if (a.hp > 1) overlays.push("hpPips");
+  if (a.hp > 1 && !a.immortal) overlays.push("hpPips");
   if (a.enrage) overlays.push("enrage");
   if (a.splitOnDeath) overlays.push("split");
   if (a.shooter) overlays.push("shooter");
   if (a.locomotion.type === "walk" && a.locomotion.speed !== "slow") overlays.push("moving");
   if (a.pursuit.type === "proximity") overlays.push("proximity");
-  return { faces, auras: [], overlays, detectRange: a.pursuit.type === "proximity" ? a.pursuit.range : undefined };
+  return { faces, auras, overlays, detectRange: a.pursuit.type === "proximity" ? a.pursuit.range : undefined };
 }
 
 /** 장애물 zone(all/except_top/bottom_only) → 빨강 면 집합 */

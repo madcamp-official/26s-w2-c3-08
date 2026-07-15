@@ -30,7 +30,7 @@ import {
   drawGhostBlock, drawItemGiverGlow, itemPulseScale,
   drawConveyorArrows, drawIceGlint, drawDashLines, drawBounceArrow, drawDirectionArrow,
   drawRideHint, drawDetectRing, drawCrumbleWarning, drawPeriodicWarning,
-  drawHpPips, drawEnrageMark, drawShooterMark, drawSplitMark,
+  drawHpPips, drawEnrageMark, drawShooterMark, drawSplitMark, drawImmortalMark,
 } from "./visualLanguage.js";
 
 const FIXED_MS = 1000 / TUNING.world.tickRate;
@@ -784,10 +784,10 @@ export class BaseworldScene extends Phaser.Scene {
     const px = this.me.body.x, py = this.me.body.y;
     const pointer = this.input.activePointer;
     const nearPx = TUNING.visual.revealNearPx, farPx = TUNING.visual.revealFarPx;
-    /** 대상 중심좌표 기준 노출도(근접 페이드 or 마우스 hover 중 더 큰 쪽) */
-    const revealAt = (cx: number, cy: number, hw: number, hh: number): number => {
+    /** 대상 중심좌표 기준 노출도(근접 페이드 or 마우스 hover 중 더 큰 쪽). w/h는 대상 전체 폭·높이. */
+    const revealAt = (cx: number, cy: number, w: number, h: number): number => {
       const dist = Math.hypot(cx - px, cy - py);
-      const hovering = Math.abs(pointer.worldX - cx) < hw && Math.abs(pointer.worldY - cy) < hh;
+      const hovering = Math.abs(pointer.worldX - cx) < w / 2 && Math.abs(pointer.worldY - cy) < h / 2;
       return revealAlpha(dist, nearPx, farPx, hovering);
     };
 
@@ -886,6 +886,8 @@ export class BaseworldScene extends Phaser.Scene {
       if (tags.overlays.includes("hpPips") && m.hp > 1) {
         drawHpPips(entities, cx, topY, m.hp, m.hp - this.monEffHits(id, m.hitCount), reveal);
       }
+      // 체력 무한(처치 불가) — §1 항상 표시(생존 판단에 중요한 정보라 근접 게이팅 없음)
+      if (tags.auras.includes("immortal")) drawImmortalMark(entities, cx, topY);
       if (reveal > 0) {
         if (tags.overlays.includes("enrage")) drawEnrageMark(entities, cx, topY, reveal);
         if (tags.overlays.includes("shooter")) drawShooterMark(entities, cx, my - m.h / 2, m.facing, reveal);
