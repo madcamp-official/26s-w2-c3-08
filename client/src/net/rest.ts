@@ -1,4 +1,6 @@
-// REST 클라이언트 — x-user-token 헤더 자동 부착. HTTP_BASE 도출은 devconsole 명령들과 동일 패턴.
+// REST 클라이언트 — Authorization: Bearer 헤더 자동 부착. HTTP_BASE 도출은 devconsole 명령들과 동일 패턴.
+// 커스텀 헤더(x-user-token) 아니라 표준 Authorization을 쓰는 이유: 배포 환경(Cloudflare Tunnel)의
+// 프리플라이트 기본 Allow-Headers에 Authorization은 있지만 커스텀 헤더는 없어 CORS가 막힘(2026-07-16).
 import { useSessionStore } from "../store/session.js";
 
 export const HTTP_BASE: string = (() => {
@@ -28,7 +30,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { "x-user-token": token } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
@@ -54,7 +56,7 @@ export const api = {
 
 /** 임의 토큰으로 GET /api/me 검증 — 계정 연동(설정에서 다른 토큰 입력) 전용, 현재 세션 토큰과 무관 */
 export async function verifyToken<T>(token: string): Promise<T> {
-  const res = await fetch(`${HTTP_BASE}/api/me`, { headers: { "x-user-token": token } });
+  const res = await fetch(`${HTTP_BASE}/api/me`, { headers: { Authorization: `Bearer ${token}` } });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, json?.error ?? `HTTP ${res.status}`);
   return json as T;
