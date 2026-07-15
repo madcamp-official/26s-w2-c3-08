@@ -47,13 +47,14 @@ interface WorkerConfig {
 type Fetcher = typeof fetch
 
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
-  return {
+  const generationMode = readGenerationMode(env.GPU_WORKER_GENERATION_MODE)
+  const config: WorkerConfig = {
     serverUrl: env.SERVER_URL ?? 'http://localhost:3000',
     workerToken: env.WORKER_TOKEN ?? 'dev-worker-token',
     workerId: env.WORKER_ID ?? `gpu-worker-${process.pid}`,
     pollIntervalMs: readPositiveInteger(env.JOB_POLL_INTERVAL_MS, 2_000),
     simulate: env.GPU_WORKER_SIMULATE === 'true',
-    generationMode: readGenerationMode(env.GPU_WORKER_GENERATION_MODE) ?? 'wan',
+    generationMode: generationMode ?? 'wan',
     qwenBaseUrl: env.QWEN_BASE_URL ?? null,
     qwenApiToken: env.QWEN_API_TOKEN ?? null,
     qwenTimeoutMs: readPositiveInteger(env.QWEN_TIMEOUT_MS, 45_000),
@@ -70,6 +71,10 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     imageStorageUploadToken: env.IMAGE_STORAGE_UPLOAD_TOKEN ?? null,
     imagePublicBaseUrl: env.IMAGE_PUBLIC_BASE_URL ?? null,
   }
+
+  validateProductionWorkerConfig(env, config)
+
+  return config
 }
 
 export async function pollOnce(config: WorkerConfig, fetcher: Fetcher = fetch) {
@@ -679,6 +684,128 @@ function readGenerationMode(value: string | undefined): WorkerConfig['generation
   return value === 'wan' || value === 'gateway' ? value : null
 }
 
+function validateProductionWorkerConfig(env: NodeJS.ProcessEnv, config: WorkerConfig) {
+  if (env.NODE_ENV !== 'production') {
+    return
+  }
+
+  const failures: string[] = []
+
+  requireHttpUrlValue(failures, config.serverUrl, 'SERVER_URL')
+  requireProductionSecretValue(failures, config.workerToken, 'WORKER_TOKEN')
+
+  if (config.simulate) {
+    failures.push('GPU_WORKER_SIMULATE must be false for production asset generation')
+  }
+
+  if (env.GPU_WORKER_GENERATION_MODE && !readGenerationMode(env.GPU_WORKER_GENERATION_MODE)) {
+    failures.push('GPU_WORKER_GENERATION_MODE must be wan or gateway')
+  }
+
+  if (config.generationMode === 'wan') {
+    requireHttpUrlValue(failures, config.qwenBaseUrl, 'QWEN_BASE_URL')
+    requireProductionSecretValue(failures, config.qwenApiToken, 'QWEN_API_TOKEN')
+    requireHttpUrlValue(failures, config.wanBaseUrl, 'WAN_API_BASE_URL')
+    requireProductionSecretValue(failures, config.wanApiToken, 'WAN_API_TOKEN')
+    requireNonPlaceholderValue(failures, config.wanGeneratePath, 'WAN_GENERATE_PATH')
+  } else {
+    requireHttpUrlValue(failures, config.gatewayUrl, 'GENERATION_GATEWAY_URL')
+    requireNonPlaceholderValue(failures, config.gatewayGeneratePath, 'GENERATION_GATEWAY_PATH')
+  }
+
+  if (config.imageStorageMode === 'inline') {
+    failures.push('IMAGE_STORAGE_MODE must be local or http-put for production')
+  } else if (config.imageStorageMode === 'local') {
+    requireNonPlaceholderValue(failures, config.imageStorageDir, 'IMAGE_STORAGE_DIR')
+    requireHttpUrlValue(failures, config.imagePublicBaseUrl, 'IMAGE_PUBLIC_BASE_URL', { publicUrl: true })
+  } else {
+    requireHttpUrlValue(failures, config.imageStorageUploadUrl, 'IMAGE_STORAGE_UPLOAD_URL')
+    requireProductionSecretValue(failures, config.imageStorageUploadToken, 'IMAGE_STORAGE_UPLOAD_TOKEN')
+    requireHttpUrlValue(failures, config.imagePublicBaseUrl, 'IMAGE_PUBLIC_BASE_URL', { publicUrl: true })
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`GPU worker production config invalid: ${failures.join('; ')}`)
+  }
+}
+
+function requireProductionSecretValue(failures: string[], value: string | null | undefined, variableName: string) {
+  if (!isProductionSecretConfigured(value)) {
+    failures.push(`${variableName} must be a real production secret with at least 16 characters`)
+  }
+}
+
+function requireHttpUrlValue(
+  failures: string[],
+  value: string | null | undefined,
+  variableName: string,
+  options: { publicUrl?: boolean } = {},
+) {
+  if (!requireNonPlaceholderValue(failures, value, variableName)) {
+    return
+  }
+
+  let parsed: URL
+
+  try {
+    parsed = new URL(value)
+  } catch {
+    failures.push(`${variableName} must be an http(s) URL`)
+    return
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    failures.push(`${variableName} must be an http(s) URL`)
+  }
+
+  if (options.publicUrl && LOCAL_HOSTNAMES.has(parsed.hostname)) {
+    failures.push(`${variableName} must not point to localhost for production`)
+  }
+}
+
+function requireNonPlaceholderValue(
+  failures: string[],
+  value: string | null | undefined,
+  variableName: string,
+) {
+  if (!value || isPlaceholderValue(value)) {
+    failures.push(`${variableName} must be replaced with a real production value`)
+    return false
+  }
+
+  return true
+}
+
+function isProductionSecretConfigured(value: string | null | undefined): boolean {
+  if (!value) {
+    return false
+  }
+
+  const normalized = value.trim().toLowerCase()
+
+  return normalized.length >= 16 && normalized !== 'dev-worker-token' && !isPlaceholderValue(normalized)
+}
+
+function isPlaceholderValue(value: string) {
+  const normalized = value.trim().toLowerCase()
+  const placeholderFragments = [
+    '<real',
+    '<replace',
+    'replace-with',
+    'changeme',
+    'change-me',
+    'placeholder',
+    'dummy',
+    'example',
+    'todo',
+    'your-',
+  ]
+
+  return !normalized || placeholderFragments.some((fragment) => normalized.includes(fragment))
+}
+
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
+
 function readImageStorageMode(env: NodeJS.ProcessEnv): ImageStorageMode {
   const explicitMode = env.IMAGE_STORAGE_MODE?.trim().toLowerCase()
 
@@ -870,6 +997,37 @@ function isAbortError(error: unknown) {
 }
 
 async function selfTest() {
+  const validProductionEnv: NodeJS.ProcessEnv = {
+    NODE_ENV: 'production',
+    SERVER_URL: 'http://backend.internal:3000',
+    WORKER_TOKEN: 'worker-token-1234567890',
+    GPU_WORKER_SIMULATE: 'false',
+    GPU_WORKER_GENERATION_MODE: 'wan',
+    QWEN_BASE_URL: 'http://qwen.internal:8001',
+    QWEN_API_TOKEN: 'qwen-token-1234567890',
+    WAN_API_BASE_URL: 'http://wan.internal:8002',
+    WAN_API_TOKEN: 'wan-token-1234567890',
+    WAN_GENERATE_PATH: '/v1/sprites/generate',
+    IMAGE_STORAGE_MODE: 'http-put',
+    IMAGE_STORAGE_UPLOAD_URL: 'http://storage.internal/generated-assets',
+    IMAGE_STORAGE_UPLOAD_TOKEN: 'upload-token-1234567890',
+    IMAGE_PUBLIC_BASE_URL: 'https://cdn.test/generated-assets',
+  }
+
+  assert.equal(loadWorkerConfig(validProductionEnv).workerToken, 'worker-token-1234567890')
+  assert.throws(() => loadWorkerConfig({
+    ...validProductionEnv,
+    WORKER_TOKEN: 'dev-worker-token',
+  }), /WORKER_TOKEN/)
+  assert.throws(() => loadWorkerConfig({
+    ...validProductionEnv,
+    GPU_WORKER_SIMULATE: 'true',
+  }), /GPU_WORKER_SIMULATE/)
+  assert.throws(() => loadWorkerConfig({
+    ...validProductionEnv,
+    IMAGE_STORAGE_MODE: 'inline',
+  }), /IMAGE_STORAGE_MODE/)
+
   const calls: Array<{ url: string; init?: RequestInit }> = []
   const fetcher: Fetcher = async (url, init) => {
     calls.push({ url: String(url), init })

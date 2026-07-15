@@ -29,7 +29,7 @@ Scope: post-remediation status snapshot for the committed Frontend V2 branch. Th
 - Asset job status is available through `/api/assets/generation-jobs/:jobId` for direct job snapshots and `/api/asset-jobs?user_id=<id>` for session-wide bounded polling.
 - GPU worker generation mode defaults to Qwen prompt refinement followed by WAN sprite generation. A single internal generation gateway remains available only through explicit `GPU_WORKER_GENERATION_MODE=gateway`.
 - Generated image data URLs can be materialized through `IMAGE_STORAGE_MODE=local` shared static storage or `IMAGE_STORAGE_MODE=http-put` object-storage gateway upload.
-- Production readiness for client/backend/gpu-worker environment values is checked by `npm run check:production-env`; `npm run check:v2` runs the checker self-test without requiring real secrets.
+- Production readiness for client/backend/gpu-worker environment values is checked by `npm run check:production-env`; `npm run check:v2` runs the checker self-test without requiring real secrets. The GPU worker runtime also rejects unsafe production config before polling for jobs.
 - `.github/workflows/frontend-v2-browser-gates.yml` now passes pinned Playwright CI jobs for the aggregate V2 check and browser evidence suites.
 
 ## Evidence Collected
@@ -61,7 +61,7 @@ Notes:
 - Remote race completion now has a bounded same-remote-endpoint result poll after the first finisher, so a page that does not receive the final Socket.IO event still reaches the authoritative results screen without falling back to mock/local data.
 - Remote browser E2E now proves Game route leave/return cleanup and Phaser bridge resize stability for Map Build, Validation, and Race without changing Phaser gameplay behavior.
 - Backend asset generation now has avatar-specific FormData/JSON generation, generic asset FormData/JSON generation, direct asset job status lookup, a worker claim/result contract, active worker-id lease validation, expired lease recovery, Socket.IO asset job update broadcast, a GPU worker Qwen/WAN generation path, and generated image materialization through local shared storage or HTTP PUT object-storage gateway upload covered by contract self-tests. The final production credentials and storage values are still deferred.
-- Production env readiness now fails closed on missing/placeholder credentials, missing backend `INTERNAL_API_TOKEN`, localhost public URLs, backend/gpu-worker worker token mismatch, backend/gpu-worker image storage mode mismatch, invalid image storage mode, and `GPU_WORKER_SIMULATE=true`.
+- Production env readiness now fails closed on missing/placeholder credentials, missing backend `INTERNAL_API_TOKEN`, localhost public URLs, backend/gpu-worker worker token mismatch, backend/gpu-worker image storage mode mismatch, invalid image storage mode, and `GPU_WORKER_SIMULATE=true`. GPU worker startup also fails closed on unsafe production worker tokens, simulate mode, inline storage, placeholder Qwen/WAN credentials, and invalid storage URLs.
 - Production env readiness accepts comma-separated public `CORS_ORIGIN` values and validates each origin independently.
 - CI passes `check:v2`, browser environment check, remote V2 flow, lobby/room, accessibility, and Launcher/Studio/Game visual evidence in the `mcr.microsoft.com/playwright:v1.61.1-noble` container.
 

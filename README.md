@@ -107,7 +107,7 @@ npm run check:production-env -- \
 
 - client: `VITE_DATA_MODE=remote`, `VITE_REALTIME_MODE=remote`, 선택적 `VITE_SOCKET_IO_URL`.
 - backend: `NODE_ENV=production`, public `CORS_ORIGIN` list, real `WORKER_TOKEN`, real `INTERNAL_API_TOKEN`, real Qwen token, local storage mode일 때 generated image static path. Production runtime auth도 placeholder/too-short secret을 거부합니다.
-- gpu-worker: backend `SERVER_URL`, backend와 동일한 `WORKER_TOKEN`, `GPU_WORKER_SIMULATE=false`, Qwen/WAN 또는 explicit gateway credentials, `local` 또는 `http-put` generated image storage.
+- gpu-worker: backend `SERVER_URL`, backend와 동일한 `WORKER_TOKEN`, `GPU_WORKER_SIMULATE=false`, Qwen/WAN 또는 explicit gateway credentials, `local` 또는 `http-put` generated image storage. Production worker runtime도 polling 시작 전에 unsafe token, simulate mode, inline storage, placeholder credential을 거부합니다.
 - cross-service: backend/gpu-worker `WORKER_TOKEN` 일치와 generated image URL/path 정합성.
 
 Generated image storage는 두 production 경로를 지원한다.
