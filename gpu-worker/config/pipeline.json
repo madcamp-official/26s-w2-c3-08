@@ -72,6 +72,21 @@
     "frameCount": 8,
     "tilePx": 64
   },
+  "sourceNormalization": {
+    "borderVarianceMax": 0.06,
+    "floodThreshold": 0.12,
+    "removedRatioMin": 0.1,
+    "removedRatioMax": 0.985,
+    "alreadyTransparentMin": 0.02,
+    "matting": {
+      "modelFile": "isnet-general-use.onnx",
+      "modelUrl": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx",
+      "inputSize": 1024,
+      "maskThreshold": 0.35,
+      "coverageMin": 0.02,
+      "coverageMax": 0.9
+    }
+  },
   "network": {
     "serverRequestTimeoutMs": 15000,
     "serverUploadTimeoutMs": 60000,

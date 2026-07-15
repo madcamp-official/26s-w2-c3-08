@@ -1,7 +1,15 @@
 // GPU 워커 — 5080(집) 상주. 백엔드 큐를 pull해 스프라이트를 생성한다 (NAT 안전: 전부 아웃바운드).
 //   1) GET  {SERVER_URL}/api/ai/jobs/next     일감 claim
-//   2) 원본 그림 다운로드 → 오케스트레이터(LLM→ComfyUI→Stage5→시트)
-//   3) POST {SERVER_URL}/api/ai/jobs/{id}/result   시트 업로드 (실패 시 /fail)
+//   2) prepare: 소스 다운로드 → Stage1 정규화(업로드 배경분리) → LLM → 프롬프트/합성
+//   3) generate: 로컬 ComfyUI I2V (GPU — 유일한 직렬 병목)
+//   4) finish: Stage5 후처리 → 시트 → POST {SERVER_URL}/api/ai/jobs/{id}/result (실패 시 /fail)
+//
+// 병렬화(100유저 전제): GPU는 VRAM상 한 번에 1건이므로, 처리량을 올리는 방법은 GPU 생성 시간에
+// 다른 잡의 CPU/네트워크 작업을 숨기는 것뿐이다.
+//   - 현재 잡이 generate(GPU)하는 동안 → 다음 잡을 claim+prepare (프리페치 깊이 1)
+//   - finish(CPU 후처리+업로드)는 직렬 체인으로 GPU와 병행 (idle 키높이 캐시 순서 보존)
+//   프리페치를 1로 제한하는 이유: 서버가 claim 후 일정 시간(STALE_MS) 지나면 죽은 워커로 보고
+//   재큐하므로, 미리 잡아두는 잡은 "현재 생성 1건이 끝날 때까지"만 대기하게 묶는다.
 //
 // 환경변수:
 //   SERVER_URL          백엔드 베이스 (예: https://sunboy7594.madcamp-kaist.org) [필수]
@@ -22,8 +30,8 @@ try {
 import { pipelineConfig } from "./config/index.js";
 import { ComfyUIBackend } from "./backends/comfyui/client.js";
 import { PromptGatewayClient } from "./llm/gatewayClient.js";
-import { ServerClient } from "./jobs/serverClient.js";
-import { Orchestrator } from "./orchestrator/generateAsset.js";
+import { ServerClient, type JobPayload } from "./jobs/serverClient.js";
+import { Orchestrator, type PreparedJob } from "./orchestrator/generateAsset.js";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -56,7 +64,7 @@ async function main(): Promise<void> {
     });
   }
 
-  const orch = new Orchestrator({ backend, gateway });
+  const orch = new Orchestrator({ backend, server, gateway });
 
   console.log(`[worker] 시작 — server=${serverUrl} comfyui=${comfyUrl} llm=${gateway ? "gateway" : "STUB"}`);
   const health = await backend.healthCheck();
@@ -64,37 +72,78 @@ async function main(): Promise<void> {
     console.error(`[worker] ComfyUI 헬스체크 실패: ${health.detail} — ${comfyUrl} 확인. 계속 폴링합니다.`);
   }
 
-  // 폴링 루프 — 잡 있으면 즉시 다음 폴링(연속 소진), 없으면 pollMs 대기.
-  for (;;) {
-    let job = null;
+  /** claim + prepare. 실패는 잡 fail 보고 후 null (루프는 계속). */
+  async function claimAndPrepare(): Promise<PreparedJob | null> {
+    let job: JobPayload | null = null;
     try {
       job = await server.claimNext();
     } catch (e) {
-      console.error(`[worker] claim 오류: ${errMsg(e)} — ${pollMs}ms 후 재시도`);
-      await sleep(pollMs);
-      continue;
+      console.error(`[worker] claim 오류: ${errMsg(e)}`);
+      return null;
     }
-    if (!job) {
+    if (!job) return null;
+    console.log(`[worker] 잡 ${job.jobId} (${job.category}/${job.action}) 준비 시작`);
+    try {
+      return await orch.prepare(job);
+    } catch (e) {
+      const msg = errMsg(e);
+      console.error(`[worker] 잡 ${job.jobId} 준비 실패: ${msg}`);
+      await server.postFail(job.jobId, msg).catch((e2) => {
+        console.error(`[worker] fail 보고도 실패: ${errMsg(e2)}`);
+      });
+      return null;
+    }
+  }
+
+  /** finish + 업로드. 직렬 체인(finishChain)에서 실행되어 잡 순서를 보존한다. */
+  async function finishAndReport(prep: PreparedJob, frames: Awaited<ReturnType<typeof orch.generate>>): Promise<void> {
+    const jobId = prep.job.jobId;
+    try {
+      const sheet = await orch.finish(prep, frames);
+      await server.postResult(jobId, sheet.png, {
+        frameCount: sheet.frameCount, frameW: sheet.frameW, frameH: sheet.frameH,
+      });
+      console.log(`[worker] 잡 ${jobId} 완료 (${sheet.frameCount}프레임 ${sheet.frameW}x${sheet.frameH})`);
+    } catch (e) {
+      const msg = errMsg(e);
+      console.error(`[worker] 잡 ${jobId} 후처리/업로드 실패: ${msg}`);
+      await server.postFail(jobId, msg).catch((e2) => {
+        console.error(`[worker] fail 보고도 실패: ${errMsg(e2)}`);
+      });
+    }
+  }
+
+  // ── 메인 루프: [prepare(다음)] ∥ [generate(현재)] ∥ [finish(이전, 직렬 체인)] ──
+  let prepared: PreparedJob | null = null;
+  let finishChain: Promise<void> = Promise.resolve();
+
+  for (;;) {
+    const current = prepared ?? (await claimAndPrepare());
+    prepared = null;
+    if (!current) {
       await sleep(pollMs);
       continue;
     }
 
-    console.log(`[worker] 잡 ${job.jobId} (${job.category}/${job.action}) 처리 시작`);
+    // GPU 생성과 병행해 다음 잡을 미리 준비 (프리페치 깊이 1).
+    const nextPromise = claimAndPrepare();
+
     try {
-      const sourcePng = await server.fetchSourceImage(job.sourceImageUrl);
-      const sheet = await orch.run(job, sourcePng);
-      await server.postResult(job.jobId, sheet.png, {
-        frameCount: sheet.frameCount, frameW: sheet.frameW, frameH: sheet.frameH,
-      });
-      console.log(`[worker] 잡 ${job.jobId} 완료 (${sheet.frameCount}프레임 ${sheet.frameW}x${sheet.frameH})`);
+      const frames = await orch.generate(current);
+      // finish는 체인에 넣고 바로 다음 생성으로 — CPU 후처리가 GPU를 막지 않는다.
+      finishChain = finishChain.then(() => finishAndReport(current, frames));
     } catch (e) {
       const msg = errMsg(e);
-      console.error(`[worker] 잡 ${job.jobId} 실패: ${msg}`);
-      try {
-        await server.postFail(job.jobId, msg);
-      } catch (e2) {
+      console.error(`[worker] 잡 ${current.job.jobId} 생성 실패: ${msg}`);
+      await server.postFail(current.job.jobId, msg).catch((e2) => {
         console.error(`[worker] fail 보고도 실패: ${errMsg(e2)}`);
-      }
+      });
+    }
+
+    prepared = await nextPromise;
+    if (!prepared) {
+      // 큐가 비었으면 밀린 finish를 마저 흘려보내고 짧게 대기.
+      await finishChain;
     }
   }
 }

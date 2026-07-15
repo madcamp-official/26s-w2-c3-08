@@ -8,12 +8,13 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^24.13.2",
     "tsx": "^4.23.0",
-    "typescript": "^5.0.4",
-    "@types/node": "^24.13.2"
+    "typescript": "^5.0.4"
   },
   "dependencies": {
-    "sharp": "^0.34.2",
-    "shared": "*"
+    "onnxruntime-node": "^1.27.0",
+    "shared": "*",
+    "sharp": "^0.34.2"
   }
 }

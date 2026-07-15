@@ -1,9 +1,7 @@
-// 색 변환·거리 유틸. 크로마키 키색 선택(HSV 거리)과 flood fill 제거(정규화 RGB 거리)에 쓰임.
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
+// 색 변환·거리 유틸. 크로마키 키색 선택(HSV 거리)에 쓰임.
+// Rgb/rgbDistanceNorm은 shared/imaging으로 이동(서버와 공유) — 여기서 재export해 기존 import 유지.
+import type { Rgb } from "shared/imaging";
+export { rgbDistanceNorm, type Rgb } from "shared/imaging";
 export interface Hsv {
   /** 0~360 */
   h: number;
@@ -53,11 +51,3 @@ function hsvCone(c: Hsv): [number, number, number] {
   return [c.s * c.v * Math.cos(rad), c.s * c.v * Math.sin(rad), c.v];
 }
 
-/** 정규화 RGB 유클리드 거리 (0~1). flood fill "배경과 같은 색인가" 판정용 */
-const RGB_MAX_DIST = 255 * Math.sqrt(3);
-export function rgbDistanceNorm(a: Rgb, b: Rgb): number {
-  const dr = a.r - b.r;
-  const dg = a.g - b.g;
-  const db = a.b - b.b;
-  return Math.sqrt(dr * dr + dg * dg + db * db) / RGB_MAX_DIST;
-}

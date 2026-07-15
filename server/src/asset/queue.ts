@@ -15,6 +15,12 @@ export interface SubmitAssetInput {
   /** 검증 전 원본 attrs(JSON). parseAttrs로 카테고리 스키마 검증. */
   attrs: unknown;
   sourceImageUrl: string;
+  /** "drawn"(캔버스, 투명 보장) | "uploaded"(파일 업로드 — 배경 분리 필요할 수 있음). 기본 drawn */
+  sourceType?: "drawn" | "uploaded";
+  /** uploaded 원본 보존 URL (upload-source 응답의 rawUrl) */
+  rawSourceUrl?: string | null;
+  /** 서버 flood-fill이 즉시 성공한 정규화본 URL (upload-source 응답의 normUrl) */
+  normSourceUrl?: string | null;
   isSystem?: boolean;
 }
 
@@ -42,6 +48,9 @@ export async function submitAsset(input: SubmitAssetInput) {
       widthCells: mirror.widthCells,
       heightCells: mirror.heightCells,
       sourceImageUrl: input.sourceImageUrl,
+      sourceType: input.sourceType ?? "drawn",
+      rawSourceUrl: input.rawSourceUrl ?? null,
+      normSourceUrl: input.normSourceUrl ?? null,
       status: "generating",
       sprites: {
         create: actions.map((a, i) => ({

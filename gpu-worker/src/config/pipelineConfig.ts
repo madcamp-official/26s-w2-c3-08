@@ -116,6 +116,30 @@ const PipelineConfigSchema = z.object({
     frameCount: z.number().int().positive(),
     tilePx: z.number().int().positive(),
   }),
+  sourceNormalization: z.object({
+    /** 업로드 소스 배경 분리(flood-fill 재시도)의 테두리 분산 상한 — 넘으면 AI 매팅으로 */
+    borderVarianceMax: z.number().min(0).max(1),
+    /** flood-fill 색거리 임계 */
+    floodThreshold: z.number().min(0).max(1),
+    /** flood-fill 제거 비율 신뢰 구간 — 벗어나면 실패로 보고 AI 매팅으로 */
+    removedRatioMin: z.number().min(0).max(1),
+    removedRatioMax: z.number().min(0).max(1),
+    /** 투명 픽셀이 이 비율 이상이면 "이미 투명 배경"으로 간주(정규화 불필요) */
+    alreadyTransparentMin: z.number().min(0).max(1),
+    matting: z.object({
+      /** ONNX 세그멘테이션 모델 파일명 (gpu-worker/models/ 하위) */
+      modelFile: z.string().min(1),
+      /** 모델이 없을 때 1회 자동 다운로드할 URL (rembg 공식 릴리스) */
+      modelUrl: z.string().min(1),
+      /** 모델 입력 한 변(px) — isnet 계열은 1024 */
+      inputSize: z.number().int().positive(),
+      /** 마스크 이진화 임계(0~1) — 이보다 낮은 알파는 0으로 */
+      maskThreshold: z.number().min(0).max(1),
+      /** 전경 커버리지 신뢰 구간 — 벗어나면 "분리 불가" 실패 */
+      coverageMin: z.number().min(0).max(1),
+      coverageMax: z.number().min(0).max(1),
+    }),
+  }),
   network: z.object({
     /** 백엔드 GET/POST 짧은 호출(잡 claim·fail 보고) 타임아웃 */
     serverRequestTimeoutMs: z.number().int().positive(),

@@ -74,7 +74,10 @@ model Asset {
   widthCells         Int?     @db.SmallInt                     // 가로 타일 수 — 아바타는 NULL(1타일 고정)
   heightCells        Int?     @db.SmallInt                     // 세로 타일 수
   hitboxHPx          Int?     @db.SmallInt
-  sourceImageUrl     String                                    // 그림판 원본 (투명 배경)
+  sourceType         String   @default("drawn")                // "drawn"(캔버스, 투명 보장) | "uploaded"(임의 파일 — 배경 분리 필요할 수 있음)
+  sourceImageUrl     String                                    // 파이프라인 입력 계약: 투명 배경 PNG (drawn=캔버스 원본, uploaded=정규화본 우선)
+  rawSourceUrl       String?                                   // uploaded 원본 보존(재처리·디버깅용). drawn이면 NULL
+  normSourceUrl      String?                                   // 배경 분리된 투명 PNG — 서버(flood-fill 즉시 성공) 또는 워커(AI 매팅)가 채움. 후속 잡·재생성이 재사용
   projectileImageUrl String?                                   // 발사체 정지 이미지 또는 기본 탄 — 회전은 코드 처리
   remixOfId          BigInt?
   remixOf            Asset?   @relation("Remixes", fields: [remixOfId], references: [id])
