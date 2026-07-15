@@ -31,7 +31,7 @@ export function MainScreen({ onLobby }: { onLobby: () => void }) {
       </button>
 
       <div style={{
-        position: "relative", minHeight: "100vh", display: "flex", flexDirection: "column",
+        minHeight: "100vh", display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", gap: 32,
       }}>
         <h2 className="dsPointFont" style={{ color: COLORS.buildYellow, margin: 0, fontSize: 22 }}>
