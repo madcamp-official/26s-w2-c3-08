@@ -22,5 +22,6 @@
   "projectile": { "slowSpeed": 200, "normalSpeed": 380, "fastSpeed": 620, "homingStrength": 0.04, "lifeMs": 6000 },
   "net": { "ghostLerp": 0.25, "monsterLerp": 0.2, "sendRateHz": 30, "staleMs": 300, "interpDelayMs": 80 },
   "detect": { "nearPx": 128, "normalPx": 256, "farPx": 448 },
-  "crush": { "minGapRatio": 0.5 }
+  "crush": { "minGapRatio": 0.5 },
+  "visual": { "revealNearPx": 256, "revealFarPx": 384, "itemPulseMs": 900, "itemPulseAmt": 0.08 }
 }

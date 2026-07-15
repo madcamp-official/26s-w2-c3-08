@@ -35,11 +35,24 @@ export function blockVisualTagsFromSpec(spec: BlockSpec): VisualTags {
       : { top: true, bottom: true, left: true, right: true };
     for (const f of ALL_FACES) if (red[f]) faces[f] = "red";
   }
-  // knockback 물성은 buildRuntimePart.ts TODO(builder) — 런타임에 없으므로 bumper 파생 안 함
+  if (propOf(spec, "knockback")) {
+    // 실제 충돌하는 면만 범퍼로 — 통과 면(dashed)은 밀어낼 게 없으므로 그대로 둠
+    for (const f of ALL_FACES) if (faces[f] === "solidWhite") faces[f] = "bumper";
+  }
+
+  // 점핑대(트램펄린) 블록 — 몬스터와 동일하게 §1 항상 표시(초록)로 승격(2026-07-15 문서 보강).
+  // "밟으면 튕겨 이득"은 몬스터든 블록이든 같은 의미라 §2 오버레이(화살표)만으로는 부족하다는 피드백.
+  if (propOf(spec, "trampoline")) faces.top = "trampoline";
 
   const auras: AuraTag[] = [];
   if (spec.switchReact) auras.push("switchAffected");
   if (propOf(spec, "switchToggle")) auras.push("switchToggler");
+  if (spec.emitsItem) auras.push("itemGiver");   // 물음표 블록 — 노란 발광(§1.2)
+
+  const hasRidden = hasRuleAction(spec.rules, "shuttle") || hasRuleAction(spec.rules, "rideOneway");
+  const hasProximityRule = spec.rules?.some((r) => r.when.type === "playerWithin") ?? false;
+  const proximityRange = spec.rules?.find((r) => r.when.type === "playerWithin")?.when.dist as
+    "near" | "normal" | "far" | undefined;
 
   const overlays: OverlayTag[] = [];
   if (propOf(spec, "ice")) overlays.push("ice");
@@ -51,14 +64,17 @@ export function blockVisualTagsFromSpec(spec: BlockSpec): VisualTags {
   if (spec.visibility === "blink") overlays.push("periodic");
   if (spec.visibility === "hidden") overlays.push("hiddenEditorOnly");
   if (hasRuleAction(spec.rules, "shoot")) overlays.push("shooter");
+  if (hasRuleAction(spec.rules, "crumbleFall") || hasRuleAction(spec.rules, "crumbleBreak")) overlays.push("fallBreak");
+  if (hasRidden) overlays.push("rideStart");
+  if (hasProximityRule && !hasRidden) overlays.push("proximity");   // ridden은 접촉 기반이라 근접 링과 별개
 
-  return { faces, auras, overlays };
+  return { faces, auras, overlays, detectRange: hasProximityRule ? proximityRange : undefined };
 }
 
 /** 몬스터 스펙 → 시각 태그 (§1 항상 표시만) */
 export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
   const contactDamage = spec.contactDamage ?? true;
-  const shove = hasRuleAction(spec.rules, "knockbackPlayer");   // §shove는 buildRuntimePart TODO — 등록된 행동명 기준 방어적 탐지
+  const shove = spec.shove ?? false;
   // ⚠️ 주황은 "지금 나(플레이어)가 무적이라 이 면이 안전함"만 의미(strokeFace의 iAmInvincible 전환).
   // vuln.invincible(몬스터가 처치 불가/환경형)은 완전히 다른 개념 — 접촉 시 대미지는 그대로 들어오므로
   // 여기서 orange로 매핑하면 "안전하다"는 오해를 준다(실사용 확인됨: 쿵쿵이가 항상 주황=위험 없어 보임).
@@ -83,11 +99,16 @@ export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
     faces.top = "trampoline";
   }
 
+  const chaseRule = spec.rules.find((r) => r.do.type === "chase" && r.when.type === "playerWithin");
+  const detectRange = chaseRule?.when.dist as "near" | "normal" | "far" | undefined;
+
   const overlays: OverlayTag[] = [];
   if (spec.hp > 1) overlays.push("hpPips");
   if (hasRuleAction(spec.rules, "enrage")) overlays.push("enrage");
   if (hasRuleAction(spec.rules, "shoot")) overlays.push("shooter");
   if (hasRuleAction(spec.rules, "patrol")) overlays.push("moving");
+  if (spec.splitOnDeath) overlays.push("split");
+  if (detectRange) overlays.push("proximity");
 
-  return { faces, auras: [], overlays };
+  return { faces, auras: [], overlays, detectRange };
 }

@@ -41,6 +41,8 @@ export interface VisualTags {
   faces: FaceBorders | null;
   auras: AuraTag[];
   overlays: OverlayTag[];
+  /** 근접(proximity) 감지 반경 — §2 감지 반경 링용. 있으면 overlays에 "proximity" 포함 */
+  detectRange?: "near" | "normal" | "far";
 }
 
 const ALL_FACES: Face[] = ["top", "bottom", "left", "right"];
@@ -106,7 +108,7 @@ function blockTags(a: BlockAttrs): VisualTags {
   if (a.presence.type === "hidden") overlays.push("hiddenEditorOnly");
   if (a.trigger.type === "proximity") overlays.push("proximity");
   if (a.shooter) overlays.push("shooter");
-  return { faces, auras, overlays };
+  return { faces, auras, overlays, detectRange: a.trigger.type === "proximity" ? a.trigger.range : undefined };
 }
 
 /**
@@ -138,7 +140,8 @@ function monsterTags(a: MonsterAttrs): VisualTags {
   if (a.splitOnDeath) overlays.push("split");
   if (a.shooter) overlays.push("shooter");
   if (a.locomotion.type === "walk" && a.locomotion.speed !== "slow") overlays.push("moving");
-  return { faces, auras: [], overlays };
+  if (a.pursuit.type === "proximity") overlays.push("proximity");
+  return { faces, auras: [], overlays, detectRange: a.pursuit.type === "proximity" ? a.pursuit.range : undefined };
 }
 
 /** 장애물 zone(all/except_top/bottom_only) → 빨강 면 집합 */

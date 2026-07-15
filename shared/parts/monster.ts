@@ -25,6 +25,8 @@ export interface MonsterSpec {
   vuln: VulnSpec;
   hp: number;               // 처치에 필요한 독립 타격 수 (§21-3)
   contactDamage?: boolean;  // 기본 T
+  shove?: boolean;          // 접촉 시 피해 대신 무해 넉백 (§shove, buildRuntimePart TODO 해소)
+  splitOnDeath?: boolean;   // 사망 시 축소된 자식 2마리로 분열 (§splitOnDeath)
 }
 
 export interface MonsterInstance {

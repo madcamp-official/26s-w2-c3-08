@@ -33,14 +33,12 @@
 
 ## ⚠️ 구조적 선행 작업 필요
 
-### 블록(장애물·플랫폼) emit 통로가 없음
-`server/src/rooms/base/PhysicsRoom.ts`의 블록 스텝 루프(§293 부근)가 `emit: () => {}`로 **완전 no-op**이다.
-몬스터는 `MonsterState.currentAction`을 신설해 우회했지만(§evaluate.ts `actionChanged`), 블록은 대응 필드가
-`BlockState`에 없다. 따라서 **회전(파이어바)·진자·돌진·팝업형 장애물의 모션/발동 신호가 클라에 전혀 안 옴.**
-
-선행 작업(스키마 안정화 후):
+### 블록(장애물·플랫폼) emit 통로 — 2026-07-15 부분 해결
+`PhysicsRoom.ts` 블록 스텝 루프의 `emit: () => {}`는 **접촉반응(crumbleStart/Fall/Break)만** 실제 라우팅되도록
+구현됨(`BlockState.crumbling` 필드 + `crumble` 사운드 배선 완료, §A-2). 회전(파이어바)·진자·돌진 등
+**"패턴 전환" 신호(몬스터의 `currentAction` 상당)는 여전히 없음** — 그쪽은 아래 선행 작업 그대로 유효:
 1. `BlockState`에 `currentAction: string`(및 필요시 `windupAnim`/`windupEndsAt`, 몬스터와 동형) 추가
-2. `PhysicsRoom.ts` 블록 루프의 `emit` 콜백을 몬스터처럼 실제 구현(`actionChanged` 라우팅)
+2. `PhysicsRoom.ts` 블록 루프의 emit에 `actionChanged` 라우팅 추가
 3. 클라 `BaseworldScene.ts`에 블록용 상태-전이 감지 루프 추가(몬스터 때와 동일 패턴)
 
 ### 연속(루프) 사운드 인프라가 없음
@@ -48,18 +46,21 @@
 필요한데 `client/src/audio/zzfx.ts`가 아직 그 기능이 없음. 별도 작업(Web Audio 루프 노드 관리) 필요.
 
 ## 🕳️ TODO — 플랫폼 옵션 (`shared/schemas/platform.ts`)
-- `presence`: `hidden`→실체화 순간, `blink` 점멸 — 시각만 있고 소리 없음
-- `movement`: `ride_start`(탑승 시작 신호) 없음. `patrol` 자체는 무음이 맞음(연속 이동)
-- `slippery`(얼음) — 진입/이탈 시 스킷(skid) 사운드 없음
-- `conveyor`(벨트) — 루프 사운드 인프라 필요(위 참조)
-- `dash`(가속판) — 밟는 순간 사운드 미배선
-- `contactReaction: fall/break`(발밑 붕괴) — "곧 무너짐" 사운드 신호 없음(오버레이 시각은 visual-language.md에 정의됨)
+- `presence`: `hidden`→실체화 순간, `blink` 점멸 — 시각만 있고 소리 없음(§2 시각 예고는 구현됨)
+- ~~`movement`: `ride_start`(탑승 시작 신호) 없음~~ → 2026-07-15 해결: `shuttle`/`rideOneway` 액션에 `boing` 배선.
+  `patrol` 자체는 무음이 맞음(연속 이동)
+- `slippery`(얼음) — 진입/이탈 시 스킷(skid) 사운드 없음(시각 광택은 구현됨)
+- `conveyor`(벨트) — 루프 사운드 인프라 필요(위 참조). 시각 화살표는 구현됨
+- `dash`(가속판) — 밟는 순간 사운드 미배선(시각 스피드라인은 구현됨). `dashPad` SFX 프리셋은 이미 존재 — 연결만 하면 됨
+- ~~`contactReaction: fall/break`(발밑 붕괴)~~ → 2026-07-15 해결: `crumble` 사운드 + 금가기·흔들림 시각 구현(§A-2)
 
-## 🕳️ TODO — 장애물 옵션 (`shared/schemas/obstacle.ts`)
-전부 위 "블록 emit 통로" 선행 작업 완료 후 가능:
-- `motion: spin/pendulum/patrol/charge` — 모션 시작/텔레그래프 신호 불가
-- `contactEffect: knockback/updraft` — 대응 물성 자체가 런타임 미구현(`buildRuntimePart.ts` TODO(builder))
-- `trigger: periodic/proximity` 팝업형 — 등장/후퇴 신호 없음
+## 🕳️ TODO — 장애물 옵션 (`shared/schemas/obstacle.ts`) — 2026-07-15 대부분 해결
+- ~~`motion: spin/pendulum/patrol/charge` — 모션 시작/텔레그래프 신호 불가~~ → §2 방향 화살표로 시각은 해결.
+  사운드(패턴 전환 시점 신호)는 위 "블록 emit 통로" 선행 작업(currentAction) 완료 후 가능 — 미해결
+- ~~`contactEffect: knockback` — 대응 물성 자체가 런타임 미구현~~ → 2026-07-15 구현(`properties/knockback.ts`)
+- `contactEffect: updraft` — 물성은 기존에 구현돼 있었음(사운드만 미배선)
+- ~~`trigger: periodic/proximity` 팝업형~~ → 2026-07-15 trigger 게이팅 구현(§A-5). "등장/후퇴" 자체(emerge류)는
+  블록엔 아직 없음(몬스터 emerge와 별개) — 필요해지면 추가
 - `shooter`(장애물 발사) — 몬스터 shoot 사운드는 되지만 장애물 쪽 발사 이벤트 경로 별도 확인 필요
 
 ## ✅ 추가 발견·수정 (2026-07-15)
@@ -71,4 +72,6 @@
 
 ## 🕳️ TODO — 몬스터 (스키마 확장분, 2026-07-14 이후 추가된 옵션)
 - `stompReaction: explode` — 현재 `buildRuntimePart.ts`가 `die`로 대체 처리 중이라 폭발 이펙트 자체가 아직 안 씀(스키마 안정화 후 `EFFECTS.explosion` 연결)
-- `anchor`(돌진 후 복귀), `splitOnDeath`, `shove` — 빌더 자체 미구현이라 사운드 붙일 지점 없음
+- `anchor`(돌진 후 복귀) — 빌더 자체 미구현이라 사운드 붙일 지점 없음
+- ~~`splitOnDeath`, `shove`~~ → 2026-07-15 빌더 구현 완료. 사운드는 아직 미배선(넉백은 기존 `bump` 재사용 가능,
+  분열은 전용 사운드 없음 — 필요시 추가)

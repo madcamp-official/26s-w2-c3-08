@@ -87,6 +87,7 @@ export abstract class PhysicsRoom extends Room {
       const died = registerHit(inst, `${client.sessionId}:${m.hitId}`);
       const ms = this.state.monsters.get(m.monsterId);
       if (ms) { ms.hitCount = inst.hits.size; if (died) ms.alive = false; }
+      if (died && inst.spec.splitOnDeath) this.spawnSplitChildren(inst);
     },
     breakBlock: (client: Client, m: { blockId: string; by: "headbutt" | "pound" | "shell" | "explosion" }) => {
       const b = this.blocksRt.get(m.blockId);
@@ -250,7 +251,7 @@ export abstract class PhysicsRoom extends Room {
     const playerBodies = new Map<string, Body>();
     this.state.players.forEach((p, id) => {
       const b = createBody(p.x, p.y, p.w, p.h, ["player"]);
-      b.vx = p.vx; b.vy = p.vy; b.facing = p.facing as 1 | -1;
+      b.vx = p.vx; b.vy = p.vy; b.facing = p.facing as 1 | -1; b.grounded = p.grounded;
       playerBodies.set(id, b);
     });
     const playerList = [...playerBodies.values()];
@@ -303,10 +304,20 @@ export abstract class PhysicsRoom extends Room {
           const body = createBody(b.x + b.spec.w / 2, b.y + b.spec.h, b.spec.w, b.spec.h, ["block"]);
           body.gravity = false;
           body.facing = (b.mem["__facing"] ?? 1) as 1 | -1;
+          // 블록 emit 통로(§A-2) — 접촉반응(낙하/파괴) 텔레그래프·전이를 블록 상태에 반영.
+          // 이전엔 no-op이라 crumbleFall/crumbleBreak 액션이 emit해도 아무 효과가 없었다.
+          const emit = (kind: string, _data: Record<string, unknown>) => {
+            if (kind === "crumbleStart") st.crumbling = true;
+            else if (kind === "crumbleFall" || kind === "crumbleBreak") {
+              st.crumbling = false;
+              b.state = "broken";
+              b.respawnLeftMs = TUNING.rules.respawnMs;
+            }
+          };
           const ctx: Ctx = {
             self: body, dtMs: FIXED_MS, t: TUNING, terrain: this.terrainBase,
             players: playerList, target: null, rng: Math.random,
-            mem: b.mem, events: new Set(), emit: () => {},
+            mem: b.mem, events: new Set(), emit,
             switchOn: this.state.switchOn, hpRatio: 1,
           };
           const rules = (b.mem["__compiled"] as unknown as ReturnType<typeof compileRules>) ?? null;
@@ -418,6 +429,26 @@ export abstract class PhysicsRoom extends Room {
 
   private broadcastClaim(itemId: string, winner: string | null): void {
     this.broadcast("itemClaim", { itemId, winner });
+  }
+
+  /** 사망 시 분열(§splitOnDeath) — 축소(¾)·hp1·좌우 반대 방향 자식 2마리. 자식은 재분열 없음(무한분열 방지). */
+  private spawnSplitChildren(parent: MonsterInstance): void {
+    const p = parent.spec;
+    const w = p.w * 0.75, h = p.h * 0.75;
+    for (const dir of [-1, 1] as const) {
+      const id = `split_${this.spawnSeq++}`;
+      const childSpec: MonsterSpec = {
+        ...p, id, w, h, hp: 1, splitOnDeath: false,
+        rules: [{ when: { type: "always" }, do: { type: "patrol", speed: "normal" } }],
+      };
+      const inst = createMonster(childSpec);
+      inst.body.x = parent.body.x + dir * w; inst.body.y = parent.body.y;
+      inst.body.facing = dir;
+      this.monstersRt.set(id, inst);
+      const st = new MonsterState();
+      st.asset = childSpec.asset; st.x = inst.body.x; st.y = inst.body.y; st.w = w; st.h = h; st.hp = 1;
+      this.state.monsters.set(id, st);
+    }
   }
 
   private handleShoot(data: Record<string, unknown>): void {

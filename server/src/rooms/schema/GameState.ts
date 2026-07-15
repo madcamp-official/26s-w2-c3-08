@@ -58,6 +58,7 @@ export class BlockState extends Schema {
   @type("boolean") emptied = false;      // 물음표 소진
   @type("boolean") visibleNow = true;    // 스위치·점멸 반영 (서버 계산)
   @type("boolean") reappearing = false;  // 재생성 유예 중(비충돌·점멸) — active=false이지만 화면엔 보여야 함
+  @type("boolean") crumbling = false;    // 접촉반응(§A-2) 발동 유예 중 — 금가기+흔들림 텔레그래프
 }
 
 export class ItemState extends Schema {

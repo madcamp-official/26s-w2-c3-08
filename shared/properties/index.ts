@@ -6,3 +6,4 @@ import "./dash.js";
 import "./updraft.js";
 import "./damage.js";
 import "./switchToggle.js";
+import "./knockback.js";

@@ -4,10 +4,9 @@
 // 입력: 카테고리 + attrs(스키마 검증본) + geom(px 좌표/크기 + flipX + patrol 끝점).
 // 출력: BlockSpec | MonsterSpec (parts). 행동은 프리셋 문자열을 그대로(액션이 내부 변환), 물성만 숫자.
 //
-// ⚠️ V1 — 흔한 매핑은 정확히. 아래 TODO(builder)는 아직 런타임 지원/스키마가 없어 미완:
-//   - 넉백 장애물: 대응 물성 없음(instakill 제거처럼, knockback 물성 미구현)
-//   - patrol/ride 끝점 경로, charge 세부, 시야/점프동기 추적, 발사 유도, 접촉반응(낙하/파괴 타이머)
-//   이들은 해당 행동/물성이 생기면 채운다. 그전까진 best-effort + 주석.
+// 2026-07-15: knockback·trigger 게이팅·ride_start/ride_oneway·contactReaction(fall/break)·
+// shove·splitOnDeath 전부 구현 완료. 남은 TODO(builder) — anchor(돌진 후 복귀)·explode(폭발 판정)·
+// jump_sync(점프 동기화 추적)·발사 유도(homing 조준) — 이들은 해당 행동이 생기면 채운다.
 import { TUNING } from "../physics/tuning.js";
 import type { Faces } from "../physics/terrain.js";
 import { speedPreset } from "../behavior/helpers.js";
@@ -15,7 +14,7 @@ import { collisionFaces } from "../schemas/block.js";
 import type { BlockAttrs, MonsterAttrs, Power2, Period3 } from "../schemas/index.js";
 import type { BlockSpec } from "../parts/block.js";
 import type { MonsterSpec, StompReaction } from "../parts/monster.js";
-import type { RuleSpec } from "../behavior/types.js";
+import type { RuleSpec, CondSpec } from "../behavior/types.js";
 
 /** 배치가 정한 런타임 지오메트리 (px). 에디터가 타일→px, size 반영해 계산. */
 export interface BuildGeom {
@@ -35,6 +34,16 @@ function periodMs(p: Period3): number { return p === "short" ? 1000 : p === "lon
 function flipDir(dir: "left" | "right"): "left" | "right" { return dir === "left" ? "right" : "left"; }
 function flipFaces(f: Faces): Faces { return { top: f.top, bottom: f.bottom, left: f.right, right: f.left }; }
 
+/** 블록 trigger → 발동 조건. always는 게이팅 없음(null). §A-5 */
+function triggerCondition(trig: BlockAttrs["trigger"]): CondSpec | null {
+  switch (trig.type) {
+    case "always": return null;
+    case "periodic": return { type: "periodicWindow", ms: periodMs(trig.period) };
+    case "proximity": return { type: "playerWithin", axis: trig.axis, dist: trig.range };
+    case "switch": return { type: "switchState", on: true };
+  }
+}
+
 // =============================================================================
 // 플랫폼 → BlockSpec
 // =============================================================================
@@ -48,8 +57,9 @@ export function buildBlock(id: string, a: BlockAttrs, g: BuildGeom): BlockSpec {
     properties.push({ type: "damage", part: z === "all" ? "all" : z === "except_top" ? "notTop" : "bottomOnly" });
   } else if (a.contactEffect.type === "updraft") {
     properties.push({ type: "updraft" });
+  } else if (a.contactEffect.type === "knockback") {
+    properties.push({ type: "knockback", power: powerNum(a.contactEffect.power) });
   }
-  // TODO(builder): knockback — 대응 물성 미구현
   if (a.slippery) properties.push({ type: "ice" });
   if (a.conveyor) {
     const dir = g.flipX ? flipDir(a.conveyor.dir) : a.conveyor.dir;
@@ -69,12 +79,14 @@ export function buildBlock(id: string, a: BlockAttrs, g: BuildGeom): BlockSpec {
   else if (a.presence.type === "switch_on") spec.switchReact = { mode: "show", whenOn: true };
   else if (a.presence.type === "switch_off") spec.switchReact = { mode: "show", whenOn: false };
 
-  // 이동·동작 (behavior 통합)
+  // 이동·동작 (behavior 통합). trigger가 "항상 켜진" 이동(patrol/spin/pendulum)의 활성 조건을 게이팅
+  // — charge는 자체 playerWithin 발동 조건이 이미 있어 별개(trigger 미적용).
+  const triggerGate = triggerCondition(a.trigger);
   const rules: RuleSpec[] = [];
   switch (a.motion.type) {
-    case "patrol": rules.push({ when: { type: "always" }, do: { type: "patrol", speed: a.motion.speed } }); break;
-    case "spin": rules.push({ when: { type: "always" }, do: { type: "rotate", speed: a.motion.speed } }); break;
-    case "pendulum": rules.push({ when: { type: "always" }, do: { type: "pendulum" } }); break;
+    case "patrol": rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "patrol", speed: a.motion.speed } }); break;
+    case "spin": rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "rotate", speed: a.motion.speed } }); break;
+    case "pendulum": rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "pendulum" } }); break;
     case "charge":
       rules.push({ when: { type: "always" }, do: { type: "idle" } });
       rules.push({
@@ -83,13 +95,24 @@ export function buildBlock(id: string, a: BlockAttrs, g: BuildGeom): BlockSpec {
         priority: 1, windupMs: 400,
       });
       break;
-    // TODO(builder): ride_start / ride_oneway 대응 행동 미구현
+    case "ride_start":
+      rules.push({ when: { type: "ridden" }, do: { type: "shuttle", speed: "normal", endX: g.endX ?? g.x, endY: g.endY ?? g.y } });
+      break;
+    case "ride_oneway":
+      rules.push({ when: { type: "ridden" }, do: { type: "rideOneway", sink: a.motion.sink, speed: "normal", endX: g.endX ?? g.x, endY: g.endY ?? g.y } });
+      break;
   }
   if (a.shooter) {
     rules.push({ when: { type: "periodic", ms: periodMs(a.shooter.period) }, do: { type: "shoot", speed: a.shooter.speed, aim: a.shooter.aim } });
   }
+  if (a.contactReaction.type === "fall" || a.contactReaction.type === "break") {
+    rules.push({
+      when: { type: "ridden" },
+      do: { type: a.contactReaction.type === "fall" ? "crumbleFall" : "crumbleBreak", senseFaces: a.contactReaction.senseFaces },
+      priority: 2,
+    });
+  }
   if (rules.length) spec.rules = rules;
-  // TODO(builder): trigger 게이팅, patrol 끝점(g.endX/Y), contactReaction fall/break 타이머
 
   return spec;
 }
@@ -169,7 +192,7 @@ export function buildMonster(id: string, asset: string, a: MonsterAttrs, g: Buil
       ? { type: "hit" } : { type: "periodic", ms: periodMs(a.teleport.period) };
     rules.push({ when, do: { type: "teleportTo" }, priority: 2 });
   }
-  // TODO(builder): anchor(돌진 후 복귀)·splitOnDeath(죽음 훅)·shove(접촉→넉백)·explode 액션 — 미구현
+  // TODO(builder): anchor(돌진 후 복귀)·explode 액션 — 미구현
 
   const vuln = {
     stomp: stompReactionToVuln(a.stompReaction.type),
@@ -179,6 +202,8 @@ export function buildMonster(id: string, asset: string, a: MonsterAttrs, g: Buil
   return {
     id, asset, x: g.x, y: g.y, w: g.w, h: g.h,
     rules, vuln, hp: a.hp, contactDamage: a.contactDamage,
+    shove: a.shove || undefined,
+    splitOnDeath: a.splitOnDeath || undefined,
   };
 }
 

@@ -23,3 +23,7 @@ import "./splitOnDeath.js";
 import "./revive.js";
 import "./knockbackPlayer.js";
 import "./bouncePlayer.js";
+import "./shuttle.js";
+import "./rideOneway.js";
+import "./crumbleFall.js";
+import "./crumbleBreak.js";

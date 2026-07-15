@@ -12,17 +12,18 @@ import { TUNING } from "../physics/tuning.js";
 const T = TUNING.world.tileSize;   // 타일 크기 단일 원천 — tileSize 바꾸면 맵도 비례
 
 export const TESTMAP = {
-  width: 40 * T,
+  width: 50 * T,
   height: 15 * T,
   spawn: { x: 2 * T, y: 12 * T },
-  line: { startX: 0, endX: 40 * T, index: 0 } satisfies LineBounds,
+  line: { startX: 0, endX: 50 * T, index: 0 } satisfies LineBounds,
 
   terrain: {
     // 바닥 윗면 = 13T. 발판 윗면은 이전 지면에서 1칸(~1.4칸 최대) 이내로만 배치.
+    // G(40~50T) = 신규 기능 전시 구간(§A·§B, 2026-07-15) — 넉백/얼음/대시/컨베이어/도넛/라이드/점멸.
     solids: [
-      { x: 0, y: 13 * T, w: 40 * T, h: 2 * T, faces: SOLID_ALL },       // 바닥
+      { x: 0, y: 13 * T, w: 50 * T, h: 2 * T, faces: SOLID_ALL },       // 바닥
       { x: -T, y: 0, w: T, h: 15 * T, faces: SOLID_ALL },                // 좌벽
-      { x: 40 * T, y: 0, w: T, h: 15 * T, faces: SOLID_ALL },            // 우벽
+      { x: 50 * T, y: 0, w: T, h: 15 * T, faces: SOLID_ALL },            // 우벽
       // A 시작: 1칸 계단 → 반통과 발판 (각 1칸씩)
       { x: 5 * T, y: 12 * T, w: 2 * T, h: T, faces: SOLID_ALL },         // 계단 (12T)
       { x: 8 * T, y: 11 * T, w: 3 * T, h: 0.6 * T, faces: SOLID_TOP },   // 반통과 발판 (11T)
@@ -66,6 +67,30 @@ export const TESTMAP = {
     { id: "sw1", x: 3 * T, y: 12 * T, w: T, h: T, properties: [{ type: "switchToggle" }] },
     // 스위치 연동 (ON일 때 표시) — 상단 보상 발판
     { id: "swblk1", x: 24 * T, y: 6 * T, w: 2 * T, h: T, switchReact: { mode: "show", whenOn: true } },
+
+    // ── G 전시 구간(40~50T) — 신규 구현 기능 데모(§A·§B, 2026-07-15) ──
+    // 넉백(범퍼) — buildBlock의 contactEffect:knockback과 동일 물성
+    { id: "bump1", x: 41 * T, y: 12 * T, w: T, h: T, properties: [{ type: "knockback", power: 900 }] },
+    // 얼음(미끄러움) — §2 서리 광택 오버레이 데모
+    { id: "ice1", x: 42 * T, y: 12 * T, w: T, h: T, properties: [{ type: "ice" }] },
+    // 대시(가속판) — §2 스피드 라인 오버레이 데모
+    { id: "dash1", x: 43 * T, y: 12 * T, w: T, h: T, properties: [{ type: "dash" }] },
+    // 컨베이어 — §2 방향 화살표 오버레이 데모
+    {
+      id: "conv1", x: 44 * T, y: 12.4 * T, w: 2 * T, h: 0.6 * T,
+      faces: { top: true, bottom: false, left: false, right: false },
+      properties: [{ type: "conveyor", dir: "right", speed: 150 }],
+    },
+    // 도넛(낙하 반응) — 밟으면 0.5초 후 붕괴(§A-2 crumbleFall)
+    { id: "donut1", x: 47 * T, y: 12 * T, w: T, h: T, rules: [{ when: { type: "ridden" }, do: { type: "crumbleFall" } }] },
+    // 라이드 리프트 — 밟으면 위로 주행(§A-3 shuttle, ride_start)
+    {
+      id: "ride1", x: 48 * T, y: 12 * T, w: 1.5 * T, h: 0.5 * T,
+      faces: { top: true, bottom: false, left: false, right: false },
+      rules: [{ when: { type: "ridden" }, do: { type: "shuttle", speed: "normal", endX: 48 * T, endY: 7 * T } }],
+    },
+    // 점멸 — §2 사라지기 직전 예고 오버레이 데모
+    { id: "blink1", x: 49 * T, y: 12 * T, w: T, h: T, visibility: "blink", blinkMs: 2000 },
   ] as BlockSpec[],
 
   monsters: [
@@ -96,6 +121,19 @@ export const TESTMAP = {
         { when: { type: "playerWithin", dist: "normal" }, do: { type: "chase", speed: "normal" }, priority: 1 },
       ],
       vuln: { stomp: "die" }, hp: 2, contactDamage: true,
+    },
+    // ── G 전시 구간 몬스터(§A-1·A-4 데모) ──
+    // 넉백형 — 접촉해도 피해 없이 밀려남
+    {
+      id: "sh1", asset: "shove", x: 45 * T, y: 13 * T, w: T, h: T,
+      rules: [{ when: { type: "always" }, do: { type: "idle" } }],
+      vuln: { stomp: "die" }, hp: 1, contactDamage: true, shove: true,
+    },
+    // 분열형 — 처치 시 축소된 자식 2마리로 갈라짐
+    {
+      id: "sp1", asset: "splitter", x: 46 * T, y: 13 * T, w: T, h: T,
+      rules: [{ when: { type: "always" }, do: { type: "idle" } }],
+      vuln: { stomp: "die" }, hp: 1, contactDamage: true, splitOnDeath: true,
     },
   ] as MonsterSpec[],
 

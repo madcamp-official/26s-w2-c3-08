@@ -3,7 +3,7 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { getStateCallbacks } from "@colyseus/sdk";
-import { TUNING, type Terrain, type Slope, slopeSurfaceY, facesOf } from "shared/physics";
+import { TUNING, type Terrain, facesOf } from "shared/physics";
 import "shared/behavior";
 import "shared/properties";
 import {
@@ -23,207 +23,17 @@ import { feedback, monsterPatternChanged } from "../../fx/dispatch.js";
 import { unlockAudio } from "../../audio/zzfx.js";
 import { setListenerPosition } from "../../audio/listener.js";
 import { playSound } from "../../audio/sfx.js";
-import { blockVisualTagsFromSpec, monsterVisualTagsFromSpec, type FaceBorders } from "shared/visual";
+import { blockVisualTagsFromSpec, monsterVisualTagsFromSpec } from "shared/visual";
+import {
+  flickerAlpha, squashedBox, revealAlpha, drawFaceBorders, drawSeamMergedBorders, type SeamRect,
+  drawSlopeBorder, drawPlayerBorder, drawSwitchTogglerBorder, drawSwitchAffectedBorder,
+  drawGhostBlock, drawItemGiverGlow, itemPulseScale,
+  drawConveyorArrows, drawIceGlint, drawDashLines, drawBounceArrow, drawDirectionArrow,
+  drawRideHint, drawDetectRing, drawCrumbleWarning, drawPeriodicWarning,
+  drawHpPips, drawEnrageMark, drawShooterMark, drawSplitMark,
+} from "./visualLanguage.js";
 
 const FIXED_MS = 1000 / TUNING.world.tickRate;
-
-/** 무적/재생성 유예 표시용 알파 점멸 (90ms 주기 토글) — 아바타·고스트·몬스터·블록 공통 */
-function flickerAlpha(nowMs: number): number {
-  return Math.floor(nowMs / 90) % 2 === 0 ? 1 : 0.35;
-}
-
-// ── 시각 언어 렌더 (visual-language.md §1 항상 표시분만 — §2 맥락 표시는 범위 밖) ──────
-const BORDER_COLOR: Record<string, number> = {
-  solidWhite: 0xffffff,
-  dashed: 0xffffff,
-  red: 0xff3b30,
-  bumper: 0x2ec4c4,
-  trampoline: 0x34c759,
-};
-
-const BORDER_WIDTH = 4;   // 이전 2px는 가독성 부족 피드백(2026-07-15) 반영해 굵게
-
-/**
- * 한 면(선분)을 스타일대로 그림. 내(로컬 플레이어)가 무적이면 "빨강"(위험)이 "흰색"(안전)으로 바뀐다
- * — 처음엔 별도 주황을 썼으나 "그냥 위험 없어지면 흰색으로"가 낫다는 피드백(2026-07-15)으로 단순화.
- * 흰색은 이미 "안전한 면"의 의미(솔리드 지형·밟기 가능한 몬스터 윗면)라 새 색 개념을 안 늘려도 됨.
- */
-function strokeFace(
-  gfx: Phaser.GameObjects.Graphics,
-  x1: number, y1: number, x2: number, y2: number,
-  style: string, iAmInvincible: boolean,
-): void {
-  if (style === "none") return;
-  const effective = style === "red" && iAmInvincible ? "solidWhite" : style;
-  const color = BORDER_COLOR[effective];
-  if (color === undefined) return;
-  gfx.lineStyle(BORDER_WIDTH, color, 0.95);
-  if (effective === "dashed") {
-    const dx = x2 - x1, dy = y2 - y1;
-    const len = Math.hypot(dx, dy);
-    const segs = Math.max(2, Math.round(len / 10));
-    for (let i = 0; i < segs; i += 2) {
-      const t0 = i / segs, t1 = Math.min(1, (i + 1) / segs);
-      gfx.lineBetween(x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1);
-    }
-  } else {
-    gfx.lineBetween(x1, y1, x2, y2);
-  }
-}
-
-/** AABB(top-left+크기) 기준 4면 테두리 (몬스터 히트박스용 — 이웃 병합 없이 항상 통짜로 그림) */
-function drawFaceBorders(
-  gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
-  faces: FaceBorders, iAmInvincible: boolean,
-): void {
-  strokeFace(gfx, left, top, left + w, top, faces.top, iAmInvincible);
-  strokeFace(gfx, left, top + h, left + w, top + h, faces.bottom, iAmInvincible);
-  strokeFace(gfx, left, top, left, top + h, faces.left, iAmInvincible);
-  strokeFace(gfx, left + w, top, left + w, top + h, faces.right, iAmInvincible);
-}
-
-// ── 이음선(seam) 병합 — 1×1 블록을 이어붙여 바닥을 만들면 타일마다 테두리가 둘러져 보이는 문제
-// (피드백 2026-07-15) 방지. "흰 실선(solidWhite)" 면끼리 맞닿은 구간만 지운다 — 위험·특수 면은
-// 정보 손실을 막기 위해 항상 통짜로 그린다(drawFaceBorders 그대로 사용).
-interface SeamRect { left: number; top: number; w: number; h: number; faces: FaceBorders }
-
-function subtractIntervals(a: number, b: number, covers: Array<[number, number]>): Array<[number, number]> {
-  let segs: Array<[number, number]> = [[a, b]];
-  for (const [ca, cb] of covers) {
-    const next: Array<[number, number]> = [];
-    for (const [sa, sb] of segs) {
-      if (cb <= sa || ca >= sb) { next.push([sa, sb]); continue; }
-      if (ca > sa) next.push([sa, Math.min(ca, sb)]);
-      if (cb < sb) next.push([Math.max(cb, sa), sb]);
-    }
-    segs = next;
-  }
-  return segs;
-}
-
-const EDGE_OPPOSITE = { top: "bottom", bottom: "top", left: "right", right: "left" } as const;
-type EdgeName = keyof typeof EDGE_OPPOSITE;
-
-function drawSeamMergedBorders(gfx: Phaser.GameObjects.Graphics, rects: SeamRect[]): void {
-  const EPS = 0.5;
-  for (const r of rects) {
-    (Object.keys(EDGE_OPPOSITE) as EdgeName[]).forEach((edge) => {
-      const style = r.faces[edge];
-      if (style === "none") return;
-      const isHoriz = edge === "top" || edge === "bottom";
-      const coord = edge === "top" ? r.top : edge === "bottom" ? r.top + r.h : edge === "left" ? r.left : r.left + r.w;
-      const [a, b] = isHoriz ? [r.left, r.left + r.w] : [r.top, r.top + r.h];
-      if (style !== "solidWhite") {
-        // 위험·특수 면은 병합 없이 항상 통짜로 (정보를 숨기면 안 됨)
-        const [x1, y1] = isHoriz ? [a, coord] : [coord, a];
-        const [x2, y2] = isHoriz ? [b, coord] : [coord, b];
-        strokeFace(gfx, x1, y1, x2, y2, style, false);
-        return;
-      }
-      const opposite = EDGE_OPPOSITE[edge];
-      const covers: Array<[number, number]> = [];
-      for (const other of rects) {
-        if (other === r || other.faces[opposite] !== "solidWhite") continue;
-        const oCoord = opposite === "top" ? other.top : opposite === "bottom" ? other.top + other.h : opposite === "left" ? other.left : other.left + other.w;
-        if (Math.abs(oCoord - coord) > EPS) continue;
-        const [oa, ob] = isHoriz ? [other.left, other.left + other.w] : [other.top, other.top + other.h];
-        if (ob <= a + EPS || oa >= b - EPS) continue;
-        covers.push([Math.max(a, oa), Math.min(b, ob)]);
-      }
-      for (const [ra, rb] of subtractIntervals(a, b, covers)) {
-        if (rb - ra < 1) continue;
-        const [x1, y1] = isHoriz ? [ra, coord] : [coord, ra];
-        const [x2, y2] = isHoriz ? [rb, coord] : [coord, rb];
-        strokeFace(gfx, x1, y1, x2, y2, "solidWhite", false);
-      }
-    });
-  }
-}
-
-/**
- * 경사(구불구불한 지형) 테두리 — 직사각형이 아니므로 별도 처리. 밟는 표면(대각선)만 흰 실선으로 그림
- * (경사는 항상 단단한 바닥/천장이라 다른 색 상태가 없음 — solidWhite 고정).
- */
-function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): void {
-  gfx.lineStyle(BORDER_WIDTH, BORDER_COLOR.solidWhite, 0.95);
-  if (s.kind === "floor") {
-    gfx.lineBetween(s.x, slopeSurfaceY(s, s.x) ?? s.y, s.x + s.w, slopeSurfaceY(s, s.x + s.w) ?? s.y);
-  } else {
-    // 천장 경사: body.ts와 동일한 반전 공식으로 실제 닿는 밑면 계산
-    const y0 = s.y + s.h - ((slopeSurfaceY(s, s.x) ?? s.y) - s.y);
-    const y1 = s.y + s.h - ((slopeSurfaceY(s, s.x + s.w) ?? s.y) - s.y);
-    gfx.lineBetween(s.x, y0, s.x + s.w, y1);
-  }
-}
-
-/**
- * squash(찌부/밀림 연출) 반영 실제 표시 박스 계산 — 벽에 눌리거나 찌부될 때 시각 사각형
- * (myRect/몬스터 rect)이 squash.offsetX/Y·sx/sy로 움직이는데, 테두리가 body 원좌표만 쓰면
- * 안 따라가는 버그였음(2026-07-15 피드백). rect가 실제로 그려지는 위치·크기와 동일하게 계산.
- * anchorX/Y = 바닥-중앙(Body 좌표계와 동일, origin (0.5,1) rect 기준).
- */
-function squashedBox(
-  anchorX: number, anchorY: number, w: number, h: number,
-  squash: Pick<SquashState, "sx" | "sy" | "offsetX" | "offsetY">,
-): { left: number; top: number; w: number; h: number } {
-  const cx = anchorX + squash.offsetX, by = anchorY + squash.offsetY;
-  const ew = w * squash.sx, eh = h * squash.sy;
-  return { left: cx - ew / 2, top: by - eh, w: ew, h: eh };
-}
-
-/** 플레이어(§1.2 소속) — 내 아바타 회색, 다른 플레이어 흰색. squash 반영된 박스를 받아 그대로 그림. */
-function drawPlayerBorder(gfx: Phaser.GameObjects.Graphics, box: { left: number; top: number; w: number; h: number }, isSelf: boolean): void {
-  gfx.lineStyle(BORDER_WIDTH - 1, isSelf ? 0x9a9a9a : 0xffffff, 0.9);
-  gfx.strokeRect(box.left, box.top, box.w, box.h);
-}
-
-/**
- * 스위치 토글러(시스템 ON/OFF 블록) — 문서상 "빨강·파랑 반반 회전". 둘레를 따라 두 색 세그먼트가
- * 실제로 도는 것처럼(marching ants) 그리되, 현재 상태를 못 읽는다는 피드백(2026-07-15)으로
- * 50:50 균등 대신 "지금 상태 색"이 둘레 대부분을 차지하도록(다른 색은 소량만) 비율을 준다.
- * ON=빨강 우세, OFF=청록 우세 (임의 매핑 — 코드 내 유일한 기준).
- */
-function drawRotatingStripedRect(
-  gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
-  majorColor: number, minorColor: number, majorLen: number, minorLen: number, nowMs: number,
-): void {
-  const speedPxPerSec = 45;
-  const perimeter = 2 * (w + h);
-  const cycle = majorLen + minorLen;
-  const offset = ((nowMs / 1000) * speedPxPerSec) % cycle;
-  const pointAt = (dIn: number): [number, number] => {
-    const d = ((dIn % perimeter) + perimeter) % perimeter;
-    if (d <= w) return [left + d, top];
-    if (d <= w + h) return [left + w, top + (d - w)];
-    if (d <= 2 * w + h) return [left + w - (d - w - h), top + h];
-    return [left, top + h - (d - 2 * w - h)];
-  };
-  let d = -offset, isMajor = true;
-  while (d < perimeter) {
-    const segLen = isMajor ? majorLen : minorLen;
-    const d0 = Math.max(d, 0), d1 = Math.min(d + segLen, perimeter);
-    if (d1 > d0) {
-      const [x0, y0] = pointAt(d0);
-      const [x1, y1] = pointAt(d1);
-      gfx.lineStyle(BORDER_WIDTH, isMajor ? majorColor : minorColor, 0.9);
-      gfx.lineBetween(x0, y0, x1, y1);
-    }
-    d += segLen;
-    isMajor = !isMajor;
-  }
-}
-function drawSwitchTogglerBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, switchOn: boolean, nowMs: number): void {
-  const RED = 0xff3b30, CYAN = 0x2ec4c4;
-  const majorColor = switchOn ? RED : CYAN, minorColor = switchOn ? CYAN : RED;
-  drawRotatingStripedRect(gfx, left, top, w, h, majorColor, minorColor, 18, 6, nowMs);
-}
-
-/** 스위치 영향 블록 — 현재 스위치 상태와 자신의 발동 조건이 일치하면 진하게, 아니면 옅게 틴트 */
-function drawSwitchAffectedBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, whenOn: boolean, switchOn: boolean): void {
-  const active = whenOn === switchOn;
-  gfx.lineStyle(BORDER_WIDTH - 1, whenOn ? 0xff3b30 : 0x2ec4c4, active ? 0.85 : 0.3);
-  gfx.strokeRect(left, top, w, h);
-}
 
 interface View {
   rect: Phaser.GameObjects.Rectangle;
@@ -252,6 +62,7 @@ export class BaseworldScene extends Phaser.Scene {
   monsters = new Map<string, View>();
   /** 몬스터 사운드/연출용 상태 전이 추적 (MonsterState 필드 엣지 감지 — 서버 emit이 클라에 직접 안 옴) */
   monsterFx = new Map<string, { alive: boolean; stunned: boolean; hidden: boolean; action: string }>();
+  blockCrumbleFx = new Map<string, boolean>();   // crumbling 전이 감지(§A-2 텔레그래프 사운드)
   /** 다른 플레이어(고스트) 사운드용 상태 전이 추적 — PlayerState에 없는 필드(dead·wallJump)는 재현 불가(TODO) */
   playerFx = new Map<string, {
     grounded: boolean; slide: boolean; pound: number;
@@ -662,10 +473,20 @@ export class BaseworldScene extends Phaser.Scene {
         this.localMonHits.set(id, { count: effHits + 1, at: this.time.now });
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
       } else if (hOvBase > 0) {
-        // 데미지는 기본 폭 겹침일 때만. 방금 밟은 몬스터면 튕겨 분리되는 짧은 창엔 무시(재접촉 방지)
-        const e = this.localMonHits.get(id);
-        if (e && this.time.now - e.at < 400) return;
-        this.takeHit(); // 접촉 피해 = 자기 클라 확정
+        // contactDamage/shove는 스펙에서(테스트맵 밖 스폰 몬스터는 기본 T/F) — 이전엔 항상 피해였음
+        const spec = TESTMAP.monsters.find((ms) => ms.id === id);
+        const contactDamage = spec?.contactDamage ?? true;
+        const shove = spec?.shove ?? false;
+        if (shove) {
+          // 무해 넉백(§shove) — 상대 위치 기준 밀어냄, 피해 없음
+          b.vx = Math.sign(b.x - mx || 1) * TUNING.item.knockbackVx;
+          b.vy = TUNING.item.knockbackVy;
+        } else if (contactDamage) {
+          // 데미지는 기본 폭 겹침일 때만. 방금 밟은 몬스터면 튕겨 분리되는 짧은 창엔 무시(재접촉 방지)
+          const e = this.localMonHits.get(id);
+          if (e && this.time.now - e.at < 400) return;
+          this.takeHit(); // 접촉 피해 = 자기 클라 확정
+        }
       }
     });
 
@@ -893,7 +714,8 @@ export class BaseworldScene extends Phaser.Scene {
       if (r) {
         r.setVisible(it.available);
         r.setPosition(it.x, it.y);
-        // 아이템 = 노란 발광 테두리(§1.2, 항상 표시). 잡기 하이라이트는 더 두껍게 덮어씀.
+        // 아이템 = 노란 발광 테두리 + 스프링 확대·축소 펄스(§1.2, 항상 표시)
+        r.setScale(itemPulseScale(this.time.now, TUNING.visual.itemPulseMs, TUNING.visual.itemPulseAmt));
         if (this.grabHighlightUntil > this.time.now) r.setStrokeStyle(3, 0xffff00);
         else r.setStrokeStyle(2, 0xffee55, 0.85);
       }
@@ -937,13 +759,19 @@ export class BaseworldScene extends Phaser.Scene {
       const g = this.blockGhosts.get(id);   // 충돌과 동일한 보간 위치
       r.setPosition(g ? g.x : bs.x, g ? g.y : bs.y);
       r.fillColor = bs.emptied ? 0x555555 : 0x8888aa;
+      // 접촉반응(낙하/파괴) 텔레그래프 시작 순간 사운드(§A-2)
+      if (bs.crumbling && !this.blockCrumbleFx.get(id)) playSound("crumble", { x: bs.x, y: bs.y });
+      this.blockCrumbleFx.set(id, bs.crumbling);
     });
     this.drawVisualLanguage();
     this.renderServerview();
   }
 
+  /** 프리셋 이름 → 감지 반경(px), 텔레그래프용 */
+  private static readonly DETECT_PX: Record<string, number> = { near: TUNING.detect.nearPx, normal: TUNING.detect.normalPx, far: TUNING.detect.farPx };
+
   /**
-   * 시각 언어 오버레이(§1 항상 표시분) — deriveVisualTagsFromSpec으로 면별 테두리를 매 프레임 다시 그린다.
+   * 시각 언어 오버레이 — §1(항상 표시) 전부 + §2(근접/hover 맥락 표시) 전부(2026-07-15 전체 구현).
    * 스펙은 TESTMAP에서 id로 조회(런타임 스폰 몬스터 등 TESTMAP 밖 엔티티는 스펙이 없어 테두리 생략).
    */
   private drawVisualLanguage(): void {
@@ -952,6 +780,16 @@ export class BaseworldScene extends Phaser.Scene {
     ground.clear();
     entities.clear();
     const iAmInvincible = this.me.invincibleLeftMs > 0;
+    const nowMs = this.time.now;
+    const px = this.me.body.x, py = this.me.body.y;
+    const pointer = this.input.activePointer;
+    const nearPx = TUNING.visual.revealNearPx, farPx = TUNING.visual.revealFarPx;
+    /** 대상 중심좌표 기준 노출도(근접 페이드 or 마우스 hover 중 더 큰 쪽) */
+    const revealAt = (cx: number, cy: number, hw: number, hh: number): number => {
+      const dist = Math.hypot(cx - px, cy - py);
+      const hovering = Math.abs(pointer.worldX - cx) < hw && Math.abs(pointer.worldY - cy) < hh;
+      return revealAlpha(dist, nearPx, farPx, hovering);
+    };
 
     // ── 지형 레이어(ground, 엔티티보다 아래) ──────────────────────────────
     // 정적 지형 + 살아있는 직사각형 블록을 한 목록으로 모아 이음선 병합(1×1 타일 이어붙임 대응).
@@ -966,27 +804,62 @@ export class BaseworldScene extends Phaser.Scene {
         },
       });
     }
-    const switchOverlays: Array<() => void> = [];
+    // 항상 표시(§1) 오버레이(스위치·물음표 발광)와 맥락 표시(§2)는 병합 테두리 위에 나중에 그려야 하므로 지연 수집.
+    const laterDraws: Array<() => void> = [];
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
-      if (!bs.active || !bs.visibleNow) return;
       const spec = TESTMAP.blocks.find((bl) => bl.id === id);
       if (!spec) return;
       const g = this.blockGhosts.get(id);
       const left = g ? g.x : bs.x, top = g ? g.y : bs.y;
+      const cx = left + spec.w / 2, cy = top + spec.h / 2;
+      const reveal = revealAt(cx, cy, spec.w, spec.h);
+
+      // 낙하/파괴 반응 텔레그래프 — 안전 정보라 active 여부와 무관하게 항상, reveal 게이팅 없음
+      if (bs.crumbling) laterDraws.push(() => drawCrumbleWarning(ground, left, top, spec.w, spec.h, nowMs));
+
+      if (!bs.active || !bs.visibleNow) {
+        // 스위치 OFF로 비실체화된 블록 — 유령 표시(§1.2 신규)
+        if (spec.switchReact && bs.active) laterDraws.push(() => drawGhostBlock(ground, left, top, spec.w, spec.h, spec.switchReact!.whenOn));
+        return;
+      }
+
       const tags = blockVisualTagsFromSpec(spec);
       if (tags.faces && (!spec.shape || spec.shape === "rect")) {
         seamRects.push({ left, top, w: spec.w, h: spec.h, faces: tags.faces });
       }
       if (tags.auras.includes("switchToggler")) {
-        switchOverlays.push(() => drawSwitchTogglerBorder(ground, left, top, spec.w, spec.h, this.room.state.switchOn, this.time.now));
+        laterDraws.push(() => drawSwitchTogglerBorder(ground, left, top, spec.w, spec.h, this.room.state.switchOn, nowMs));
       } else if (tags.auras.includes("switchAffected") && spec.switchReact) {
         const whenOn = spec.switchReact.whenOn;
-        switchOverlays.push(() => drawSwitchAffectedBorder(ground, left, top, spec.w, spec.h, whenOn, this.room.state.switchOn));
+        laterDraws.push(() => drawSwitchAffectedBorder(ground, left, top, spec.w, spec.h, whenOn, this.room.state.switchOn));
+      }
+      if (tags.auras.includes("itemGiver")) laterDraws.push(() => drawItemGiverGlow(ground, left, top, spec.w, spec.h, nowMs));
+
+      // ── §2 맥락 표시 (근접/hover) ──
+      if (reveal > 0) {
+        if (tags.overlays.includes("ice")) laterDraws.push(() => drawIceGlint(ground, left, top, spec.w, nowMs, reveal));
+        if (tags.overlays.includes("conveyor")) {
+          const dir = (spec.properties?.find((p) => p.type === "conveyor")?.dir as "left" | "right") ?? "right";
+          laterDraws.push(() => drawConveyorArrows(ground, left, top, spec.w, dir, nowMs, reveal));
+        }
+        if (tags.overlays.includes("dash")) laterDraws.push(() => drawDashLines(ground, left, top, spec.w, spec.h, reveal));
+        if (tags.overlays.includes("bouncy")) laterDraws.push(() => drawBounceArrow(ground, cx, top, reveal));
+        if (tags.overlays.includes("moving")) laterDraws.push(() => drawDirectionArrow(ground, cx, cy, bs.vx, bs.vy, reveal));
+        if (tags.overlays.includes("rideStart")) laterDraws.push(() => drawRideHint(ground, cx, top, reveal));
+        if (tags.overlays.includes("proximity") && tags.detectRange) {
+          const r = BaseworldScene.DETECT_PX[tags.detectRange];
+          const inside = Math.hypot(cx - px, cy - py) < r;
+          laterDraws.push(() => drawDetectRing(ground, cx, cy, r, inside, reveal));
+        }
+        if (spec.visibility === "blink" && spec.blinkMs) {
+          const msLeft = spec.blinkMs - (nowMs % spec.blinkMs);
+          laterDraws.push(() => drawPeriodicWarning(ground, left, top, spec.w, spec.h, msLeft, nowMs));
+        }
       }
     });
     drawSeamMergedBorders(ground, seamRects);
     for (const s of TESTMAP.terrain.slopes) drawSlopeBorder(ground, s);
-    for (const draw of switchOverlays) draw();
+    for (const draw of laterDraws) draw();
 
     // ── 엔티티 레이어(entities, 자기 몸 위 — 병합 없이 항상 통짜로) ──────────
     // squash(벽 찌부·밀림 등 연출) 반영 — 시각 사각형이 움직이면 테두리도 같이 움직여야 함(피드백 2026-07-15).
@@ -1005,8 +878,25 @@ export class BaseworldScene extends Phaser.Scene {
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
       const box = squashedBox(mx, my, m.w, m.h, v ? v.squash : { sx: 1, sy: 1, offsetX: 0, offsetY: 0 });
+      const cx = box.left + box.w / 2, topY = box.top;
       const tags = monsterVisualTagsFromSpec(spec);
       if (tags.faces) drawFaceBorders(entities, box.left, box.top, box.w, box.h, tags.faces, iAmInvincible);
+
+      const reveal = revealAt(mx, my - m.h / 2, m.w, m.h);
+      if (tags.overlays.includes("hpPips") && m.hp > 1) {
+        drawHpPips(entities, cx, topY, m.hp, m.hp - this.monEffHits(id, m.hitCount), reveal);
+      }
+      if (reveal > 0) {
+        if (tags.overlays.includes("enrage")) drawEnrageMark(entities, cx, topY, reveal);
+        if (tags.overlays.includes("shooter")) drawShooterMark(entities, cx, my - m.h / 2, m.facing, reveal);
+        if (tags.overlays.includes("split")) drawSplitMark(entities, cx, topY, reveal);
+        if (tags.overlays.includes("moving")) drawDirectionArrow(entities, cx, my - m.h / 2, m.vx, m.vy, reveal);
+        if (tags.overlays.includes("proximity") && tags.detectRange) {
+          const r = BaseworldScene.DETECT_PX[tags.detectRange];
+          const inside = Math.hypot(mx - px, my - py) < r;
+          drawDetectRing(entities, mx, my - m.h / 2, r, inside, reveal);
+        }
+      }
     });
   }
 
@@ -1051,8 +941,8 @@ export class BaseworldScene extends Phaser.Scene {
 
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
 interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number; slide: boolean; grounded: boolean; touchingWall: number; dead: boolean; wallJumpSeq: number; invincible: boolean }
-interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number; currentAction: string; graceEndsAt: number }
-interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean; reappearing: boolean }
+interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number; currentAction: string; graceEndsAt: number }
+interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean; reappearing: boolean; crumbling: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }
 interface CarryNet { x: number; y: number; alive: boolean; heldBy: string }
 interface ProjNet { asset: string; x: number; y: number; vx: number; vy: number; effect: string; ownerId: string }
