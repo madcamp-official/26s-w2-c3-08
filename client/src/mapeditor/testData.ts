@@ -30,8 +30,7 @@ export const CATEGORY_ICON: Record<CardGroup, string> = {
 };
 
 export const CATEGORY_TO_GROUP: Partial<Record<Category, CardGroup>> = {
-  obstacle: "block",
-  platform: "block",
+  block: "block",
   monster: "monster",
   item: "item",
   background: "background",
@@ -39,7 +38,7 @@ export const CATEGORY_TO_GROUP: Partial<Record<Category, CardGroup>> = {
 
 export interface PlaceholderCard {
   id: string;
-  /** 실제 스키마 카테고리(장치=obstacle/지형=platform도 구분 보존, UI에선 group으로만 필터) */
+  /** 실제 스키마 카테고리(UI에선 group으로만 필터) */
   category: Category;
   group: CardGroup;
   label: string;
@@ -60,7 +59,7 @@ function buildGroup(prefix: string, group: CardGroup, category: Category, labelB
 }
 
 export const WAREHOUSE_CARDS: PlaceholderCard[] = [
-  ...buildGroup("blk", "block", "obstacle", "블록"),
+  ...buildGroup("blk", "block", "block", "블록"),
   ...buildGroup("mon", "monster", "monster", "적군"),
   ...buildGroup("itm", "item", "item", "아이템"),
   ...buildGroup("bg", "background", "background", "배경"),

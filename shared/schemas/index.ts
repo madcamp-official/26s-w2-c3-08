@@ -3,7 +3,6 @@
 //
 // ⚠️ 원칙: category는 Asset.category 컬럼이 단일 소스 — attrs JSON 안에 category를 중복 저장하지 않는다.
 //   검증 시 parseAttrs(category, json)처럼 컬럼 값을 함께 넘긴다.
-import { z } from "zod";
 import { AvatarAttrs, defaultAvatarAttrs } from "./avatar.js";
 import { BackgroundAttrs, defaultBackgroundAttrs } from "./background.js";
 import { ItemAttrs } from "./item.js";
