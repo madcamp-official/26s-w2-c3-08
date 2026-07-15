@@ -517,7 +517,13 @@ export class BaseworldScene extends Phaser.Scene {
         else if (spec.breakBy?.headbutt) this.room.send("breakBlock", { blockId: id, by: "headbutt" });
       }
       if (poundOn && spec.breakBy?.pound) this.room.send("breakBlock", { blockId: id, by: "pound" });
-      // 물성 (당하는 쪽 로컬 적용 §properties)
+      // 스위치 토글: 아이템 블록과 동일하게 "아래에서 치거나 내려찍었을 때"만 발동(2026-07-15 통일).
+      // 이전엔 접촉(onTouch)으로 처리해 닿아 있는 매 틱마다 토글이 재전송되는 버그가 있었음.
+      if ((bonkHead || poundOn) && spec.properties?.some((p) => p.type === "switchToggle")) {
+        this.room.send("toggleSwitch", {});
+        feedback.toggleSwitch(this, this.me.body.x, this.me.body.y);
+      }
+      // 물성 (당하는 쪽 로컬 적용 §properties) — switchToggle은 위에서 별도 처리(더 이상 onTouch 없음)
       if (spec.properties) {
         const touching = withinX && b.y >= r.y - 2 && b.y - b.h <= r.y + r.h + 2;
         const standing = withinX && Math.abs(b.y - r.y) < 4 && b.grounded;
@@ -533,9 +539,8 @@ export class BaseworldScene extends Phaser.Scene {
         }
       }
     });
-    // 물성 부수효과 플래그 소비
-    const flags = b as unknown as { __takeDamage?: boolean; __die?: boolean; __toggleSwitch?: boolean };
-    if (flags.__toggleSwitch) { this.room.send("toggleSwitch", {}); flags.__toggleSwitch = false; feedback.toggleSwitch(this, this.me.body.x, this.me.body.y); }
+    // 물성 부수효과 플래그 소비 (switchToggle은 더 이상 여기 없음 — bonk/pound 직접 처리로 이동)
+    const flags = b as unknown as { __takeDamage?: boolean; __die?: boolean };
     if (flags.__die) { flags.__die = false; this.die(); }
     if (flags.__takeDamage) { flags.__takeDamage = false; this.takeHit(); }
 

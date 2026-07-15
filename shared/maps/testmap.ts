@@ -64,7 +64,9 @@ export const TESTMAP = {
     // 트램펄린 — 바닥에서 밟아 상단 발판까지 발사
     { id: "spring1", x: 20 * T, y: 12 * T, w: T, h: T, properties: [{ type: "trampoline" }] },
     // 스위치 토글 — 시작부 바닥
-    { id: "sw1", x: 3 * T, y: 12 * T, w: T, h: T, properties: [{ type: "switchToggle" }] },
+    // 바닥에서 1칸 띄움 — 2026-07-15 통일로 접촉이 아니라 "아래에서 머리로 치기"만 발동하므로
+    // 밑에 설 공간이 필요해짐(바닥에 붙어 있으면 물리적으로 칠 수 없음).
+    { id: "sw1", x: 3 * T, y: 11 * T, w: T, h: T, properties: [{ type: "switchToggle" }] },
     // 스위치 연동 (ON일 때 표시) — 상단 보상 발판
     { id: "swblk1", x: 24 * T, y: 6 * T, w: 2 * T, h: T, switchReact: { mode: "show", whenOn: true } },
 

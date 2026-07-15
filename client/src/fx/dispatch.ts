@@ -56,7 +56,8 @@ export const feedback = {
     playEffect(s, "pickupGlow", x, y);
   },
   toggleSwitch: (s: Phaser.Scene, x: number, y: number) => {
-    // 접촉 중 매 틱 재토글되는 게임 로직 버그는 나중 일괄 수정 대상(디바운스 패턴) — 여기선 소리만 스팸 방지.
+    // 2026-07-15: 발동 자체가 bonk/pound(단발 트리거)로 바뀌어 접촉 매틱 재토글 버그는 해소됨.
+    // 스로틀은 그대로 유지(여러 스위치를 연타할 때의 스팸 방지 목적으로도 유효).
     playSoundThrottled("switch", 500, x, y);
     playEffect(s, "hitFlash", x, y);
   },
