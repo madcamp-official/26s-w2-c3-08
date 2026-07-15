@@ -13,6 +13,16 @@ export interface GuaranteedRule {
   matches: (category: Category, attrs: unknown) => boolean;
 }
 
+/**
+ * 매 게임 카테고리별 랜덤 공용 제공 개수. (2026-07-14)
+ * background = 예외(무제한, 여기 없음) · avatar = 맵 배치 대상 아님 · item = 미정(TBD).
+ * 보장 포함(GUARANTEED_POOL_RULES)은 이 개수와 별도로 먼저 확보.
+ */
+export const RANDOM_POOL_COUNTS: Partial<Record<Category, number>> = {
+  block: 30,
+  monster: 10,
+};
+
 export const GUARANTEED_POOL_RULES: GuaranteedRule[] = [
   {
     id: "switch",
