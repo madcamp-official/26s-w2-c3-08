@@ -59,6 +59,10 @@ addCheck('domain and LAN Vite server settings are present', () =>
   includesAll(viteConfig, ['0.0.0.0', '5174', 'mad-mario.madcamp-kaist.org', '192.168.0.200']),
 )
 
+addCheck('V2 mode env is explicitly defined for production bundles', () =>
+  includesAll(viteConfig, ['import.meta.env.VITE_DATA_MODE', 'import.meta.env.VITE_REALTIME_MODE']),
+)
+
 addCheck('AvatarCreator preserves silhouette export contract', () =>
   includesAll(avatarCreator, [
     "url('/guide-silhouette.png')",

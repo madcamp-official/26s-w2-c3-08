@@ -296,15 +296,23 @@
 }
 
 .drawingViewport {
+  --drawing-viewport-max-inline: calc(var(--spacing-16) * 8);
+  --drawing-frame-width: min(100%, var(--drawing-viewport-max-inline));
+
+  width: min(100%, var(--drawing-viewport-max-inline));
+  min-height: 0;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: var(--spacing-3);
+  align-items: center;
+  justify-items: center;
 }
 
 .viewportFrame {
   position: relative;
-  width: min(100%, calc(var(--spacing-16) * 8));
+  width: var(--drawing-frame-width);
+  height: var(--drawing-frame-height, auto);
   aspect-ratio: var(--workspace-aspect);
-  justify-self: center;
   overflow: hidden;
   border: 1px solid var(--semantic-color-border-strong);
   border-radius: var(--radius-md);

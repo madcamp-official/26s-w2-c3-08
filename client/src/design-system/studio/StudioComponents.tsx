@@ -1,5 +1,8 @@
 import {
+  useLayoutEffect,
   useId,
+  useRef,
+  useState,
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent,
@@ -410,18 +413,93 @@ export function DrawingViewport({
   toolLabel,
   children,
 }: DrawingViewportProps) {
+  const viewportRef = useRef<HTMLElement>(null)
+  const statusRef = useRef<HTMLDivElement>(null)
+  const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null)
   const viewportStyle = {
     '--workspace-aspect': `${workspaceSize.width} / ${workspaceSize.height}`,
     '--visible-left': `${toPercent(visibleFrame.x, workspaceSize.width)}%`,
     '--visible-top': `${toPercent(visibleFrame.y, workspaceSize.height)}%`,
     '--visible-width': `${toPercent(visibleFrame.width, workspaceSize.width)}%`,
     '--visible-height': `${toPercent(visibleFrame.height, workspaceSize.height)}%`,
+    ...(frameSize
+      ? {
+          '--drawing-frame-width': `${frameSize.width}px`,
+          '--drawing-frame-height': `${frameSize.height}px`,
+        }
+      : {}),
   } as CSSProperties
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+
+    if (!viewport || typeof ResizeObserver === 'undefined') {
+      return undefined
+    }
+
+    let animationFrame = 0
+
+    const updateFrameSize = () => {
+      window.cancelAnimationFrame(animationFrame)
+      animationFrame = window.requestAnimationFrame(() => {
+        const viewportRect = viewport.getBoundingClientRect()
+        const statusRect = statusRef.current?.getBoundingClientRect()
+        const computedStyle = window.getComputedStyle(viewport)
+        const rowGap = Number.parseFloat(computedStyle.rowGap) || 0
+        const aspectRatio = workspaceSize.width / workspaceSize.height
+        const inlineLimit = Math.max(0, viewportRect.width)
+        const blockLimit = Math.max(0, viewportRect.height - (statusRect?.height ?? 0) - rowGap)
+
+        if (inlineLimit <= 0 || aspectRatio <= 0) {
+          return
+        }
+
+        let width = inlineLimit
+        let height = width / aspectRatio
+
+        if (blockLimit > 0 && height > blockLimit) {
+          height = blockLimit
+          width = height * aspectRatio
+        }
+
+        const nextFrameSize = {
+          width: Math.max(1, Math.floor(width)),
+          height: Math.max(1, Math.floor(height)),
+        }
+
+        setFrameSize((previousFrameSize) => {
+          if (
+            previousFrameSize?.width === nextFrameSize.width &&
+            previousFrameSize.height === nextFrameSize.height
+          ) {
+            return previousFrameSize
+          }
+
+          return nextFrameSize
+        })
+      })
+    }
+
+    const resizeObserver = new ResizeObserver(updateFrameSize)
+    resizeObserver.observe(viewport)
+
+    if (statusRef.current) {
+      resizeObserver.observe(statusRef.current)
+    }
+
+    updateFrameSize()
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      resizeObserver.disconnect()
+    }
+  }, [workspaceSize.height, workspaceSize.width])
 
   return (
     <section
       className={styles.drawingViewport}
       aria-label={label}
+      ref={viewportRef}
       style={viewportStyle}
       data-v2-component="drawing-viewport"
       data-v2-state={status}
@@ -446,7 +524,7 @@ export function DrawingViewport({
         {gridVisible ? <div className={styles.gridLayer} aria-hidden="true" data-v2-layer="grid" /> : null}
         <div className={styles.visibleFrame} aria-hidden="true" data-v2-layer="visible-frame" />
       </div>
-      <div className={styles.viewportStatus} role="status" aria-live="polite">
+      <div className={styles.viewportStatus} ref={statusRef} role="status" aria-live="polite">
         <Badge state={status === 'disabled' ? 'failed' : status === 'blank' ? 'queued' : 'ready'} label={getViewportStatusLabel(status)} />
         <Text variant="caption" tone="secondary">
           {toolLabel} · {workspaceSize.width}x{workspaceSize.height}

@@ -30,6 +30,10 @@ const backendProxy = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_DATA_MODE': JSON.stringify(process.env.VITE_DATA_MODE ?? ''),
+    'import.meta.env.VITE_REALTIME_MODE': JSON.stringify(process.env.VITE_REALTIME_MODE ?? ''),
+  },
   build: {
     rollupOptions: {
       input: {
