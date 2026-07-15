@@ -11,7 +11,8 @@ export function roomsRouter(): Router {
   r.get("/api/rooms", async (_req, res: Response) => {
     // hostId는 scalar(관계 미연결, schema.prisma 주석) — 닉네임은 별도 조회해 합친다.
     const rooms = await prisma.room.findMany({
-      where: { colyseusRoomId: { not: null } },
+      // status="closed" = 룸 프로세스 소멸(RaceRoom.onDispose)로 정리된 방 — 목록에서 제외.
+      where: { colyseusRoomId: { not: null }, status: { not: "closed" } },
       orderBy: { createdAt: "desc" },
       take: 50,
     });

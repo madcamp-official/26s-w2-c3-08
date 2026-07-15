@@ -359,4 +359,17 @@ export class RaceRoom extends PhysicsRoom {
         .catch((e) => console.warn("[race] memberCount 갱신 실패:", e?.message ?? e));
     }
   }
+
+  /**
+   * 룸 프로세스 소멸 시(마지막 클라 퇴장 후 autoDispose) 방 목록(/api/rooms)에서 빠지게 status만
+   * "closed"로 마킹 — 행 자체는 안 지움(RaceResult/RoomMember가 onDelete:Cascade라 완료된 게임
+   * 기록까지 같이 삭제될 위험, 2026-07-16 발견: "0/8 방이 안 정리된다" 리포트로 onDispose 자체가
+   * 없었던 게 드러남).
+   */
+  override onDispose(): void {
+    if (this.roomRowId !== null) {
+      prisma.room.update({ where: { id: this.roomRowId }, data: { status: "closed" } })
+        .catch((e) => console.warn("[race] 방 종료 마킹 실패:", e instanceof Error ? e.message : e));
+    }
+  }
 }
