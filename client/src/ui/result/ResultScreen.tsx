@@ -30,7 +30,7 @@ export function ResultScreen({ onMain }: { onLobby: () => void; onRestart: () =>
   }
 
   const members: (MemberSnap & { sessionId: string })[] = [];
-  state.members.forEach((m, id) => members.push({ ...m, sessionId: id }));
+  state.members?.forEach((m, id) => members.push({ ...m, sessionId: id }));
   members.sort((a, b) => a.rank - b.rank);
 
   const goMain = () => void trigger(async () => { playSound("uiBack"); void room.leave(); onMain(); });

@@ -51,6 +51,19 @@ const server = defineServer({
      * Read more: https://expressjs.com/en/starter/basic-routing.html
      */
     express: (app) => {
+        // CORS — 클라(sunboy7594...)와 API(sunboy7594-game...)가 서로 다른 origin이라 필요.
+        // 커스텀 헤더(x-user-token)를 쓰는 요청은 프리플라이트(OPTIONS)를 거치므로 Allow-Headers에
+        // 반드시 포함해야 함. 쿠키 인증이 아니라 헤더 토큰 인증이라 Allow-Credentials 불필요 —
+        // origin 그대로 반사해도 자격증명 유출 위험 없음(공개 API와 동일 노출 수준).
+        app.use((req, res, next) => {
+            const origin = req.headers.origin;
+            if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+            res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-token");
+            res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+            if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+            next();
+        });
+
         app.get("/hi", (req, res) => {
             res.send("It's time to kick ass and chew bubblegum!");
         });

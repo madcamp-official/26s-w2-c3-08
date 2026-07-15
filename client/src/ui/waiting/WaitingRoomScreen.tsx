@@ -35,7 +35,9 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
   }
 
   const members: (MemberSnap & { sessionId: string })[] = [];
-  state.members.forEach((m, id) => members.push({ ...m, sessionId: id }));
+  // state는 있는데 members가 아직 없는 순간 방어(방 이탈 직후 stale 렌더 등) — 크래시로 앱 전체가
+  // 언마운트되는 것 방지(에러 바운더리 없음).
+  state.members?.forEach((m, id) => members.push({ ...m, sessionId: id }));
   const me = members.find((m) => m.sessionId === room.sessionId);
   const isHost = me?.isHost ?? false;
   const leftSec = state.phaseEndsAt > 0 ? Math.max(0, Math.ceil((state.phaseEndsAt - state.serverTime) / 1000)) : null;
