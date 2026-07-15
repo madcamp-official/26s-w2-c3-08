@@ -52,6 +52,10 @@ export const ObstacleAttrs = z.object({
     .nullable(),
   harmMonsters: z.boolean(),                          // 몬스터에게도 피해
   breakBlocks: z.boolean(),                           // 블록 파괴 능력 (스큐어)
+  // 접촉 시 라인 스위치 토글 ("스위치 역할" 옵션). 런타임은 switchToggle 물성으로 연결 —
+  // attrs→파츠 빌더가 이 플래그를 보고 properties에 { type:"switchToggle" }를 넣어야 함(빌더 미구현).
+  // 라인당 전역 스위치·OFF 시작·서버 권위. 디바운스는 나중 일괄(클라즉시+서버쿨다운). visual-language.md 참조.
+  togglesSwitch: z.boolean(),
 });
 export type ObstacleAttrs = z.infer<typeof ObstacleAttrs>;
 
@@ -64,4 +68,5 @@ export const defaultObstacleAttrs = (): ObstacleAttrs => ({
   shooter: null,
   harmMonsters: false,
   breakBlocks: false,
+  togglesSwitch: false,
 });
