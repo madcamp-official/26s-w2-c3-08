@@ -3,7 +3,7 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { getStateCallbacks } from "@colyseus/sdk";
-import { TUNING, type Terrain, type Slope, type Rect, slopeSurfaceY, facesOf } from "shared/physics";
+import { TUNING, type Terrain, type Slope, slopeSurfaceY, facesOf } from "shared/physics";
 import "shared/behavior";
 import "shared/properties";
 import {
@@ -37,21 +37,24 @@ const BORDER_COLOR: Record<string, number> = {
   solidWhite: 0xffffff,
   dashed: 0xffffff,
   red: 0xff3b30,
-  orange: 0xff9500,
   bumper: 0x2ec4c4,
   trampoline: 0x34c759,
 };
 
 const BORDER_WIDTH = 4;   // 이전 2px는 가독성 부족 피드백(2026-07-15) 반영해 굵게
 
-/** 한 면(선분)을 스타일대로 그림. "빨강" 면은 내(로컬 플레이어) 무적 중이면 주황으로(§1.1 "무적 상태의 대미지 면"). */
+/**
+ * 한 면(선분)을 스타일대로 그림. 내(로컬 플레이어)가 무적이면 "빨강"(위험)이 "흰색"(안전)으로 바뀐다
+ * — 처음엔 별도 주황을 썼으나 "그냥 위험 없어지면 흰색으로"가 낫다는 피드백(2026-07-15)으로 단순화.
+ * 흰색은 이미 "안전한 면"의 의미(솔리드 지형·밟기 가능한 몬스터 윗면)라 새 색 개념을 안 늘려도 됨.
+ */
 function strokeFace(
   gfx: Phaser.GameObjects.Graphics,
   x1: number, y1: number, x2: number, y2: number,
   style: string, iAmInvincible: boolean,
 ): void {
   if (style === "none") return;
-  const effective = style === "red" && iAmInvincible ? "orange" : style;
+  const effective = style === "red" && iAmInvincible ? "solidWhite" : style;
   const color = BORDER_COLOR[effective];
   if (color === undefined) return;
   gfx.lineStyle(BORDER_WIDTH, color, 0.95);
@@ -68,7 +71,7 @@ function strokeFace(
   }
 }
 
-/** AABB(top-left+크기) 기준 4면 테두리 (직사각형 블록·몬스터 히트박스용) */
+/** AABB(top-left+크기) 기준 4면 테두리 (몬스터 히트박스용 — 이웃 병합 없이 항상 통짜로 그림) */
 function drawFaceBorders(
   gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
   faces: FaceBorders, iAmInvincible: boolean,
@@ -77,6 +80,64 @@ function drawFaceBorders(
   strokeFace(gfx, left, top + h, left + w, top + h, faces.bottom, iAmInvincible);
   strokeFace(gfx, left, top, left, top + h, faces.left, iAmInvincible);
   strokeFace(gfx, left + w, top, left + w, top + h, faces.right, iAmInvincible);
+}
+
+// ── 이음선(seam) 병합 — 1×1 블록을 이어붙여 바닥을 만들면 타일마다 테두리가 둘러져 보이는 문제
+// (피드백 2026-07-15) 방지. "흰 실선(solidWhite)" 면끼리 맞닿은 구간만 지운다 — 위험·특수 면은
+// 정보 손실을 막기 위해 항상 통짜로 그린다(drawFaceBorders 그대로 사용).
+interface SeamRect { left: number; top: number; w: number; h: number; faces: FaceBorders }
+
+function subtractIntervals(a: number, b: number, covers: Array<[number, number]>): Array<[number, number]> {
+  let segs: Array<[number, number]> = [[a, b]];
+  for (const [ca, cb] of covers) {
+    const next: Array<[number, number]> = [];
+    for (const [sa, sb] of segs) {
+      if (cb <= sa || ca >= sb) { next.push([sa, sb]); continue; }
+      if (ca > sa) next.push([sa, Math.min(ca, sb)]);
+      if (cb < sb) next.push([Math.max(cb, sa), sb]);
+    }
+    segs = next;
+  }
+  return segs;
+}
+
+const EDGE_OPPOSITE = { top: "bottom", bottom: "top", left: "right", right: "left" } as const;
+type EdgeName = keyof typeof EDGE_OPPOSITE;
+
+function drawSeamMergedBorders(gfx: Phaser.GameObjects.Graphics, rects: SeamRect[]): void {
+  const EPS = 0.5;
+  for (const r of rects) {
+    (Object.keys(EDGE_OPPOSITE) as EdgeName[]).forEach((edge) => {
+      const style = r.faces[edge];
+      if (style === "none") return;
+      const isHoriz = edge === "top" || edge === "bottom";
+      const coord = edge === "top" ? r.top : edge === "bottom" ? r.top + r.h : edge === "left" ? r.left : r.left + r.w;
+      const [a, b] = isHoriz ? [r.left, r.left + r.w] : [r.top, r.top + r.h];
+      if (style !== "solidWhite") {
+        // 위험·특수 면은 병합 없이 항상 통짜로 (정보를 숨기면 안 됨)
+        const [x1, y1] = isHoriz ? [a, coord] : [coord, a];
+        const [x2, y2] = isHoriz ? [b, coord] : [coord, b];
+        strokeFace(gfx, x1, y1, x2, y2, style, false);
+        return;
+      }
+      const opposite = EDGE_OPPOSITE[edge];
+      const covers: Array<[number, number]> = [];
+      for (const other of rects) {
+        if (other === r || other.faces[opposite] !== "solidWhite") continue;
+        const oCoord = opposite === "top" ? other.top : opposite === "bottom" ? other.top + other.h : opposite === "left" ? other.left : other.left + other.w;
+        if (Math.abs(oCoord - coord) > EPS) continue;
+        const [oa, ob] = isHoriz ? [other.left, other.left + other.w] : [other.top, other.top + other.h];
+        if (ob <= a + EPS || oa >= b - EPS) continue;
+        covers.push([Math.max(a, oa), Math.min(b, ob)]);
+      }
+      for (const [ra, rb] of subtractIntervals(a, b, covers)) {
+        if (rb - ra < 1) continue;
+        const [x1, y1] = isHoriz ? [ra, coord] : [coord, ra];
+        const [x2, y2] = isHoriz ? [rb, coord] : [coord, rb];
+        strokeFace(gfx, x1, y1, x2, y2, "solidWhite", false);
+      }
+    });
+  }
 }
 
 /**
@@ -93,18 +154,6 @@ function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): void {
     const y1 = s.y + s.h - ((slopeSurfaceY(s, s.x + s.w) ?? s.y) - s.y);
     gfx.lineBetween(s.x, y0, s.x + s.w, y1);
   }
-}
-
-/** 기본 지형(TESTMAP.terrain.solids — 바닥·벽·계단·발판) 테두리. 위험·물성 개념이 없으니 충돌면만 흰/점선. */
-function drawTerrainRectBorder(gfx: Phaser.GameObjects.Graphics, r: Rect): void {
-  const f = facesOf(r);
-  const faces: FaceBorders = {
-    top: f.top ? "solidWhite" : "dashed",
-    bottom: f.bottom ? "solidWhite" : "dashed",
-    left: f.left ? "solidWhite" : "dashed",
-    right: f.right ? "solidWhite" : "dashed",
-  };
-  drawFaceBorders(gfx, r.x, r.y, r.w, r.h, faces, false);
 }
 
 /** 플레이어(§1.2 소속) — 내 아바타 회색, 다른 플레이어 흰색. AABB는 바닥-중앙 앵커라 top-left로 환산. */
@@ -206,7 +255,11 @@ export class BaseworldScene extends Phaser.Scene {
   myRect!: Phaser.GameObjects.Rectangle;
   handRect!: Phaser.GameObjects.Rectangle;
   debugGfx!: Phaser.GameObjects.Graphics;
-  visualGfx!: Phaser.GameObjects.Graphics;   // 시각 언어(면별 테두리) 오버레이 — 매 프레임 다시 그림
+  // 시각 언어(면별 테두리) — 두 레이어로 분리(피드백 2026-07-15: "스프라이트가 테두리보다 뒤에 있다").
+  // groundVisualGfx: 지형·블록(자기 채움 위·엔티티 아래) — 캐릭터가 지나가면 자연스럽게 가림.
+  // entityVisualGfx: 몬스터·플레이어(자기 몸 위) — 자기 사각형에 가려지면 안 보이므로 항상 위.
+  visualGfx!: Phaser.GameObjects.Graphics;
+  entityVisualGfx!: Phaser.GameObjects.Graphics;
   // serverview (§19): 주체 필터 + 옵션 1(스프라이트박스)/2(히트박스)/3(서버상태)
   svSubject: "all" | "player" | "terrain" | "monster" = "all";
   svOpts = new Set<number>();
@@ -291,7 +344,8 @@ export class BaseworldScene extends Phaser.Scene {
     this.myRect = this.add.rectangle(0, 0, this.me.body.w, this.me.body.h, 0x4488ff).setOrigin(0.5, 1).setDepth(5);
     this.handRect = this.add.rectangle(0, 0, 14, 14, 0xffffff).setDepth(6).setVisible(false);
     this.debugGfx = this.add.graphics().setDepth(20);
-    this.visualGfx = this.add.graphics().setDepth(6);
+    this.visualGfx = this.add.graphics().setDepth(2.5);       // 블록(2) 위, 아이템·엔티티(3~5) 아래
+    this.entityVisualGfx = this.add.graphics().setDepth(5.5); // 몬스터·플레이어(4~5) 전부 위
 
     const $ = getStateCallbacks(this.room);
     // 고스트 플레이어
@@ -878,23 +932,26 @@ export class BaseworldScene extends Phaser.Scene {
    * 스펙은 TESTMAP에서 id로 조회(런타임 스폰 몬스터 등 TESTMAP 밖 엔티티는 스펙이 없어 테두리 생략).
    */
   private drawVisualLanguage(): void {
-    const gfx = this.visualGfx;
-    gfx.clear();
+    const ground = this.visualGfx;
+    const entities = this.entityVisualGfx;
+    ground.clear();
+    entities.clear();
     const iAmInvincible = this.me.invincibleLeftMs > 0;
 
-    // 기본 지형(바닥·벽·계단·발판) + 경사 — 정적이라 항상 그림 (피드백: 기본 지형에 테두리 없던 것 포함)
-    for (const r of TESTMAP.terrain.solids) drawTerrainRectBorder(gfx, r);
-    for (const s of TESTMAP.terrain.slopes) drawSlopeBorder(gfx, s);
-
-    // 플레이어(§1.2 소속) — 나=회색, 남=흰색
-    drawPlayerBorder(gfx, this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h, true);
-    this.room.state.players.forEach((p: PlayerNet, id: string) => {
-      if (id === this.room.sessionId || p.dead) return;
-      const v = this.players.get(id);
-      if (!v || v.stale) return;
-      drawPlayerBorder(gfx, v.ghost.x, v.ghost.y, p.w, p.h, false);
-    });
-
+    // ── 지형 레이어(ground, 엔티티보다 아래) ──────────────────────────────
+    // 정적 지형 + 살아있는 직사각형 블록을 한 목록으로 모아 이음선 병합(1×1 타일 이어붙임 대응).
+    const seamRects: SeamRect[] = [];
+    for (const r of TESTMAP.terrain.solids) {
+      const f = facesOf(r);
+      seamRects.push({
+        left: r.x, top: r.y, w: r.w, h: r.h,
+        faces: {
+          top: f.top ? "solidWhite" : "dashed", bottom: f.bottom ? "solidWhite" : "dashed",
+          left: f.left ? "solidWhite" : "dashed", right: f.right ? "solidWhite" : "dashed",
+        },
+      });
+    }
+    const switchOverlays: Array<() => void> = [];
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       if (!bs.active || !bs.visibleNow) return;
       const spec = TESTMAP.blocks.find((bl) => bl.id === id);
@@ -902,13 +959,28 @@ export class BaseworldScene extends Phaser.Scene {
       const g = this.blockGhosts.get(id);
       const left = g ? g.x : bs.x, top = g ? g.y : bs.y;
       const tags = blockVisualTagsFromSpec(spec);
-      if (tags.faces) drawFaceBorders(gfx, left, top, spec.w, spec.h, tags.faces, iAmInvincible);
-      if (tags.auras.includes("switchToggler")) drawSwitchTogglerBorder(gfx, left, top, spec.w, spec.h, this.room.state.switchOn, this.time.now);
-      else if (tags.auras.includes("switchAffected") && spec.switchReact) {
-        drawSwitchAffectedBorder(gfx, left, top, spec.w, spec.h, spec.switchReact.whenOn, this.room.state.switchOn);
+      if (tags.faces && (!spec.shape || spec.shape === "rect")) {
+        seamRects.push({ left, top, w: spec.w, h: spec.h, faces: tags.faces });
+      }
+      if (tags.auras.includes("switchToggler")) {
+        switchOverlays.push(() => drawSwitchTogglerBorder(ground, left, top, spec.w, spec.h, this.room.state.switchOn, this.time.now));
+      } else if (tags.auras.includes("switchAffected") && spec.switchReact) {
+        const whenOn = spec.switchReact.whenOn;
+        switchOverlays.push(() => drawSwitchAffectedBorder(ground, left, top, spec.w, spec.h, whenOn, this.room.state.switchOn));
       }
     });
+    drawSeamMergedBorders(ground, seamRects);
+    for (const s of TESTMAP.terrain.slopes) drawSlopeBorder(ground, s);
+    for (const draw of switchOverlays) draw();
 
+    // ── 엔티티 레이어(entities, 자기 몸 위 — 병합 없이 항상 통짜로) ──────────
+    drawPlayerBorder(entities, this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h, true);
+    this.room.state.players.forEach((p: PlayerNet, id: string) => {
+      if (id === this.room.sessionId || p.dead) return;
+      const v = this.players.get(id);
+      if (!v || v.stale) return;
+      drawPlayerBorder(entities, v.ghost.x, v.ghost.y, p.w, p.h, false);
+    });
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;
       if (!visible || this.room.state.serverTime < m.graceEndsAt) return;   // 재생성 유예 중엔 위험 표시 생략(점멸이 대신 알림)
@@ -917,7 +989,7 @@ export class BaseworldScene extends Phaser.Scene {
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
       const tags = monsterVisualTagsFromSpec(spec);
-      if (tags.faces) drawFaceBorders(gfx, mx - m.w / 2, my - m.h, m.w, m.h, tags.faces, iAmInvincible);
+      if (tags.faces) drawFaceBorders(entities, mx - m.w / 2, my - m.h, m.w, m.h, tags.faces, iAmInvincible);
     });
   }
 
