@@ -70,11 +70,17 @@ export const feedback = {
   wallGrab: (s: Phaser.Scene, x: number, y: number) => { playSound("wallGrab", { x, y }); playEffect(s, "dust", x, y); },
   /** 경사 슬라이딩 시작 */
   slideStart: (s: Phaser.Scene, x: number, y: number) => { playSound("slide", { x, y }); playEffect(s, "dust", x, y); },
-  /** 내려찍기 착지 (일반 착지보다 무거운 임팩트) */
+  /** 내려찍기 착지 (일반 착지보다 무거운 임팩트) — 화면 흔들림은 내 착지일 때만(§2026-07-16 피드백:
+   *  "내려찍을 때 화면 흔들리는 건 자기화면만 흔들려야"). 다른 플레이어 착지는 poundLandOther로. */
   poundLand: (s: Phaser.Scene, x: number, y: number) => {
     playSound("slam_hit", { x, y });
     playEffect(s, "dust", x, y);
     screenShake(s, 100, 0.006);
+  },
+  /** 다른 플레이어의 내려찍기 착지 — 소리·먼지는 나도 느끼지만 카메라는 내 화면이라 안 흔듦 */
+  poundLandOther: (s: Phaser.Scene, x: number, y: number) => {
+    playSound("slam_hit", { x, y });
+    playEffect(s, "dust", x, y);
   },
   /** 천장에 머리 부딪힘 */
   ceilBonk: (s: Phaser.Scene, x: number, y: number) => { playSound("bump", { x, y }); playEffect(s, "hitFlash", x, y); },

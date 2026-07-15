@@ -834,7 +834,7 @@ export class BaseworldScene extends Phaser.Scene {
         } else {
           // 사망 프레임엔 착지/점프 등 다른 전이와 안 겹치게 else로 분리
           if (p.grounded && !pfx.grounded) {
-            if (pfx.pound === 2 && p.pound === 0) feedback.poundLand(this, v.ghost.x, v.ghost.y);
+            if (pfx.pound === 2 && p.pound === 0) feedback.poundLandOther(this, v.ghost.x, v.ghost.y);
             else feedback.land(this, v.ghost.x, v.ghost.y);
           } else if (!p.grounded && pfx.grounded && p.vy < 0) {
             feedback.jump(this, v.ghost.x, v.ghost.y);
