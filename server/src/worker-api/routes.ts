@@ -79,6 +79,7 @@ function buildJobPayload(sprite: { id: bigint; action: string; prompt: string | 
     durationSec: spec.durationSec ?? null,
     poseHint: spec.poseHint ?? null,
     negativeExtra: spec.negativeExtra ?? [],
+    skipLeadFrames: spec.skipLeadFrames ?? 0,
   });
 }
 

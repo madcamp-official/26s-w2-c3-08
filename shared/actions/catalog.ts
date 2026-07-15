@@ -20,8 +20,12 @@ export type ActionName = (typeof ACTION)[keyof typeof ACTION];
  * 이 파일이 "액션별 상세 요구"의 단일 소스 — 프롬프트 조립·길이 결정이 여기만 읽으면 됨.
  *
  * 최종 프롬프트(백엔드/파이프라인): [외형(wan_prompt)] + [motionHint] + [poseHint] + [공통 안정화 지시부] + [크로마키 배경].
- * 공통 안정화 지시부(ai-pipeline.md §2): single character, plain solid background, side view, full body,
- * static camera, no forward movement, seamless loop.  ← 액션 무관 전역. 액션별 차이는 아래 필드로.
+ * 공통 안정화 지시부(config/pipeline.json prompt.stabilizationPositive): single character, plain solid
+ * background, full body, static camera, no forward movement, seamless loop. ← 액션 무관 전역.
+ * ⚠️ view(정면/측면)는 프롬프트로 강제하지 않는다(2026-07-16 확정) — 강제하면 클립 중간에 정면→측면으로
+ * "갑자기 도는" 부자연스러운 전환이 생김(cfg=1 Lightning은 텍스트보다 시작 이미지 각도가 지배적).
+ * 대신 소스 그림 자체를 원하는 뷰(기본 측면·오른쪽 바라보기)로 그리는 쪽으로 해결한다.
+ * 액션별 차이는 아래 필드로.
  */
 export interface ActionSpec {
   /**
@@ -43,6 +47,13 @@ export interface ActionSpec {
   poseHint?: string;
   /** 이 액션만의 추가 금지 (네거티브 프롬프트 보강). */
   negativeExtra?: string[];
+  /**
+   * 원본 raw 클립 시작에서 이만큼(프레임 수) 건너뛰고 루프선택/리샘플한다.
+   * 정지 상태(원본 정지 이미지)에서 목표 포즈로 "전환되는" 초반 프레임을 잘라내는 용도 —
+   * 예: onair는 원본이 서 있는 포즈라 초반 몇 프레임은 아직 착지 상태라 최종 시트에 들어가면 안 됨.
+   * loop 액션(idle/walk 등)은 반복 구간을 스스로 찾으므로 보통 불필요(생략 시 0).
+   */
+  skipLeadFrames?: number;
 }
 
 /** motionHintCore + Arms + Legs를 하나의 문자열로 합친다 — 사지 판단 전(서버 측) 기본 완전판. */
@@ -74,6 +85,10 @@ export const ACTIONS: Record<ActionName, ActionSpec> = {
     returnsToStart: false,
     poseHint: "single held mid-air pose, no walk cycle, feet off the ground",
     negativeExtra: ["walking", "ground contact", "running"],
+    // 원본이 서 있는 정지 포즈라 초반 프레임은 아직 착지 상태(전환 중) — 실측(raw 프레임 직접 확인,
+    // 2026-07-16)으로 raw-04부터 완전히 팔다리 벌린 자세 확정. 3프레임은 부족해서(raw-03도 아직
+    // 전환 중) 5로 상향, 여유 확보.
+    skipLeadFrames: 5,
   },
   fly: {
     motionHintCore: "hovering in place, gentle bobbing up and down, wings or body flutter",

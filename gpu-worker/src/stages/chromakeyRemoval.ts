@@ -3,7 +3,14 @@
 // 소스 배경 분리와 동일 구현을 공유한다. 이 파일은 프레임 순회·회수(reclaim)·실패 판정만 담당.
 import { Stage, StageFailure } from "../pipeline/stage.js";
 import type { PipelineContext, RgbaFrame } from "../pipeline/types.js";
-import { estimateBorderColor, floodFillRemove, despill, rgbDistanceNorm, type Rgb } from "shared/imaging";
+import {
+  estimateBorderColor,
+  floodFillRemove,
+  despill,
+  residualOpaqueBorderRatio,
+  rgbDistanceNorm,
+  type Rgb,
+} from "shared/imaging";
 import { pipelineConfig } from "../config/index.js";
 
 export class ChromakeyRemovalStage implements Stage {
@@ -20,26 +27,45 @@ export class ChromakeyRemovalStage implements Stage {
       cfg.enclosedReclaimMaxThreshold,
       ctx.job.chromaMargin * cfg.enclosedReclaimMarginFrac,
     );
-    let suspicious = 0;
+
+    // 사전(pre-hoc) 분산 체크는 테두리 밴드가 얇아(기본 4px) 안쪽 배경 노이즈를 놓칠 수 있다
+    // (실측: Wan이 가끔 배경 전체가 얼룩진 프레임을 내는데 테두리 몇 픽셀만은 우연히 깨끗함).
+    // 그래서 flood fill 이후 "테두리에 배경이 실제로 남아있는가"를 직접 재검증(사후 검증)하고,
+    // 실패한 프레임은 전체를 죽이지 않고 그 프레임만 최종 시트에서 제외한다.
+    const keep: RgbaFrame[] = [];
+    let preHocSuspicious = 0;
+    let dropped = 0;
 
     for (const frame of ctx.frames) {
       const { color: bg, varianceNorm } = estimateBorderColor(frame, cfg.borderBandPx);
-      if (varianceNorm > cfg.failVarianceThreshold) suspicious++;
+      if (varianceNorm > cfg.failVarianceThreshold) preHocSuspicious++;
       floodFillRemove(frame, bg, cfg.colorDistanceThreshold);
       if (reclaimOn) reclaimNearKey(frame, bg, reclaimThreshold);
-      if (cfg.despill) despill(frame, bg);
+      // 디스필 반경 = flood fill 매칭 임계값의 2배 — 배경과 "거의 같은" 잔상 픽셀만 잡고,
+      // 그보다 훨씬 먼 core 캐릭터색(예: 청록 배경 위의 파란 옷)은 보존한다.
+      if (cfg.despill) despill(frame, bg, cfg.colorDistanceThreshold * 2);
+
+      const residual = residualOpaqueBorderRatio(frame, cfg.borderBandPx);
+      if (residual > cfg.residualBorderOpaqueThreshold) {
+        dropped++;
+        continue; // 이 프레임은 keep에 안 넣음 — 최종 시트/루프선택에서 자동 제외
+      }
+      keep.push(frame);
     }
 
-    const ratio = suspicious / Math.max(1, ctx.frames.length);
+    const ratio = dropped / Math.max(1, ctx.frames.length);
     ctx.log.info("chromakey done", {
       frames: ctx.frames.length,
-      suspicious,
+      preHocSuspicious,
+      dropped,
+      kept: keep.length,
       ratio: ratio.toFixed(2),
       reclaim: reclaimOn ? reclaimThreshold.toFixed(3) : "off",
     });
-    if (ratio > cfg.failFrameRatio) {
-      throw new StageFailure(this.name, "background not a stable solid color", { suspicious, total: ctx.frames.length });
+    if (ratio > cfg.failFrameRatio || keep.length === 0) {
+      throw new StageFailure(this.name, "background not a stable solid color", { dropped, total: ctx.frames.length });
     }
+    ctx.frames = keep;
   }
 }
 

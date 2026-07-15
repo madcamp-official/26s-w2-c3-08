@@ -15,7 +15,8 @@
     "borderBandPx": 4,
     "despill": true,
     "failVarianceThreshold": 0.06,
-    "failFrameRatio": 0.5,
+    "failFrameRatio": 0.15,
+    "residualBorderOpaqueThreshold": 0.2,
     "enclosedReclaimMarginGate": 0.9,
     "enclosedReclaimMaxThreshold": 0.28,
     "enclosedReclaimMarginFrac": 0.6,
@@ -36,11 +37,12 @@
   },
   "generation": {
     "resolution": {
-      "upscaleFactor": 2,
+      "upscaleFactor": 4,
       "minGenLongPx": 256,
       "maxGenLongPx": 768,
       "roundToMultiple": 16,
-      "minSidePx": 128
+      "minSidePx": 128,
+      "paddingTiles": 1
     },
     "duration": {
       "loop": { "durationSec": 3.0, "fps": 16 },

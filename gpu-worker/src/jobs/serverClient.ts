@@ -30,6 +30,8 @@ export interface JobPayload {
   durationSec: number | null;
   poseHint: string | null;
   negativeExtra: string[];
+  /** 원본 raw 클립 시작에서 건너뛸 프레임 수(ActionSpec.skipLeadFrames) — 정지→목표포즈 전환 구간 제거용 */
+  skipLeadFrames: number;
 }
 
 export interface SheetMeta {

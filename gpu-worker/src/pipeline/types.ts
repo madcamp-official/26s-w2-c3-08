@@ -26,6 +26,8 @@ export interface AssetJob {
   action: string;
   /** 반복 재생 동작인지 (shared/actions derive 결과) — 생성 길이·루프 처리 분기 */
   loop: boolean;
+  /** 원본 raw 클립 시작에서 건너뛸 프레임 수(ActionSpec.skipLeadFrames) — loop-select 전에 적용 */
+  skipLeadFrames: number;
   tilesW: number;
   tilesH: number;
   /** 정규화된 투명 배경 원본 PNG (Stage 1 완료본) */

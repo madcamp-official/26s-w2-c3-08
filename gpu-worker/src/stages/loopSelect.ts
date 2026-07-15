@@ -11,7 +11,11 @@ export class LoopSelectStage implements Stage {
 
   run(ctx: PipelineContext): void {
     const target = pipelineConfig.output.frameCount;
-    const frames = ctx.frames;
+    // 정지 시작 이미지 → 목표 포즈 "전환" 구간(예: onair 초반, 아직 착지 상태) 제거.
+    // 스킵 후 최소 1프레임은 남긴다(전부 스킵 대상이면 스킵 자체를 포기).
+    const skip = Math.min(ctx.job.skipLeadFrames, Math.max(0, ctx.frames.length - 1));
+    const frames = skip > 0 ? ctx.frames.slice(skip) : ctx.frames;
+    if (skip > 0) ctx.log.info("loop-select skip lead frames", { skip, remaining: frames.length });
     if (frames.length <= 1) {
       ctx.frames = resampleEven(frames, target);
       return;

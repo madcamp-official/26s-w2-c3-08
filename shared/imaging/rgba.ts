@@ -94,15 +94,44 @@ export function floodFillRemove(img: RgbaImage, bg: Rgb, threshold: number): num
 }
 
 /** 남은 반투명 경계의 키색 기운 완화 — 각 픽셀에서 bg 방향 성분을 소폭 빼는 단순 디스필 */
-export function despill(img: RgbaImage, bg: Rgb): void {
+/**
+ * @param maxDist 이 거리(정규화 RGB, bg 기준) 이내인 픽셀만 디스필 대상. 배경과 이미 충분히 먼
+ *   "진짜 캐릭터 색"(예: 파란 옷 vs 청록 배경 — 우세 채널이 같아 예전엔 전부 클램프당해 검게 뭉개짐,
+ *   실측 확인 2026-07-16)은 손대지 않는다 — 경계 잔상(fringe)만 좁혀서 잡는 게 목적이라서.
+ */
+export function despill(img: RgbaImage, bg: Rgb, maxDist: number): void {
   const { data } = img;
   for (let o = 0; o < data.length; o += 4) {
     if (data[o + 3] === 0) continue;
+    const d = rgbDistanceNorm({ r: data[o], g: data[o + 1], b: data[o + 2] }, bg);
+    if (d > maxDist) continue; // 배경과 충분히 다른 core 캐릭터색 — 스킵
     // bg가 지배적인 채널(예: 순녹이면 g)의 과한 값을 이웃 채널 최대치로 클램프해 기운을 뺀다
     if (bg.g > bg.r && bg.g > bg.b) data[o + 1] = Math.min(data[o + 1], Math.max(data[o], data[o + 2]));
     else if (bg.r > bg.g && bg.r > bg.b) data[o] = Math.min(data[o], Math.max(data[o + 1], data[o + 2]));
     else if (bg.b > bg.r && bg.b > bg.g) data[o + 2] = Math.min(data[o + 2], Math.max(data[o], data[o + 1]));
   }
+}
+
+/**
+ * 테두리 밴드 안에서 flood fill 이후에도 남아있는(alpha>0) 픽셀 비율.
+ * estimateBorderColor의 사전(pre-hoc) 분산 체크는 밴드 자체가 얇아 안쪽 배경 노이즈를 놓칠 수 있다
+ * (실측: Wan이 가끔 배경 전체가 얼룩진 프레임을 내는데, 테두리 몇 픽셀만은 우연히 고른 경우 안 잡힘).
+ * 이 함수는 사후(post-hoc) 결과를 직접 본다 — 정상 제거됐다면 테두리는 정의상 전부 배경이라
+ * 거의 100% 투명이어야 하므로, 남아있는 비율이 크면 "이 프레임은 제거 실패"의 직접적 증거가 된다.
+ */
+export function residualOpaqueBorderRatio(img: RgbaImage, band: number): number {
+  const { data, width, height } = img;
+  let total = 0;
+  let opaque = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const onBorder = x < band || y < band || x >= width - band || y >= height - band;
+      if (!onBorder) continue;
+      total++;
+      if (data[(y * width + x) * 4 + 3] > 16) opaque++;
+    }
+  }
+  return opaque / Math.max(1, total);
 }
 
 /** 알파 통계 — "이미 투명 배경인가"(업로드 분기), "불투명 덩어리가 있긴 한가" 판정용 */

@@ -109,18 +109,30 @@ export class Orchestrator {
     // 실제 Wan에 들어가는 프롬프트 가시화 — 게이트웨이(Qwen) 품질 튜닝의 전제.
     this.log.info("wan prompt", { job: job.jobId, positive: truncate(positive, 220) });
 
-    const res = resolveGenResolution(job.tilesW, job.tilesH);
+    // 캐릭터 자체는 원본 타일 비율(content)로 합성하되, 그보다 사방 paddingTiles만큼 넓은 캔버스
+    // (padded)에 중앙 배치 — 팔 휘두르기 등 정지 실루엣 밖으로 튀어나오는 동작이 생성 캔버스
+    // 경계에서 잘리지 않도록 여유를 준다. 후처리·다운스케일도 이 padded 크기를 최종 캔버스로 다룬다.
+    const pad = pipelineConfig.generation.resolution.paddingTiles;
+    const content = resolveGenResolution(job.tilesW, job.tilesH);
+    const padded = resolveGenResolution(job.tilesW + 2 * pad, job.tilesH + 2 * pad);
     const dur = resolveGenDuration(job.action, job.loop);
     const genFrameCount = Math.max(1, Math.round(dur.durationSec * dur.fps));
-    const startImagePng = await compositeOnChroma(sourcePng, chroma.hex, res.width, res.height);
+    const startImagePng = await compositeOnChroma(
+      sourcePng,
+      chroma.hex,
+      content.width,
+      content.height,
+      padded.width,
+      padded.height,
+    );
 
     return {
       job,
       sourcePng,
       positive,
       negative,
-      width: res.width,
-      height: res.height,
+      width: padded.width,
+      height: padded.height,
       fps: dur.fps,
       genFrameCount,
       startImagePng,
@@ -160,6 +172,7 @@ export class Orchestrator {
       category: job.category as Category,
       action: job.action,
       loop: job.loop,
+      skipLeadFrames: job.skipLeadFrames,
       tilesW: job.tilesW,
       tilesH: job.tilesH,
       sourceImagePng: prep.sourcePng,

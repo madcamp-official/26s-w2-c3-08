@@ -37,6 +37,8 @@ const PipelineConfigSchema = z.object({
     failVarianceThreshold: z.number().min(0).max(1),
     /** 의심 프레임 비율이 이 값을 넘으면 이 액션 생성 자체를 실패 처리 */
     failFrameRatio: z.number().min(0).max(1),
+    /** flood fill 이후 테두리 밴드에 남은 불투명 픽셀 비율 임계값(사후 검증). 넘으면 그 프레임만 폐기 */
+    residualBorderOpaqueThreshold: z.number().min(0).max(1),
     /** 갇힌-배경 회수를 켤 최소 margin(정규화 RGB, 키색-캐릭터 거리). 이하이면 회수 off(색색 캐릭터 보호) */
     enclosedReclaimMarginGate: z.number().min(0).max(1),
     /** 회수 임계 상한 — margin이 커도 이 값 넘게 공격적으로는 안 지움(캐릭터 경계 보호) */
@@ -77,6 +79,13 @@ const PipelineConfigSchema = z.object({
       roundToMultiple: z.number().int().positive(),
       /** 극단적 종횡비 방지용 최소 변 길이 */
       minSidePx: z.number().int().positive(),
+      /**
+       * 생성·최종 출력 캔버스를 실제 타일 크기 바깥으로 이만큼(타일 단위, 각 변) 확장한다.
+       * 팔 휘두르기 등 원본 정지 실루엣 밖으로 튀어나오는 동작이 캔버스 경계에서 잘리는 문제
+       * 실측 대응(2026-07-16) — 캐릭터는 원래 타일 비율로 합성하되 확장된 캔버스 중앙에 두어
+       * 사방에 여유 배경을 주고, 후처리·다운스케일도 이 확장된 크기를 "진짜 캔버스"로 다룬다.
+       */
+      paddingTiles: z.number().int().nonnegative(),
     }),
     /**
      * 생성 길이·fps — 액션 이름 하나하나 나열하지 않고 "반복 재생되는가(loop)"로 분기한다.
