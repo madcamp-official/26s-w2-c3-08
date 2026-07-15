@@ -18,6 +18,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "-w", "client", "dev"],
       "port": 5173
+    },
+    {
+      "name": "client-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "-w", "client", "dev"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }
