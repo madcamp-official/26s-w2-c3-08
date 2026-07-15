@@ -16,7 +16,7 @@
   "sizeStage": { "smallW": 64, "smallH": 64, "bigWMult": 2.0, "bigHMult": 1.5 },
   "sizes": { "projectile": 24, "item": 28, "carryable": 36, "handOffset": 20, "playerHeight": 96 },
   "carry": { "throwSpeed": 520, "upThrowSpeed": -680, "vxCarryFactor": 0.5, "selfIgnoreMs": 400, "handLerp": 0.25 },
-  "item": { "pickupFreezeMs": 400, "speedBoostMult": 1.5, "speedBoostMs": 8000, "invincibleMs": 8000, "knockbackVx": 420, "knockbackVy": -300 },
+  "item": { "pickupFreezeMs": 400, "speedBoostMult": 1.5, "speedBoostMs": 6000, "invincibleMs": 6000, "knockbackVx": 420, "knockbackVy": -300 },
   "rules": { "respawnMs": 7500, "fadeMs": 400, "flagPadTiles": 3, "avatarRespawnGraceMs": 1500, "blockReappearMs": 800 },
   "monster": { "iframeMs": 2500, "aggroSwitchMs": 500, "windupShortMs": 250, "windupLongMs": 700, "respawnGraceMs": 1500 },
   "projectile": { "slowSpeed": 200, "normalSpeed": 380, "fastSpeed": 620, "homingStrength": 0.04, "lifeMs": 6000 },

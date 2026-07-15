@@ -156,10 +156,25 @@ function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): void {
   }
 }
 
-/** 플레이어(§1.2 소속) — 내 아바타 회색, 다른 플레이어 흰색. AABB는 바닥-중앙 앵커라 top-left로 환산. */
-function drawPlayerBorder(gfx: Phaser.GameObjects.Graphics, centerX: number, bottomY: number, w: number, h: number, isSelf: boolean): void {
+/**
+ * squash(찌부/밀림 연출) 반영 실제 표시 박스 계산 — 벽에 눌리거나 찌부될 때 시각 사각형
+ * (myRect/몬스터 rect)이 squash.offsetX/Y·sx/sy로 움직이는데, 테두리가 body 원좌표만 쓰면
+ * 안 따라가는 버그였음(2026-07-15 피드백). rect가 실제로 그려지는 위치·크기와 동일하게 계산.
+ * anchorX/Y = 바닥-중앙(Body 좌표계와 동일, origin (0.5,1) rect 기준).
+ */
+function squashedBox(
+  anchorX: number, anchorY: number, w: number, h: number,
+  squash: Pick<SquashState, "sx" | "sy" | "offsetX" | "offsetY">,
+): { left: number; top: number; w: number; h: number } {
+  const cx = anchorX + squash.offsetX, by = anchorY + squash.offsetY;
+  const ew = w * squash.sx, eh = h * squash.sy;
+  return { left: cx - ew / 2, top: by - eh, w: ew, h: eh };
+}
+
+/** 플레이어(§1.2 소속) — 내 아바타 회색, 다른 플레이어 흰색. squash 반영된 박스를 받아 그대로 그림. */
+function drawPlayerBorder(gfx: Phaser.GameObjects.Graphics, box: { left: number; top: number; w: number; h: number }, isSelf: boolean): void {
   gfx.lineStyle(BORDER_WIDTH - 1, isSelf ? 0x9a9a9a : 0xffffff, 0.9);
-  gfx.strokeRect(centerX - w / 2, bottomY - h, w, h);
+  gfx.strokeRect(box.left, box.top, box.w, box.h);
 }
 
 /**
@@ -974,12 +989,13 @@ export class BaseworldScene extends Phaser.Scene {
     for (const draw of switchOverlays) draw();
 
     // ── 엔티티 레이어(entities, 자기 몸 위 — 병합 없이 항상 통짜로) ──────────
-    drawPlayerBorder(entities, this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h, true);
+    // squash(벽 찌부·밀림 등 연출) 반영 — 시각 사각형이 움직이면 테두리도 같이 움직여야 함(피드백 2026-07-15).
+    drawPlayerBorder(entities, squashedBox(this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h, this.mySquash), true);
     this.room.state.players.forEach((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId || p.dead) return;
       const v = this.players.get(id);
       if (!v || v.stale) return;
-      drawPlayerBorder(entities, v.ghost.x, v.ghost.y, p.w, p.h, false);
+      drawPlayerBorder(entities, squashedBox(v.ghost.x, v.ghost.y, p.w, p.h, v.squash), false);
     });
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;
@@ -988,8 +1004,9 @@ export class BaseworldScene extends Phaser.Scene {
       if (!spec) return;   // 콘솔 spawnmonster 등 테스트맵 밖 엔티티는 스펙이 없어 테두리 생략
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
+      const box = squashedBox(mx, my, m.w, m.h, v ? v.squash : { sx: 1, sy: 1, offsetX: 0, offsetY: 0 });
       const tags = monsterVisualTagsFromSpec(spec);
-      if (tags.faces) drawFaceBorders(entities, mx - m.w / 2, my - m.h, m.w, m.h, tags.faces, iAmInvincible);
+      if (tags.faces) drawFaceBorders(entities, box.left, box.top, box.w, box.h, tags.faces, iAmInvincible);
     });
   }
 
