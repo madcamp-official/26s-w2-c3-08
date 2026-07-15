@@ -6,11 +6,14 @@
 //  3) 잡 페이로드: 액션별 {name, motionHint}가 그대로 gpu-worker로 전달 (워커는 이 파일을 모름 — 페이로드 주도)
 //
 // v1 규칙표 (2026-07-12 초안 — 옵션별 세부는 팀 확정 전, 조정은 이 파일만 수정):
-//  - 모든 에셋: idle 1개 항상 (배경 잔디 흔들림도 idle 루프)
-//  - 아바타: + walk, onair (player-spec.md 3액션)
-//  - 몬스터: 이동 유형에 따라 + walk/fly/climb, 발사체 발사 시 + attack
+//  - 아바타: idle + walk + onair (player-spec.md 3액션)
+//  - 몬스터: idle + 이동 유형에 따라 walk/fly/climb, 발사체 발사 시 + attack
 //  - 플랫폼·장애물: idle만 — 왕복·회전·돌진·점멸은 코드가 스프라이트를 움직여 표현 (에셋 영상 아님)
 //  - 아이템: 시스템 제공이므로 idle만 (시트도 시스템 시드)
+//  - ⚠️ 배경: 액션 0개(2026-07-16 확정, 이전엔 "idle 흔들림 루프" 계획이었으나 폐기) — AI 생성
+//    자체를 안 한다. 화면 전체를 불투명하게 채우는 그림이라 크로마키 합성/제거 스테이지 전제
+//    (투명배경+캐릭터 실루엣)와 근본적으로 안 맞음(실측 확인). Asset.sourceImageUrl(그림 그대로)이
+//    최종 렌더링에 바로 쓰인다 — AssetSprite 잡 자체가 생성되지 않는다.
 import type { AttrsByCategory, Category, MonsterAttrs } from "../schemas/index.js";
 import { ACTION, ACTIONS, fullMotionHint, type ActionName } from "./catalog.js";
 
@@ -28,6 +31,8 @@ function act(name: ActionName, hintOverride?: string): DerivedAction {
 }
 
 export function deriveActions<C extends Category>(category: C, attrs: AttrsByCategory[C]): DerivedAction[] {
+  if (category === "background") return []; // AI 생성 없음(위 주석 참조) — sourceImageUrl이 그대로 최종 렌더
+
   const out: DerivedAction[] = [act(ACTION.idle)];
 
   switch (category) {
@@ -64,9 +69,8 @@ export function deriveActions<C extends Category>(category: C, attrs: AttrsByCat
     }
 
     case "block":
-    case "background":
     case "item":
-      break; // idle만 — 움직임은 코드 담당 (블록 회전·돌진 포함)
+      break; // idle만 — 움직임은 코드 담당 (블록 회전·돌진 포함). background는 위에서 이미 처리(액션 0개)
   }
 
   return out;
