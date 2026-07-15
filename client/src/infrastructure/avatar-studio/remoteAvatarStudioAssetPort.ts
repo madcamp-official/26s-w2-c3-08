@@ -25,7 +25,12 @@ export function createRemoteAvatarStudioAssetPort({
       return requestAvatars(fetcher, `${baseUrl}/api/assets?user_id=${encodeURIComponent(session.id)}`, session)
     },
     async createAvatar(payload) {
-      return requestCreateAvatar(fetcher, `${baseUrl}/api/assets/generate`, payload)
+      return requestCreateAvatar(
+        fetcher,
+        `${baseUrl}/api/assets/avatar/generate`,
+        payload,
+        `${baseUrl}/api/assets/generate`,
+      )
     },
   }
 }
@@ -77,6 +82,7 @@ async function requestCreateAvatar(
   fetcher: typeof fetch,
   input: RequestInfo | URL,
   payload: AvatarStudioSubmitPayload,
+  fallbackInput?: RequestInfo | URL,
 ): Promise<AvatarStudioResult<AvatarStudioAssetRecord>> {
   let response: Response
 
@@ -94,6 +100,10 @@ async function requestCreateAvatar(
   }
 
   if (!response.ok) {
+    if (response.status === 404 && fallbackInput !== undefined) {
+      return requestCreateAvatar(fetcher, fallbackInput, payload)
+    }
+
     return mapHttpError(response.status, await readJsonSafely(response))
   }
 
