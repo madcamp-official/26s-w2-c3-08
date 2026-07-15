@@ -5,6 +5,7 @@
 // 면별 색 입히기는 visualLanguage.drawPolyFaceBorders가 담당(시각 언어 단일 소스 유지).
 import Phaser from "phaser";
 import type { ActionName } from "shared/actions";
+import { SPRITE_PADDING_PX } from "shared";
 import type { AssetManifest } from "./manifest.js";
 import { queueManifestLoad, textureKey, animKey, hasAnim } from "./load.js";
 import { getOutlines, type Point } from "./outline.js";
@@ -35,9 +36,21 @@ export function assignManifest(scene: Phaser.Scene, view: SpriteView, manifest: 
 }
 
 /**
+ * 프레임(패딩 포함)에서 실제 캐릭터가 차지하는 콘텐츠 크기와, 프레임 바닥→캐릭터 발 사이 여백(px).
+ * 파이프라인이 사방 SPRITE_PADDING_PX 여백을 넣으므로 프레임 전체를 캐릭터로 취급하면 안 된다.
+ * 여백을 벗길 수 없을 만큼 프레임이 작으면(옛 무패딩 시트 등) 패딩 0으로 폴백 — 프레임 전체=콘텐츠.
+ */
+function contentMetrics(fw: number, fh: number): { cw: number; ch: number; pad: number } {
+  const pad = fw > SPRITE_PADDING_PX * 2 && fh > SPRITE_PADDING_PX * 2 ? SPRITE_PADDING_PX : 0;
+  return { cw: fw - pad * 2, ch: fh - pad * 2, pad };
+}
+
+/**
  * 매 프레임 갱신. 준비된 액션이 없으면 스프라이트를 숨기고 false 반환(호출부가 폴백 사각형을
  * 켜야 함). action이 없으면 idle로 재시도, idle도 없으면 폴백.
- * dispW/dispH: 게임 히트박스 크기(px) — 프레임 원본 크기와 무관하게 이 크기로 표시(블록 등).
+ * dispW/dispH: 게임 히트박스 크기(px). 스프라이트는 이 히트박스에 "실제 캐릭터 부분(패딩 제외)"이
+ *   맞도록 uniform 스케일(찌그러짐 없음)로 그리고, 패딩 여백은 그대로 둔 채(팔 등 안 잘림) 발끝을
+ *   히트박스 바닥에 앵커한다. 콘텐츠 종횡비 = 히트박스 종횡비(둘 다 tilesW:tilesH)라 uniform이 맞다.
  */
 export function stepSpriteView(
   scene: Phaser.Scene, view: SpriteView, action: ActionName,
@@ -51,10 +64,16 @@ export function stepSpriteView(
     view.sprite.play(animKey(view.key, useAction));
     view.lastAction = useAction;
   }
-  view.sprite.setPosition(x, y);
-  view.sprite.setFlipX(facing < 0);
   const fw = view.sprite.frame.cutWidth || 1, fh = view.sprite.frame.cutHeight || 1;
-  view.sprite.setScale(dispW / fw, (dispH / fh) * squashSy);
+  const { cw, ch, pad } = contentMetrics(fw, fh);
+  // 콘텐츠(패딩 제외)를 히트박스에 맞추는 uniform 스케일. cw:ch == dispW:dispH라 한 축으로 계산해도
+  // 다른 축이 자동으로 맞음(찌그러짐 없음). 세로 기준(발끝 위치가 중요)으로 잡는다.
+  const scale = dispH / ch;
+  view.sprite.setFlipX(facing < 0);
+  // origin (0.5,1) = 프레임 바닥 앵커. 캐릭터 발은 프레임 바닥보다 pad(px)만큼 위 → 그만큼 아래로
+  // 내려 앵커를 이동해 발끝이 정확히 y에 오게 한다(패딩만큼 공중에 뜨는 것 방지). squash 포함.
+  view.sprite.setScale(scale, scale * squashSy);
+  view.sprite.setPosition(x, y + pad * scale * squashSy);
   view.sprite.setVisible(true);
   return true;
 }
@@ -79,9 +98,12 @@ export function getSpriteOutlineWorld(
   const frame = scene.textures.get(tKey).frames[String(frameIdx)];
   if (!frame) return null;
   const fw = frame.cutWidth, fh = frame.cutHeight;
-  const sx = dispW / fw, sy = (dispH / fh) * squashSy;
+  // stepSpriteView와 완전히 동일한 변환(uniform 스케일 + 발끝 앵커)이어야 테두리가 그림과 겹친다.
+  const { ch, pad } = contentMetrics(fw, fh);
+  const scale = dispH / ch, sy = scale * squashSy;
+  const feetLocalY = fh - pad;   // 캐릭터 발끝 = 프레임 바닥에서 pad만큼 위
   return poly.map((p) => {
     const lx = facing < 0 ? fw - p.x : p.x;   // 좌우 반전
-    return { x: x + (lx - fw / 2) * sx, y: y + (p.y - fh) * sy };
+    return { x: x + (lx - fw / 2) * scale, y: y + (p.y - feetLocalY) * sy };
   });
 }

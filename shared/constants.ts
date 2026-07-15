@@ -7,6 +7,16 @@ export const TILE_PX = 64;
 /** 아바타 캔버스 규격: 1×2타일 */
 export const AVATAR_CANVAS = { w: TILE_PX, h: TILE_PX * 2 };
 
+/**
+ * 스프라이트 생성 시 원본 크기 사방으로 덧대는 여백(타일 단위). 팔 휘두르기 등 정지 실루엣 밖으로
+ * 튀어나오는 동작이 생성 캔버스 경계에서 잘리지 않도록 하는 여유(2026-07-16 도입).
+ * ⚠️ 단일 소스 — gpu-worker(config/pipeline.json generation.resolution.paddingTiles)와 반드시 일치.
+ * 최종 스프라이트 프레임 = (tilesW + 2×PAD) × (tilesH + 2×PAD) 타일. 클라 렌더가 이 여백을 벗겨
+ * 실제 캐릭터 크기·발 위치를 계산한다(client/src/sprites/view.ts). 프레임 한 변 여백 px = PAD×TILE_PX.
+ */
+export const SPRITE_PADDING_TILES = 1;
+export const SPRITE_PADDING_PX = SPRITE_PADDING_TILES * TILE_PX;
+
 /** 아바타 히트박스 키 자동 보정 범위 (1.3~1.95타일) */
 export const AVATAR_HITBOX_H = { minPx: 83, maxPx: 125 };
 
