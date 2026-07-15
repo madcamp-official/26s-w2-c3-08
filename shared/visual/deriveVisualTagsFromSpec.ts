@@ -59,7 +59,11 @@ export function blockVisualTagsFromSpec(spec: BlockSpec): VisualTags {
 export function monsterVisualTagsFromSpec(spec: MonsterSpec): VisualTags {
   const contactDamage = spec.contactDamage ?? true;
   const shove = hasRuleAction(spec.rules, "knockbackPlayer");   // §shove는 buildRuntimePart TODO — 등록된 행동명 기준 방어적 탐지
-  const hazardStyle: BorderStyle = shove ? "bumper" : spec.vuln.invincible ? "orange" : "red";
+  // ⚠️ 주황은 "지금 나(플레이어)가 무적이라 이 면이 안전함"만 의미(strokeFace의 iAmInvincible 전환).
+  // vuln.invincible(몬스터가 처치 불가/환경형)은 완전히 다른 개념 — 접촉 시 대미지는 그대로 들어오므로
+  // 여기서 orange로 매핑하면 "안전하다"는 오해를 준다(실사용 확인됨: 쿵쿵이가 항상 주황=위험 없어 보임).
+  // 처치 불가 여부는 표시하지 않음(과대 표시 방지 원칙) — 필요해지면 별도 오라로 추가.
+  const hazardStyle: BorderStyle = shove ? "bumper" : "red";
 
   const faces = faceMap("none");
   if (contactDamage || shove) {

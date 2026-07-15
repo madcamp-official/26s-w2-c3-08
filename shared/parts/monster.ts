@@ -33,7 +33,9 @@ export interface MonsterInstance {
   alive: boolean;
   respawnLeftMs: number;
   hits: Set<string>;         // 타격 이벤트 집합 (멱등)
-  iframeLeftMs: number;      // 무적 프레임 (서버 판정 §21-3)
+  iframeLeftMs: number;      // 무적 프레임 (서버 판정 §21-3) — 피격 후·재생성 후 공용
+  graceLeftMs: number;       // 재생성 유예 전용 — 이 동안 행동 정지(반격/추적 없음). iframeLeftMs와 별개
+                             // (피격 후 무적 중엔 계속 움직여야 하므로 행동정지를 iframe에 얹지 않음)
   rules: CompiledRule[];
   mem: Record<string, number>;
   events: Set<string>;
@@ -46,7 +48,7 @@ export function createMonster(spec: MonsterSpec): MonsterInstance {
     spec,
     body: createBody(spec.x, spec.y, spec.w, spec.h, ["monster"]),
     alive: true, respawnLeftMs: 0,
-    hits: new Set(), iframeLeftMs: 0,
+    hits: new Set(), iframeLeftMs: 0, graceLeftMs: 0,
     rules: compileRules(spec.rules),
     mem: {}, events: new Set(),
     targetId: null, aggroSwitchLeftMs: 0,
@@ -104,13 +106,18 @@ export function stepMonster(
       // 재생성 유예(§iframe 재사용): 등장 즉시 타격/접촉 피해 없음 — registerHit이 이미 검사.
       // 접촉 피해는 클라 로컬 판정이라 emit("respawn")으로 서버가 graceEndsAt을 실어 클라에 알린다.
       m.iframeLeftMs = t.monster.respawnGraceMs;
+      m.graceLeftMs = t.monster.respawnGraceMs;
       emit("respawn", { id: m.spec.id, graceMs: t.monster.respawnGraceMs });
     }
     return;
   }
   m.iframeLeftMs = Math.max(0, m.iframeLeftMs - dtMs);
-  // 기절 중이면 행동 정지
-  if ((m.mem["__stunLeft"] ?? 0) > 0) {
+  // 재생성 유예 중엔 행동 정지(추적·공격 없음) — 부활 즉시 다시 쫓아오는 것 방지
+  if (m.graceLeftMs > 0) {
+    m.graceLeftMs = Math.max(0, m.graceLeftMs - dtMs);
+    m.body.vx = 0;
+  } else if ((m.mem["__stunLeft"] ?? 0) > 0) {
+    // 기절 중이면 행동 정지
     m.mem["__stunLeft"] = (m.mem["__stunLeft"] ?? 0) - dtMs;
     m.body.vx = 0;
   } else {

@@ -3,7 +3,7 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { getStateCallbacks } from "@colyseus/sdk";
-import { TUNING, type Terrain } from "shared/physics";
+import { TUNING, type Terrain, type Slope, slopeSurfaceY } from "shared/physics";
 import "shared/behavior";
 import "shared/properties";
 import {
@@ -42,6 +42,8 @@ const BORDER_COLOR: Record<string, number> = {
   trampoline: 0x34c759,
 };
 
+const BORDER_WIDTH = 4;   // 이전 2px는 가독성 부족 피드백(2026-07-15) 반영해 굵게
+
 /** 한 면(선분)을 스타일대로 그림. "빨강" 면은 내(로컬 플레이어) 무적 중이면 주황으로(§1.1 "무적 상태의 대미지 면"). */
 function strokeFace(
   gfx: Phaser.GameObjects.Graphics,
@@ -52,11 +54,11 @@ function strokeFace(
   const effective = style === "red" && iAmInvincible ? "orange" : style;
   const color = BORDER_COLOR[effective];
   if (color === undefined) return;
-  gfx.lineStyle(2, color, 0.95);
+  gfx.lineStyle(BORDER_WIDTH, color, 0.95);
   if (effective === "dashed") {
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
-    const segs = Math.max(2, Math.round(len / 8));
+    const segs = Math.max(2, Math.round(len / 10));
     for (let i = 0; i < segs; i += 2) {
       const t0 = i / segs, t1 = Math.min(1, (i + 1) / segs);
       gfx.lineBetween(x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1);
@@ -66,7 +68,7 @@ function strokeFace(
   }
 }
 
-/** AABB(top-left+크기) 기준 4면 테두리 */
+/** AABB(top-left+크기) 기준 4면 테두리 (직사각형 블록·몬스터 히트박스용) */
 function drawFaceBorders(
   gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
   faces: FaceBorders, iAmInvincible: boolean,
@@ -77,18 +79,62 @@ function drawFaceBorders(
   strokeFace(gfx, left + w, top, left + w, top + h, faces.right, iAmInvincible);
 }
 
-/** 스위치 토글러(시스템 ON/OFF 블록) — 문서상 "빨강·파랑 반반 회전". 실제 회전 대신 시간에 따라
- * 두 색을 교대하는 것으로 단순화(애니메이션 목적은 동일 — 항상 도는 것처럼 보이는 두드러짐). */
+/**
+ * 경사(구불구불한 지형) 테두리 — 직사각형이 아니므로 별도 처리. 밟는 표면(대각선)만 흰 실선으로 그림
+ * (경사는 항상 단단한 바닥/천장이라 다른 색 상태가 없음 — solidWhite 고정).
+ */
+function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): void {
+  gfx.lineStyle(BORDER_WIDTH, BORDER_COLOR.solidWhite, 0.95);
+  if (s.kind === "floor") {
+    gfx.lineBetween(s.x, slopeSurfaceY(s, s.x) ?? s.y, s.x + s.w, slopeSurfaceY(s, s.x + s.w) ?? s.y);
+  } else {
+    // 천장 경사: body.ts와 동일한 반전 공식으로 실제 닿는 밑면 계산
+    const y0 = s.y + s.h - ((slopeSurfaceY(s, s.x) ?? s.y) - s.y);
+    const y1 = s.y + s.h - ((slopeSurfaceY(s, s.x + s.w) ?? s.y) - s.y);
+    gfx.lineBetween(s.x, y0, s.x + s.w, y1);
+  }
+}
+
+/**
+ * 스위치 토글러(시스템 ON/OFF 블록) — 문서상 "빨강·파랑 반반 회전". 전체 색이 확 바뀌는 점멸은
+ * 눈에 거슬린다는 피드백(2026-07-15)으로, 둘레를 따라 두 색 세그먼트가 실제로 도는 것처럼
+ * (marching ants) 다시 구현 — 매 순간엔 빨강/청록이 공존하고 위치만 흐른다.
+ */
+function drawRotatingStripedRect(
+  gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number,
+  colorA: number, colorB: number, nowMs: number,
+): void {
+  const seg = 12, speedPxPerSec = 45;
+  const perimeter = 2 * (w + h);
+  const offset = ((nowMs / 1000) * speedPxPerSec) % (seg * 2);
+  const pointAt = (dIn: number): [number, number] => {
+    const d = ((dIn % perimeter) + perimeter) % perimeter;
+    if (d <= w) return [left + d, top];
+    if (d <= w + h) return [left + w, top + (d - w)];
+    if (d <= 2 * w + h) return [left + w - (d - w - h), top + h];
+    return [left, top + h - (d - 2 * w - h)];
+  };
+  let d = -offset, toggle = true;
+  while (d < perimeter) {
+    const d0 = Math.max(d, 0), d1 = Math.min(d + seg, perimeter);
+    if (d1 > d0) {
+      const [x0, y0] = pointAt(d0);
+      const [x1, y1] = pointAt(d1);
+      gfx.lineStyle(BORDER_WIDTH, toggle ? colorA : colorB, 0.9);
+      gfx.lineBetween(x0, y0, x1, y1);
+    }
+    d += seg;
+    toggle = !toggle;
+  }
+}
 function drawSwitchTogglerBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, nowMs: number): void {
-  const color = Math.floor(nowMs / 280) % 2 === 0 ? 0xff3b30 : 0x2ec4c4;
-  gfx.lineStyle(3, color, 0.9);
-  gfx.strokeRect(left, top, w, h);
+  drawRotatingStripedRect(gfx, left, top, w, h, 0xff3b30, 0x2ec4c4, nowMs);
 }
 
 /** 스위치 영향 블록 — 현재 스위치 상태와 자신의 발동 조건이 일치하면 진하게, 아니면 옅게 틴트 */
 function drawSwitchAffectedBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, whenOn: boolean, switchOn: boolean): void {
   const active = whenOn === switchOn;
-  gfx.lineStyle(2, whenOn ? 0xff3b30 : 0x2ec4c4, active ? 0.85 : 0.3);
+  gfx.lineStyle(BORDER_WIDTH - 1, whenOn ? 0xff3b30 : 0x2ec4c4, active ? 0.85 : 0.3);
   gfx.strokeRect(left, top, w, h);
 }
 
@@ -812,6 +858,9 @@ export class BaseworldScene extends Phaser.Scene {
     const gfx = this.visualGfx;
     gfx.clear();
     const iAmInvincible = this.me.invincibleLeftMs > 0;
+
+    // 경사(구불구불한 지형) — 정적 지형이라 항상 그림(피드백: 사각형 아닌 지형도 표시 필요)
+    for (const s of TESTMAP.terrain.slopes) drawSlopeBorder(gfx, s);
 
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       if (!bs.active || !bs.visibleNow) return;

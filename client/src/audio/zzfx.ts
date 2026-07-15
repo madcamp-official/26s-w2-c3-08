@@ -97,9 +97,16 @@ export interface PlaybackOpts {
   pan?: number;
 }
 
+/**
+ * SFX 마스터 게인 — BGM(다중 트랙 합산 후 tanh 소프트리밋이라 진폭이 1에 가까움) 대비
+ * 개별 SFX 프리셋의 amplitude(0.2~0.45대)가 상대적으로 작게 설계돼 있어, sfxVolume 100%에서도
+ * BGM보다 훨씬 작게 들리던 문제(2026-07-15 피드백)의 보정값. 곡별 재작업 없이 여기 한 곳만 조정.
+ */
+const SFX_MASTER_GAIN = 1.8;
+
 /** 버퍼 즉시 재생 — 재생 순간 설정(볼륨/뮤트)을 반영(settings.ts). 뮤트거나 거리감쇠로 0이면 재생 생략. */
 export function playBuffer(buf: AudioBuffer, opts: PlaybackOpts = {}): void {
-  const vol = effectiveVolume() * (opts.volumeMult ?? 1);
+  const vol = effectiveVolume() * (opts.volumeMult ?? 1) * SFX_MASTER_GAIN;
   if (vol <= 0) return;
   const c = audio();
   const src = c.createBufferSource();
