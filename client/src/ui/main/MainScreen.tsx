@@ -17,7 +17,7 @@ export function MainScreen({ onLobby }: { onLobby: () => void }) {
   const showNotice = (msg: string) => { setNotice(msg); setTimeout(() => setNotice(null), 1800); };
 
   return (
-    <div className="dsScreen" style={{ background: `linear-gradient(180deg, ${COLORS.skyBlue}, #1c3a5e)` }}>
+    <div className="dsScreen">
       <TileTexture />
       <button
         onClick={() => setSettingsOpen(true)}
@@ -34,7 +34,9 @@ export function MainScreen({ onLobby }: { onLobby: () => void }) {
         position: "relative", minHeight: "100vh", display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", gap: 32,
       }}>
-        <h2 style={{ color: "#fff", margin: 0 }}>{nickname}님, 환영합니다</h2>
+        <h2 className="dsPointFont" style={{ color: COLORS.buildYellow, margin: 0, fontSize: 22 }}>
+          {nickname}님, 환영합니다
+        </h2>
 
         {/* 아바타 패널 — 썸네일 렌더 없음(스프라이트 시스템 미구현), 텍스트만 */}
         <div style={{

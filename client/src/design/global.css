@@ -11,24 +11,32 @@
   font-display: swap;
 }
 
+/* 리셋 — 이 프로젝트가 Vite 템플릿 index.css(#root width:1126px 제한 등)를 안 쓰므로 여기서 전담 */
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; }
+body { background: #10151c; }
+
 :root {
   --color-build-yellow: #F6BE00;
   --color-sky-blue: #4A9DE0;
   --color-mario-red: #E52521;
   --color-terrain-green: #43A047;
   --color-dirt-brown: #8B5A2B;
-  --tile-overlay: rgba(255, 255, 255, 0.08);
+  /* 배경용 차분한 톤 — 원색 스카이블루를 대면적에 그대로 깔지 않는다(문서 "원색 단색 대면적 금지") */
+  --color-bg-deep: #16212e;
+  --tile-overlay: rgba(255, 255, 255, 0.06);
   --font-point: "Galmuri11", monospace;
   --font-body: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
 }
 
 .dsScreen {
   min-height: 100vh;
-  width: 100%;
+  width: 100vw;
   font-family: var(--font-body);
   color: #fff;
   position: relative;
   overflow: hidden;
+  background: var(--color-bg-deep);
 }
 
 .dsPointFont {

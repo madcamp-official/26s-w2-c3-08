@@ -41,7 +41,7 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
   const leave = () => { void room.leave(); onLeave(); };
 
   return (
-    <div className="dsScreen" style={{ background: `linear-gradient(180deg, ${COLORS.skyBlue}, #1c3a5e)`, padding: 32 }}>
+    <div className="dsScreen" style={{ padding: 32 }}>
       <TileTexture />
       <div style={{ position: "relative", maxWidth: 480, margin: "0 auto", color: "#fff" }}>
         <h1 className="dsPointFont" style={{ color: COLORS.buildYellow, fontSize: 26 }}>방 대기실</h1>

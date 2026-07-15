@@ -44,7 +44,7 @@ export function LobbyScreen({ onJoined }: { onJoined: () => void }) {
   };
 
   return (
-    <div className="dsScreen" style={{ background: `linear-gradient(180deg, ${COLORS.skyBlue}, #1c3a5e)`, padding: 32 }}>
+    <div className="dsScreen" style={{ padding: 32 }}>
       <TileTexture />
       <div style={{ position: "relative", maxWidth: 720, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>

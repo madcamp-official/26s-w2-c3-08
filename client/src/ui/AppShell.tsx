@@ -20,13 +20,30 @@ interface MeResponse {
 export function AppShell() {
   const [screen, setScreen] = useState<ScreenName | null>(null);   // null = 부팅 검증 중
   const setSession = useSessionStore((s) => s.setSession);
-  const token = useSessionStore((s) => s.token);
 
   useEffect(() => {
-    if (!token) { setScreen("login"); return; }
-    api.get<MeResponse>("/api/me")
-      .then((me) => { setSession(me); setScreen("main"); })
-      .catch(() => setScreen("login"));
+    // zustand persist는 localStorage 복원이 비동기다 — 복원 완료 전에 token을 읽으면 항상 null이라
+    // 재방문 시에도 매번 로그인 화면이 뜨고 새 계정이 생기는 버그가 있었다. 복원 완료를 기다린다.
+    const checkSession = async () => {
+      const currentToken = useSessionStore.getState().token;
+      if (!currentToken) { setScreen("login"); return; }
+      try {
+        const me = await api.get<MeResponse>("/api/me");
+        setSession(me);
+        setScreen("main");
+      } catch {
+        useSessionStore.getState().clear();
+        setScreen("login");
+      }
+    };
+    if (useSessionStore.persist.hasHydrated()) {
+      void checkSession();
+    } else {
+      const unsub = useSessionStore.persist.onFinishHydration(() => {
+        unsub();
+        void checkSession();
+      });
+    }
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

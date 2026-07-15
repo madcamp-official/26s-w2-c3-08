@@ -3,7 +3,8 @@
 // 통합(재수출)하지 않고 이 시스템만의 독립 사본을 둔다(단기 중복 감수, 파일 충돌 회피).
 import type { Transition } from "framer-motion";
 
-export const SPRING_POP: Transition = { type: "spring", stiffness: 500, damping: 28 };
+// 500/28은 너무 빠르고 튀는 느낌이라(실사용 피드백) 260/26으로 완화 — 여전히 스프링이되 차분하게.
+export const SPRING_POP: Transition = { type: "spring", stiffness: 260, damping: 26 };
 export const EASE_ENTER = [0.22, 1, 0.36, 1] as const;
 export const STAGGER_MS = 0.045;
 export const HOVER_SCALE = 1.03;

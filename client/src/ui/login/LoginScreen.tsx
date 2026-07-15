@@ -27,7 +27,7 @@ export function LoginScreen({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="dsScreen" style={{ background: `linear-gradient(180deg, ${COLORS.skyBlue}, #1c3a5e)` }}>
+    <div className="dsScreen">
       <TileTexture />
       <div style={{
         position: "relative", height: "100%", display: "flex", flexDirection: "column",
