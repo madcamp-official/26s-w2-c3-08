@@ -1496,3 +1496,36 @@
   frames: 32,
   chroma: '#0000FF'
 }
+[orch] chromakey done {
+  frames: 33,
+  preHocSuspicious: 0,
+  dropped: 0,
+  kept: 33,
+  ratio: '0.00',
+  reclaim: 'off'
+}
+[orch] stage done: chromakey-removal { ms: 444 }
+[orch] bbox done { frames: 33 }
+[orch] stage done: bbox { ms: 49 }
+[orch] anchor done { baselineRatio: 0.98, lerp: 0.75 }
+[orch] stage done: anchor { ms: 42 }
+[orch] scale-normalize done { reference: 206, clamp: 0.1 }
+[orch] stage done: scale-normalize { ms: 0 }
+[orch] loop-select skip lead frames { skip: 3, remaining: 30 }
+[orch] loop window { start: 0, end: 14, of: 30, dist: 0 }
+[orch] stage done: loop-select { ms: 55 }
+[orch] downscale done { w: 192, h: 192, frames: 8 }
+[orch] stage done: downscale { ms: 10 }
+  + idle 완료 (8f 192x192, 58s)
+[orch] limb detection { job: 'enrager-walk', hasArms: false, hasLegs: false }
+[orch] wan prompt {
+  job: 'enrager-walk',
+  positive: 'brown, orange, red, round creature with an angry face, 2D platformer game sprite, slowly trudging in place, heavy unhurried gait, in-place walk cycle, feet return to the same spot each loop, single character centered in …'
+}
+[orch] generating {
+  job: 'enrager-walk',
+  action: 'walk',
+  res: '768x768',
+  frames: 48,
+  chroma: '#0000FF'
+}
