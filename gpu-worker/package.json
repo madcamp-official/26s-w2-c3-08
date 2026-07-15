@@ -13,6 +13,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "onnxruntime-node": "^1.27.0",
     "shared": "*",
     "sharp": "^0.34.2"

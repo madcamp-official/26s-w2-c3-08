@@ -30,6 +30,8 @@ try {
 import { pipelineConfig } from "./config/index.js";
 import { ComfyUIBackend } from "./backends/comfyui/client.js";
 import { PromptGatewayClient } from "./llm/gatewayClient.js";
+import { ClaudeVisionClient } from "./llm/claudeVisionClient.js";
+import type { AppearanceRefiner } from "./llm/types.js";
 import { ServerClient, type JobPayload } from "./jobs/serverClient.js";
 import { Orchestrator, type PreparedJob } from "./orchestrator/generateAsset.js";
 
@@ -51,8 +53,20 @@ async function main(): Promise<void> {
   const server = new ServerClient(serverUrl, workerToken);
   const backend = new ComfyUIBackend({ baseUrl: comfyUrl });
 
-  let gateway: PromptGatewayClient | undefined;
-  if (process.env.QWEN_GATEWAY_URL) {
+  // 외형 서술 공급자 우선순위: Claude API > 3090 Qwen 게이트웨이 > 스텁.
+  // (Qwen2-VL-7B가 IP 규칙 무시 + 환각 디테일을 뽑는 것을 실측 확인해 Claude를 상위로 둠 — 2026-07-16)
+  let gateway: AppearanceRefiner | undefined;
+  let llmLabel = "STUB";
+  if (process.env.ANTHROPIC_API_KEY) {
+    const g = pipelineConfig.llmGateway;
+    gateway = new ClaudeVisionClient({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.CLAUDE_VISION_MODEL,
+      maxConcurrency: g.maxConcurrency,
+      timeoutMs: g.timeoutMs,
+    });
+    llmLabel = `claude(${process.env.CLAUDE_VISION_MODEL ?? "claude-haiku-4-5"})`;
+  } else if (process.env.QWEN_GATEWAY_URL) {
     const g = pipelineConfig.llmGateway;
     gateway = new PromptGatewayClient({
       baseUrl: process.env.QWEN_GATEWAY_URL,
@@ -62,11 +76,12 @@ async function main(): Promise<void> {
       maxRetries: g.maxRetries,
       retryBaseDelayMs: g.retryBaseDelayMs,
     });
+    llmLabel = "qwen-gateway";
   }
 
   const orch = new Orchestrator({ backend, server, gateway });
 
-  console.log(`[worker] 시작 — server=${serverUrl} comfyui=${comfyUrl} llm=${gateway ? "gateway" : "STUB"}`);
+  console.log(`[worker] 시작 — server=${serverUrl} comfyui=${comfyUrl} llm=${llmLabel}`);
   const health = await backend.healthCheck();
   if (!health.ok) {
     console.error(`[worker] ComfyUI 헬스체크 실패: ${health.detail} — ${comfyUrl} 확인. 계속 폴링합니다.`);

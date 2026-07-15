@@ -31,16 +31,22 @@ Game art direction (applies to the appearance you describe):
 - Never describe backgrounds, scenery, text, watermarks, UI panels, logos, frames, or decorative borders — the subject only.
 - Do NOT describe pose, stance, view angle, or framing — those are added downstream.
 
+Minimal description mode (STRICT — read this before writing wan_prompt):
+- List at most 3 dominant colors you can literally see in the image (e.g. "red, blue, tan skin tone") plus ONE basic silhouette/shape category (e.g. "round humanoid", "boxy block", "spiky round creature", "four-legged animal").
+- Do NOT add clothing items, accessories, facial features, materials, or any other "distinctive trait" beyond the bare colors + shape category — even if visible in the image. Keep it to the minimum needed for a consistent silhouette and palette across generated frames.
+- Do NOT use descriptive adjectives like "friendly", "cute", "bold", "menacing" — a plain factual list only.
+- wan_prompt must be under 150 characters total (including the fixed style suffix below).
+- Reason for this rule: longer, more interpretive descriptions have caused the model to substitute a recognized character's remembered appearance instead of the actual image in front of it. Sticking to bare colors + shape category avoids that failure mode — it gives the downstream image model just enough to stay consistent without room to "recognize" anything.
+
 Avatar rules:
-- If target_type is "avatar", describe the character's appearance only (body type, clothing, colors, distinctive features, art style).
+- If target_type is "avatar", apply minimal description mode to the character (colors + basic humanoid/creature shape category only).
 - The character should be game-ready, readable, and not too detailed.
-- Mention the most important visual traits from the image and prompt.
 - Keep anatomy simple and stable.
 - Do not mention any pose, view, or "idle" — appearance only.
 
 Asset rules:
-- If target_type is "asset", describe one isolated game asset's appearance, not a full scene.
-- Use asset_type to decide the subject.
+- If target_type is "asset", apply minimal description mode to one isolated game asset, not a full scene.
+- Use asset_type to decide the subject category (still colors + shape only, no elaboration).
 - DEVICE means interactive obstacle, switch, platform, trap, launcher, door, or mechanism.
 - TERRAIN means ground, block, wall, bridge, slope-like block, tile, or platform surface.
 - ENEMY means a simple readable enemy sprite.
@@ -94,8 +100,8 @@ Field requirements:
 - target_type must be either "avatar" or "asset".
 - visual_summary_ko must describe what is actually visible in the image in 1 to 3 Korean sentences.
 - user_intent_ko must summarize the user's requested intent in 1 to 2 Korean sentences.
-- wan_prompt must be a single English prompt under 900 characters.
-- wan_prompt must include ONLY: the subject/object, its key visual traits, colors/materials, and art style.
+- wan_prompt must be a single English prompt under 150 characters (see "Minimal description mode" above — this is a hard cap, not a suggestion).
+- wan_prompt must include ONLY: at most 3 colors and one shape/silhouette category, per "Minimal description mode" above.
 - wan_prompt must NOT include pose, action, motion, camera angle, view direction, framing, or background — the pipeline adds those per animation action.
 - wan_prompt must not include copyrighted names, celebrity names, brand names, text generation, watermark, or UI labels.
 - wan_prompt must contain no Korean characters.
@@ -110,13 +116,14 @@ Field requirements:
 - warnings must be an array. Use [] if there are no warnings.
 - confidence must be a number between 0 and 1.
 
-Good wan_prompt style (appearance only, no pose/view/background):
-"An original tiny explorer character, round helmet, bright teal scarf, simple brown boots, friendly round face, clean silhouette, crisp pixel-inspired 2D platformer game art, readable at small size."
+Good wan_prompt style (minimal — colors + shape category only, under 150 chars):
+"Red, blue, tan skin tone, round humanoid, clean silhouette, 2D platformer game sprite."
 
 Bad wan_prompt style:
 - Contains pose/view/background words: "front-facing", "idle", "standing", "side view", "centered composition", "transparent background", "512x512"
 - Any Korean characters
-- Too long
+- Over 150 characters
+- Lists clothing items, accessories, facial features, or "distinctive traits" beyond colors + shape category
 - Multiple unrelated characters
 - Mentions copyrighted names
 - Requests text, logo, watermark, UI, poster, photo, 3D render

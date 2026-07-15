@@ -6,7 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ACTIONS, fullMotionHint, type ActionName } from "shared/actions";
+import { pipelineConfig } from "../config/index.js";
 import { ComfyUIBackend } from "../backends/comfyui/client.js";
+import { PromptGatewayClient } from "../llm/gatewayClient.js";
+import { ClaudeVisionClient } from "../llm/claudeVisionClient.js";
+import type { AppearanceRefiner } from "../llm/types.js";
 import { ServerClient, type JobPayload } from "../jobs/serverClient.js";
 import { Orchestrator } from "../orchestrator/generateAsset.js";
 import { frameToPng } from "../image/raster.js";
@@ -38,7 +42,34 @@ async function main() {
     process.exit(1);
   }
 
-  const orch = new Orchestrator({ backend, server }); // 게이트웨이 없음 = 스텁 외형(캐릭터 재사용, 액션당 1회만 호출됨)
+  // 외형 서술 공급자: Claude API > 3090 Qwen 게이트웨이. 실측 스크립트이므로 스텁 폴백은 허용 안 함.
+  const g = pipelineConfig.llmGateway;
+  let gateway: AppearanceRefiner;
+  let llmLabel: string;
+  if (process.env.ANTHROPIC_API_KEY) {
+    gateway = new ClaudeVisionClient({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.CLAUDE_VISION_MODEL,
+      maxConcurrency: g.maxConcurrency,
+      timeoutMs: g.timeoutMs,
+    });
+    llmLabel = `claude(${process.env.CLAUDE_VISION_MODEL ?? "claude-haiku-4-5"})`;
+  } else if (process.env.QWEN_GATEWAY_URL) {
+    gateway = new PromptGatewayClient({
+      baseUrl: process.env.QWEN_GATEWAY_URL,
+      internalToken: process.env.QWEN_INTERNAL_TOKEN ?? "",
+      maxConcurrency: g.maxConcurrency,
+      timeoutMs: g.timeoutMs,
+      maxRetries: g.maxRetries,
+      retryBaseDelayMs: g.retryBaseDelayMs,
+    });
+    llmLabel = "qwen-gateway";
+  } else {
+    console.error("[test] ANTHROPIC_API_KEY / QWEN_GATEWAY_URL 둘 다 미설정 — 실제 외형 서술 검증 스크립트인데 스텁으로 빠질 수 없음. 중단");
+    process.exit(1);
+  }
+  console.log(`[test] 외형 서술 공급자: ${llmLabel}`);
+  const orch = new Orchestrator({ backend, server, gateway }); // 실제 LLM이 이미지를 보고 외형을 서술(액션당 1회만 호출, 캐시 재사용)
 
   for (const action of ACTIONS_ORDER) {
     console.log(`\n===== 액션: ${action} =====`);
@@ -46,11 +77,8 @@ async function main() {
     const job: JobPayload = {
       jobId: `test-mario-${action}`,
       assetId: "test-mario", // 액션 3개가 같은 assetId를 공유해야 외형·키높이 캐시가 재사용됨
-      // ⚠️ "mario" 같은 유명 캐릭터 이름조차 스텁 외형에 그대로 들어가면 Wan이 소스 그림을 무시하고
-      // 자기가 학습으로 기억하는 마리오 얼굴(눈 2개, 표정 등)을 그려버림(실측 확인 — 소스엔 눈 1개뿐인데
-      // 결과엔 마리오 특유의 눈·표정이 나옴). 실제 게이트웨이(3090, VPN/SSH 필요)는 여기서 못 붙이므로,
-      // 대신 이 이미지를 직접 보고 쓴 순수 외형 서술을 job.prompt에 넣는다(백엔드 선채움 경로 — 감싸지
-      // 않고 그대로 wanPrompt로 사용됨. name은 캐주얼 라벨일 뿐이라 무해하게 둠).
+      // ⚠️ 유명 캐릭터 이름을 job.name에 넣지 말 것(§2.5, §8) — 게이트웨이의 user_prompt로 그대로
+      // 전달돼 Wan이 소스 그림 대신 학습된 얼굴을 소환할 위험이 있다. 무해한 라벨만 사용.
       name: "test avatar",
       action,
       sourceImageUrl: "local://mario",
@@ -59,14 +87,7 @@ async function main() {
       category: "avatar",
       tilesW: 1,
       tilesH: 2, // 아바타 고정 크기(player-spec.md)
-      // 실제 이미지(asset-prototype/avatar-01-mario.png)를 보고 직접 서술한 순수 외형(이름 언급 없음,
-      // 포즈·뷰·배경 언급 없음 — qwen 시스템 프롬프트 규칙과 동일 기준). 실제 LLM 게이트웨이 대역.
-      prompt:
-        "a round-headed humanoid character with tan skin, wearing a red baseball-style cap with a small brim, " +
-        "a bright red long-sleeved top, blue overall dungarees with two small gold buttons on the chest panel, " +
-        "dark shoes, and a small brown mustache-like mark near the mouth; simple flat-colored cartoon " +
-        "illustration style with thick rounded shapes and a hand-drawn wobbly outline, clean 2D platformer " +
-        "game sprite, bold readable silhouette",
+      prompt: null, // null이어야 getAppearance()가 실제 게이트웨이를 탄다(백엔드 선채움 경로는 우회용).
       motionHint: fullMotionHint(spec),
       loop: spec.loop,
       returnsToStart: spec.returnsToStart,

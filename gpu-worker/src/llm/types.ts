@@ -26,7 +26,7 @@ export interface RefinePromptSuccess {
   confidence: number;
   schema_version: string;
   model: string;
-  engine: "vllm";
+  engine: "vllm" | "claude";
   latency_ms: number;
 }
 
@@ -49,4 +49,10 @@ export interface RefinePromptParams {
   stylePreset?: string;
   outputLanguage?: string;
   assetType?: string;
+}
+
+/** 외형 서술 공급자 공통 인터페이스 — 3090 Qwen 게이트웨이(PromptGatewayClient)와
+ *  Claude API(ClaudeVisionClient)가 둘 다 구현. 오케스트레이터는 이 타입만 본다. */
+export interface AppearanceRefiner {
+  refine(params: RefinePromptParams): Promise<RefinePromptResult>;
 }

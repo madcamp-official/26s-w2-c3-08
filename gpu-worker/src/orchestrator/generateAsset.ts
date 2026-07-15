@@ -33,14 +33,14 @@ import {
 import type { BBox } from "../pipeline/types.js";
 import type { GenerationBackend } from "../backends/types.js";
 import { assemblePrompt, type Appearance } from "./assemblePrompt.js";
-import { PromptGatewayClient } from "../llm/gatewayClient.js";
+import type { AppearanceRefiner } from "../llm/types.js";
 import { ServerClient, type JobPayload } from "../jobs/serverClient.js";
 
 export interface OrchestratorDeps {
   backend: GenerationBackend;
   server: ServerClient;
-  /** 없으면 외형을 스텁으로 채움(3090 없이 ComfyUI 검증용). */
-  gateway?: PromptGatewayClient;
+  /** 외형 서술 공급자(Qwen 게이트웨이 or Claude API). 없으면 스텁(ComfyUI 단독 검증용). */
+  gateway?: AppearanceRefiner;
   log?: StageLogger;
 }
 
