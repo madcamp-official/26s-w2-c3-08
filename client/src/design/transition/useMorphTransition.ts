@@ -17,11 +17,15 @@ export function useMorphTransition<T extends HTMLElement = HTMLButtonElement>() 
   const ref = useRef<T | null>(null);
   const setActive = useTransitionStore((s) => s.setActive);
 
-  /** originColor 생략 시 트리거 요소의 실제 배경색을 읽어 씀(그 요소가 그대로 커진 것처럼) */
+  /** originColor 생략 시 트리거 요소의 색을 읽어 씀(그 요소가 그대로 커진 것처럼).
+   *  손그림 버튼은 CSS 배경이 transparent라(채움은 SVG) data-morph-color 속성을 우선 읽는다. */
   async function trigger(loadFn: () => Promise<void>, originColor?: string): Promise<void> {
     const el = ref.current;
     const rect = el ? readRect(el) : null;
-    const color = originColor ?? (el ? getComputedStyle(el).backgroundColor : "#F6BE00");
+    const dataColor = el?.dataset.morphColor;
+    const cssColor = el ? getComputedStyle(el).backgroundColor : "";
+    const transparent = !cssColor || cssColor === "transparent" || cssColor === "rgba(0, 0, 0, 0)";
+    const color = originColor ?? dataColor ?? (transparent ? "#F6BE00" : cssColor);
     setActive(true, rect, color);
     const start = Date.now();
     try {

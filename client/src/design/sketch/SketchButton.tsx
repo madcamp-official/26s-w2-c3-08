@@ -1,7 +1,8 @@
-// 공통 인터랙션 규칙(screen-design.md "인터랙션 공통 규칙")을 구현한 손그림 버튼.
-// 1) 기본: 영역 꽉 채운 각진(radius 0) 노랑 + 잉크 테두리, 지글 없음.
-// 2) 호버: 안쪽으로 살짝 축소(여백) → 테두리가 둥글어지고 흰색 낙서 테두리가 지글지글.
-// 3) 클릭: whileTap로 짧게 세로로 늘어남 → onClick(보통 커튼 트리거)로 전환.
+// 공통 인터랙션 규칙(screen-design.md "인터랙션 공통 규칙") 구현 손그림 버튼.
+// 1) 기본: 영역 꽉 채운(각진, radius 0) 노랑 + 잉크 손그림 테두리.
+// 2) 호버: 전체가 살짝 축소(scale, 여백 발생) → 테두리 둥글어지고 흰색 낙서 테두리가 지글지글.
+// 3) 클릭: whileTap로 짧게 세로로 늘어남 → onClick(보통 커튼 트리거).
+// 구조는 SketchBox를 "직접 자식"으로 둔다(절대배치 래퍼가 크기측정을 깨뜨렸던 버그 회피).
 import { forwardRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { CSSProperties, ReactNode, MouseEventHandler } from "react";
@@ -10,20 +11,14 @@ import { SketchBox } from "./SketchBox.js";
 
 export interface SketchButtonProps {
   children?: ReactNode;
-  onClick?: MouseEventHandler<HTMLElement>;
-  /** 채움색(기본 주역 노랑). */
+  onClick?: MouseEventHandler<HTMLButtonElement>;
   fill?: string;
-  /** 텍스트 색(기본 잉크). */
   color?: string;
   disabled?: boolean;
-  /** 호버 시 둥글어지는 정도. */
   radius?: number;
   style?: CSSProperties;
   className?: string;
 }
-
-/** 호버 시 안쪽 여백(축소) 크기(px). */
-const HOVER_INSET = 6;
 
 export const SketchButton = forwardRef<HTMLButtonElement, SketchButtonProps>(function SketchButton(
   { children, onClick, fill = YELLOW.base, color = INK, disabled, radius = 14, style, className },
@@ -38,9 +33,12 @@ export const SketchButton = forwardRef<HTMLButtonElement, SketchButtonProps>(fun
       className={className}
       disabled={disabled}
       onClick={onClick}
+      // 커튼이 배경색을 읽을 수 있게(버튼 bg는 transparent라 CSS로는 못 읽음).
+      data-morph-color={fill}
       onHoverStart={() => setHover(true)}
       onHoverEnd={() => setHover(false)}
-      whileTap={disabled ? undefined : { scaleY: 1.06, scaleX: 0.99 }}
+      animate={{ scale: active ? 0.955 : 1 }}
+      whileTap={disabled ? undefined : { scaleY: 1.06, scaleX: 0.985 }}
       transition={SPRING_POP}
       style={{
         position: "relative",
@@ -48,42 +46,25 @@ export const SketchButton = forwardRef<HTMLButtonElement, SketchButtonProps>(fun
         background: "transparent",
         padding: 0,
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
+        opacity: disabled ? 0.5 : 1,
         width: "100%",
         height: "100%",
         ...style,
       }}
     >
-      {/* 채움 + 잉크 테두리. 호버 시 안쪽 축소(inset)로 여백을 만들고 radius를 준다. */}
-      <motion.span
-        animate={{ inset: active ? HOVER_INSET : 0 }}
-        transition={SPRING_POP}
-        style={{ position: "absolute", inset: 0, display: "block" }}
-      >
-        <SketchBox
-          fill={fill}
-          stroke={INK}
-          radius={active ? radius : 0}
-          preset="frame"
-          style={{ width: "100%", height: "100%" }}
-        >
-          <span style={{ color, fontFamily: "var(--font-body)", fontWeight: 700, fontSize: 18 }}>
-            {children}
-          </span>
-        </SketchBox>
-      </motion.span>
+      {/* 채움 + 잉크 테두리 — SketchBox 직접 자식(측정 정상). 호버 시 radius로 둥글어짐. */}
+      <SketchBox fill={fill} stroke={INK} radius={active ? radius : 0} preset="frame"
+        style={{ width: "100%", height: "100%" }}>
+        <span style={{ color, fontFamily: "var(--font-body)", fontWeight: 700, fontSize: 18 }}>
+          {children}
+        </span>
+      </SketchBox>
 
-      {/* 흰색 낙서 테두리 — 호버 중에만, 지글지글. */}
+      {/* 흰색 낙서 테두리 — 호버 중에만, 항상 지글. 버튼 안쪽에 겹쳐 그림. */}
       {active && (
-        <span style={{ position: "absolute", inset: HOVER_INSET - 2, pointerEvents: "none" }}>
-          <SketchBox
-            stroke="#FFFDF5"
-            fill={undefined}
-            radius={radius}
-            jiggle
-            preset="chip"
-            style={{ width: "100%", height: "100%" }}
-          />
+        <span style={{ position: "absolute", inset: 5, pointerEvents: "none" }}>
+          <SketchBox stroke="#FFFDF5" fill={undefined} radius={radius} jiggle preset="chip"
+            style={{ width: "100%", height: "100%" }} />
         </span>
       )}
     </motion.button>

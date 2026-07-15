@@ -15,16 +15,32 @@ export class ApiError extends Error {
   }
 }
 
+/** 서버 무응답 시 무한 대기(커튼 멈춤) 방지 — 이 시간(ms) 넘으면 abort→에러. */
+const REQUEST_TIMEOUT_MS = 8000;
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = useSessionStore.getState().token;
-  const res = await fetch(`${HTTP_BASE}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { "x-user-token": token } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${HTTP_BASE}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "x-user-token": token } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new ApiError(0, "서버 응답 없음(타임아웃) — 백엔드가 실행 중인지 확인하세요");
+    }
+    throw new ApiError(0, "서버에 연결할 수 없습니다");
+  } finally {
+    clearTimeout(timer);
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, json?.error ?? `HTTP ${res.status}`);
   return json as T;
