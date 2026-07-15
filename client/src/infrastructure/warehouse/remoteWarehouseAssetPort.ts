@@ -301,6 +301,11 @@ function normalizeAsset(
     category,
     name,
     description: readString(asset.description) ?? '설명이 아직 없어요.',
+    sourceImageUrl:
+      readString(asset.sourceImageUrl) ??
+      readString(asset.source_image_url) ??
+      readString(asset.image) ??
+      '',
     status,
     createdAt,
     widthCells: readNumber(asset.widthCells) ?? readNumber(asset.width_cells),

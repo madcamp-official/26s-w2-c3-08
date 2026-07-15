@@ -121,6 +121,15 @@
   background: var(--semantic-color-action-primary-background);
 }
 
+.avatarImage {
+  position: relative;
+  z-index: var(--z-index-base);
+  width: min(56%, calc(var(--spacing-16) * 2));
+  max-height: calc(var(--spacing-16) * 5);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 .avatarPreview[data-state='generating'] span {
   background: var(--semantic-color-status-generating);
 }

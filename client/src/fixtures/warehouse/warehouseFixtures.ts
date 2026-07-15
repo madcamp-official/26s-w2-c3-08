@@ -10,6 +10,8 @@ import type {
 
 export type WarehouseFixtureViewport = '1280x720' | '1440x900' | '1920x1080'
 
+const fixtureAvatarImageUrl = 'data:image/gif;base64,R0lGODdhAQACAIAAAP////8AACwAAAAAAQACAAACAkQBADs='
+
 export interface WarehouseScreenFixture {
   id: string
   screenId: 'S2B_WAREHOUSE'
@@ -32,6 +34,7 @@ const readyAvatar: WarehouseAssetViewModel = {
   name: '노란 러너',
   description: '기본 아바타 대신 장착할 수 있는 사용자 아바타입니다.',
   category: 'avatar',
+  sourceImageUrl: fixtureAvatarImageUrl,
   status: 'ready',
   statusText: '사용 가능',
   isEquipped: true,

@@ -50,6 +50,7 @@ export interface WarehouseAssetViewModel {
   name: string
   description: string
   category: WarehouseAssetCategory
+  sourceImageUrl?: string
   status: WarehouseAssetStatus
   statusText: string
   estimateText?: string
@@ -392,6 +393,7 @@ export function AssetCard({
 
 export function AssetPreview({ asset }: { asset: WarehouseAssetViewModel }) {
   const unavailable = asset.status === 'malformed'
+  const hasSourceImage = typeof asset.sourceImageUrl === 'string' && asset.sourceImageUrl.length > 0
 
   return (
     <div
@@ -402,10 +404,15 @@ export function AssetPreview({ asset }: { asset: WarehouseAssetViewModel }) {
       data-v2-state={unavailable ? 'unavailable' : 'static'}
       data-category={asset.category}
       data-status={asset.status}
+      data-has-source-image={hasSourceImage ? 'true' : 'false'}
     >
-      <span className={styles.previewStage} aria-hidden="true">
-        <span className={styles.previewShape} />
-      </span>
+      {hasSourceImage ? (
+        <img className={styles.previewImage} src={asset.sourceImageUrl} alt="" aria-hidden="true" />
+      ) : (
+        <span className={styles.previewStage} aria-hidden="true">
+          <span className={styles.previewShape} />
+        </span>
+      )}
       {unavailable ? <span className={styles.previewUnavailable}>표시할 수 없음</span> : null}
     </div>
   )

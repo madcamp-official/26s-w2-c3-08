@@ -33,6 +33,7 @@ export interface MainAvatarViewModel {
   title: string
   description: string
   statusText: string
+  sourceImageUrl?: string
   estimateText?: string
 }
 
@@ -208,16 +209,28 @@ interface AvatarPanelProps {
 }
 
 function AvatarPanel({ avatar, onOpenWarehouse }: AvatarPanelProps) {
+  const hasSourceImage = typeof avatar.sourceImageUrl === 'string' && avatar.sourceImageUrl.length > 0
+
   return (
     <button
       className={styles.avatarPanel}
       type="button"
       data-v2-component="avatar-panel"
       data-v2-state={avatar.state}
+      data-has-source-image={hasSourceImage ? 'true' : 'false'}
       onClick={onOpenWarehouse}
     >
-      <div className={styles.avatarPreview} aria-hidden="true" data-state={avatar.state}>
-        <span />
+      <div
+        className={styles.avatarPreview}
+        aria-hidden="true"
+        data-state={avatar.state}
+        data-has-source-image={hasSourceImage ? 'true' : 'false'}
+      >
+        {hasSourceImage ? (
+          <img className={styles.avatarImage} src={avatar.sourceImageUrl} alt="" aria-hidden="true" />
+        ) : (
+          <span />
+        )}
       </div>
       <div className={styles.avatarCopy}>
         <Text variant="caption" tone="secondary" weight="bold">

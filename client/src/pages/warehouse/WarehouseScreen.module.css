@@ -219,6 +219,20 @@
   background: var(--semantic-color-surface-panel);
 }
 
+.previewImage {
+  position: relative;
+  z-index: var(--z-index-base);
+  width: min(76%, calc(var(--spacing-16) * 4));
+  max-height: calc(var(--spacing-16) * 3);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.assetPreview[data-category='avatar'] .previewImage {
+  width: min(54%, calc(var(--spacing-16) * 2));
+  max-height: calc(var(--spacing-16) * 4);
+}
+
 .previewShape {
   display: block;
   width: 64%;

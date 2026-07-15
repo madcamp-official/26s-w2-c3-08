@@ -59,6 +59,7 @@ export interface WarehouseAssetRecord {
   category: WarehouseAssetCategory | 'item'
   name: string
   description: string
+  sourceImageUrl: string
   status: 'queued' | 'generating' | 'ready' | 'failed'
   createdAt: string
   widthCells: number | null
@@ -533,6 +534,7 @@ export function mapWarehouseAssetToViewModel(
     name: asset.name,
     description: asset.description,
     category: asset.category === 'item' ? 'platform' : asset.category,
+    sourceImageUrl: asset.sourceImageUrl,
     status: mapAssetStatus(asset),
     statusText: getAssetStatusText(asset.status),
     estimateText: getAssetEstimateText(asset.status),

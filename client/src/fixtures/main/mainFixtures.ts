@@ -9,6 +9,8 @@ import type {
 export type MainFixtureScreenId = 'S2_MAIN' | 'S2C_SETTINGS_MODAL'
 export type MainFixtureViewport = '1280x720' | '1440x900' | '1920x1080'
 
+const fixtureAvatarImageUrl = 'data:image/gif;base64,R0lGODdhAQACAIAAAP////8AACwAAAAAAQACAAACAkQBADs='
+
 export interface MainScreenFixture {
   id: string
   screenId: MainFixtureScreenId
@@ -55,6 +57,7 @@ const generatingAvatar: MainAvatarViewModel = {
   title: '아바타 생성 중',
   description: '완료되면 창고와 메인에서 자동으로 확인할 수 있어요.',
   statusText: '생성 중',
+  sourceImageUrl: fixtureAvatarImageUrl,
   estimateText: '아바타 생성 중 · 예상 2~4분',
 }
 
@@ -63,6 +66,7 @@ const readyAvatar: MainAvatarViewModel = {
   title: '장착한 아바타',
   description: '내 창고에서 다른 아바타로 바꿀 수 있어요.',
   statusText: '사용 가능',
+  sourceImageUrl: fixtureAvatarImageUrl,
 }
 
 const failedAvatar: MainAvatarViewModel = {
@@ -70,6 +74,7 @@ const failedAvatar: MainAvatarViewModel = {
   title: '아바타 생성 실패',
   description: '창고에서 실패한 아바타를 확인하고 다시 시도할 수 있어요.',
   statusText: '생성 실패',
+  sourceImageUrl: fixtureAvatarImageUrl,
 }
 
 export const mainScreenFixtures: MainScreenFixture[] = [

@@ -71,6 +71,8 @@ for (const copy of [
 
 assert.match(screenSource, /<LauncherShell/)
 assert.match(screenSource, /<AvatarPanel/)
+assert.match(screenSource, /sourceImageUrl/)
+assert.match(screenSource, /className=\{styles\.avatarImage\}/)
 assert.match(screenSource, /<IconButton/)
 assert.match(screenSource, /<SettingsModal/)
 assert.match(screenSource, /<Modal/)

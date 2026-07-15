@@ -102,15 +102,29 @@ function unwrapAssets(body: unknown): Array<Record<string, unknown>> | null {
 }
 
 function summarizeAssets(assets: Array<Record<string, unknown>>, session: LoginSession): MainSnapshot {
-  const userAssets = assets.filter((asset) => asset.userId === session.id || asset.user_id === session.id)
-  const avatarAsset = userAssets.find((asset) => asset.category === 'avatar' && asset.status === 'ready')
+  const userAssets = assets.filter((asset) => readAssetOwnerId(asset) === session.id)
+  const equippedAvatarAsset = session.avatarAssetId
+    ? userAssets.find((asset) => readString(asset.id) === session.avatarAssetId && readString(asset.category) === 'avatar')
+    : undefined
+  const readyAvatarAsset =
+    readString(equippedAvatarAsset?.status) === 'ready'
+      ? equippedAvatarAsset
+      : findLatestAvatarByStatus(userAssets, ['ready'])
+  const workingAvatarAsset =
+    isAssetStatus(equippedAvatarAsset, ['queued', 'generating'])
+      ? equippedAvatarAsset
+      : findLatestAvatarByStatus(userAssets, ['queued', 'generating'])
+  const failedAvatarAsset =
+    isAssetStatus(equippedAvatarAsset, ['failed'])
+      ? equippedAvatarAsset
+      : findLatestAvatarByStatus(userAssets, ['failed'])
   const workingCount = userAssets.filter(
     (asset) => asset.status === 'queued' || asset.status === 'generating',
   ).length
   const failedCount = userAssets.filter((asset) => asset.status === 'failed').length
   const readyCount = userAssets.filter((asset) => asset.status === 'ready').length
 
-  if (avatarAsset) {
+  if (readyAvatarAsset) {
     return {
       mainState: 'avatarReady',
       avatar: {
@@ -118,6 +132,46 @@ function summarizeAssets(assets: Array<Record<string, unknown>>, session: LoginS
         title: '장착한 아바타',
         description: '내 창고에서 다른 아바타로 바꿀 수 있어요.',
         statusText: '사용 가능',
+        sourceImageUrl: readAvatarSourceImageUrl(readyAvatarAsset),
+      },
+      assetSummary: {
+        total: userAssets.length,
+        ready: readyCount,
+        working: workingCount,
+        failed: failedCount,
+      },
+    }
+  }
+
+  if (workingAvatarAsset) {
+    return {
+      mainState: 'avatarGenerating',
+      avatar: {
+        state: 'generating',
+        title: '아바타 생성 중',
+        description: '방금 저장한 그림을 기준으로 준비하고 있어요.',
+        statusText: '생성 중',
+        sourceImageUrl: readAvatarSourceImageUrl(workingAvatarAsset),
+        estimateText: '아바타 생성 중 · 잠시 후 창고에서 사용할 수 있어요.',
+      },
+      assetSummary: {
+        total: userAssets.length,
+        ready: readyCount,
+        working: workingCount,
+        failed: failedCount,
+      },
+    }
+  }
+
+  if (failedAvatarAsset) {
+    return {
+      mainState: 'avatarFailed',
+      avatar: {
+        state: 'failed',
+        title: '아바타 생성 실패',
+        description: '창고에서 실패한 아바타를 확인하고 다시 시도할 수 있어요.',
+        statusText: '생성 실패',
+        sourceImageUrl: readAvatarSourceImageUrl(failedAvatarAsset),
       },
       assetSummary: {
         total: userAssets.length,
@@ -157,6 +211,47 @@ function createFailure(
       retryable: kind !== 'malformed_response',
     },
   }
+}
+
+function readAssetOwnerId(asset: Record<string, unknown>) {
+  return (
+    readString(asset.creatorId) ??
+    readString(asset.creator_id) ??
+    readString(asset.userId) ??
+    readString(asset.user_id)
+  )
+}
+
+function findLatestAvatarByStatus(assets: Array<Record<string, unknown>>, statuses: string[]) {
+  return assets
+    .filter((asset) => readString(asset.category) === 'avatar' && isAssetStatus(asset, statuses))
+    .sort((left, right) => readAssetCreatedAtMs(right) - readAssetCreatedAtMs(left))[0]
+}
+
+function isAssetStatus(asset: Record<string, unknown> | undefined, statuses: string[]) {
+  const status = asset ? readString(asset.status) : undefined
+
+  return status ? statuses.includes(status) : false
+}
+
+function readAvatarSourceImageUrl(asset: Record<string, unknown>) {
+  return (
+    readString(asset.sourceImageUrl) ??
+    readString(asset.source_image_url) ??
+    readString(asset.image) ??
+    undefined
+  )
+}
+
+function readAssetCreatedAtMs(asset: Record<string, unknown>) {
+  const createdAt = readString(asset.createdAt) ?? readString(asset.created_at) ?? readString(asset.created)
+  const timestamp = createdAt ? Date.parse(createdAt) : NaN
+
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
