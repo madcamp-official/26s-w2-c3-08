@@ -22,9 +22,26 @@ export function sessionRouter(): Router {
     res.status(201).json(jsonSafe({ userId: user.id, token: user.token, nickname: user.nickname }));
   });
 
-  // 재방문 검증: token → 유저 정보 (401이면 클라가 로그인 화면으로)
+  // 재방문 검증: token → 유저 정보 (401이면 클라가 로그인 화면으로). avatar = 메인 화면 아바타 패널용.
   r.get("/api/me", requireUser, async (req: AuthedRequest, res: Response) => {
-    const u = req.user!;
+    const u = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      include: { avatarAsset: { select: { id: true, name: true, status: true } } },
+    });
+    res.json(jsonSafe({
+      userId: u!.id, nickname: u!.nickname, avatarAssetId: u!.avatarAssetId,
+      avatar: u!.avatarAsset ? { id: u!.avatarAsset.id, name: u!.avatarAsset.name, status: u!.avatarAsset.status } : null,
+    }));
+  });
+
+  // 닉네임 변경 (설정 모달)
+  r.patch("/api/me", requireUser, async (req: AuthedRequest, res: Response) => {
+    const nickname = typeof req.body?.nickname === "string" ? req.body.nickname.trim() : "";
+    if (nickname.length < 1 || nickname.length > 12) {
+      res.status(400).json({ error: "nickname must be 1~12 chars" });
+      return;
+    }
+    const u = await prisma.user.update({ where: { id: req.user!.id }, data: { nickname } });
     res.json(jsonSafe({ userId: u.id, nickname: u.nickname, avatarAssetId: u.avatarAssetId }));
   });
 

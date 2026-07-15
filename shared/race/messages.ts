@@ -47,3 +47,19 @@ export interface RaceJoinOptions {
   isPublic?: boolean;
   password?: string;
 }
+
+/**
+ * GET /api/rooms 응답 1건 — @colyseus/sdk 0.17엔 네이티브 방 목록 조회가 없어(getAvailableRooms 부재)
+ * DB Room 테이블을 REST로 노출한다. colyseusRoomId로 joinById.
+ */
+export interface RoomListing {
+  colyseusRoomId: string;
+  code: string;
+  name: string | null;
+  hostNickname: string;
+  isPublic: boolean;
+  maxPlayers: number;
+  memberCount: number;
+  status: string;
+  phaseStartedAt: string | null;
+}

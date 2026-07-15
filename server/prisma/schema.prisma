@@ -184,17 +184,19 @@ model MapLinePlacement {
 // status: lobby → building(15s 프리뷰+3분) → racing → finished. String이라 페이즈 추가 자유.
 // hostId/userId 등은 scalar(관계 미연결) — 기록 테이블이라 가볍게.
 model Room {
-  id             BigInt   @id @default(autoincrement())
-  code           String   @unique                            // 초대 코드
-  name           String?                                     // 미지정 시 "OO님의 방"
-  hostId         BigInt                                       // 방장 User id
-  isPublic       Boolean  @default(true)
-  passwordHash   String?                                      // 비밀방 비번 해시
-  maxPlayers     Int      @db.SmallInt
-  status         String   @default("lobby")
-  lineCount      Int?     @db.SmallInt                        // 경기 시작 시 확정 — 게임시간=lineCount×40초
-  phaseStartedAt DateTime?                                    // 로비 카드 진행 경과 계산용
-  createdAt      DateTime @default(now())
+  id              BigInt   @id @default(autoincrement())
+  code            String   @unique                            // 초대 코드
+  name            String?                                     // 미지정 시 "OO님의 방"
+  hostId          BigInt                                       // 방장 User id
+  isPublic        Boolean  @default(true)
+  passwordHash    String?                                      // 비밀방 비번 해시
+  maxPlayers      Int      @db.SmallInt
+  status          String   @default("lobby")
+  lineCount       Int?     @db.SmallInt                        // 경기 시작 시 확정 — 게임시간=lineCount×40초
+  phaseStartedAt  DateTime?                                    // 로비 카드 진행 경과 계산용
+  createdAt       DateTime @default(now())
+  colyseusRoomId  String?                                      // Colyseus 내부 room id — 로비 목록에서 joinById용
+  memberCount     Int      @default(0)                         // 현재 접속 인원(best-effort, join/leave 시 갱신)
 
   members RoomMember[]
   results RaceResult[]

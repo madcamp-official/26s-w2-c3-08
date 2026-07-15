@@ -64,7 +64,8 @@ export class RaceRoom extends PhysicsRoom {
     super.onCreate();
     if (options?.password) this.passwordHash = hashPassword(options.password);
 
-    // DB Room 행 생성 (기록용, 비동기)
+    // DB Room 행 생성 (기록용, 비동기). 방 목록은 REST(/api/rooms)가 이 테이블을 읽는다 —
+    // Colyseus SDK(@colyseus/sdk 0.17)엔 getAvailableRooms가 없어 네이티브 매치메이킹 대신 이 방식.
     this.roomCode = randomBytes(3).toString("hex");
     void (async () => {
       try {
@@ -78,6 +79,7 @@ export class RaceRoom extends PhysicsRoom {
             passwordHash: this.passwordHash,
             maxPlayers: this.maxClients,
             status: "lobby",
+            colyseusRoomId: this.roomId,
           },
         });
         this.roomRowId = row.id;
@@ -329,11 +331,14 @@ export class RaceRoom extends PhysicsRoom {
     this.state.members.set(client.sessionId, m);
 
     if (this.roomRowId !== null) {
+      const roomRowId = this.roomRowId;
       prisma.roomMember.upsert({
-        where: { roomId_userId: { roomId: this.roomRowId, userId: user.id } },
-        create: { roomId: this.roomRowId, userId: user.id, canBuild: m.canBuild },
+        where: { roomId_userId: { roomId: roomRowId, userId: user.id } },
+        create: { roomId: roomRowId, userId: user.id, canBuild: m.canBuild },
         update: { canBuild: m.canBuild },
       }).catch((e) => console.warn("[race] RoomMember 기록 실패:", e?.message ?? e));
+      prisma.room.update({ where: { id: roomRowId }, data: { memberCount: this.state.members.size } })
+        .catch((e) => console.warn("[race] memberCount 갱신 실패:", e?.message ?? e));
     }
   }
 
@@ -348,6 +353,10 @@ export class RaceRoom extends PhysicsRoom {
         const m = this.state.members.get(this.hostSessionId);
         if (m) m.isHost = true;
       }
+    }
+    if (this.roomRowId !== null) {
+      prisma.room.update({ where: { id: this.roomRowId }, data: { memberCount: this.state.members.size } })
+        .catch((e) => console.warn("[race] memberCount 갱신 실패:", e?.message ?? e));
     }
   }
 }

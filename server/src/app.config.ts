@@ -18,6 +18,7 @@ import { TestLineRoom } from "./rooms/testline/TestLineRoom.js";
 import { aiWorkerRouter } from "./worker-api/routes.js";
 import { sessionRouter } from "./api/session.js";
 import { linesRouter } from "./api/lines.js";
+import { roomsRouter } from "./api/rooms.js";
 import { STORAGE_DIR, STORAGE_URL_PREFIX, SOURCES_DIR, SOURCES_URL_PREFIX } from "./asset/storage.js";
 
 const server = defineServer({
@@ -64,6 +65,9 @@ const server = defineServer({
 
         // 라인 저장/조회 API (에디터 저장·재사용 브라우징)
         app.use(linesRouter());
+
+        // 로비 방 목록 API
+        app.use(roomsRouter());
 
         // 생성된 스프라이트 시트 정적 서빙 (sheetUrl = STORAGE_URL_PREFIX/{id}.png).
         app.use(STORAGE_URL_PREFIX, express.static(STORAGE_DIR));

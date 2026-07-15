@@ -1,0 +1,36 @@
+/* 디자인 시스템 전역: 폰트·색 CSS 변수·리셋. design/tokens/*.ts와 값 동일하게 유지. */
+@font-face {
+  font-family: "Galmuri11";
+  src: url("https://cdn.jsdelivr.net/gh/quiple/galmuri@main/dist/Galmuri11.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard Variable";
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/woff2/PretendardVariable.woff2") format("woff2-variations");
+  font-weight: 45 920;
+  font-display: swap;
+}
+
+:root {
+  --color-build-yellow: #F6BE00;
+  --color-sky-blue: #4A9DE0;
+  --color-mario-red: #E52521;
+  --color-terrain-green: #43A047;
+  --color-dirt-brown: #8B5A2B;
+  --tile-overlay: rgba(255, 255, 255, 0.08);
+  --font-point: "Galmuri11", monospace;
+  --font-body: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
+}
+
+.dsScreen {
+  min-height: 100vh;
+  width: 100%;
+  font-family: var(--font-body);
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.dsPointFont {
+  font-family: var(--font-point);
+}
