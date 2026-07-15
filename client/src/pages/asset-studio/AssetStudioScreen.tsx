@@ -6,11 +6,9 @@ import { StudioShell } from '../../design-system/shells'
 import {
   AssetLoadModal,
   BrushSizeControl,
-  DirtyStateNotice,
   DrawingToolbar,
   DrawingViewport,
   PaletteGrid,
-  PanelResizeHandle,
   StudioPanel,
   type AssetLoadItem,
   type AssetLoadTab,
@@ -63,8 +61,7 @@ export interface AssetStudioLayoutValue {
   rightCollapsed: boolean
   leftPanelWidth: number
   rightPanelWidth: number
-  toolBlockRatio: number
-  resizing?: 'left' | 'right' | 'tools' | null
+  resizing?: 'left' | 'right' | null
 }
 
 export interface AssetStudioToast {
@@ -80,8 +77,6 @@ export interface AssetStudioScreenCallbacks {
   onNewAsset: () => void
   onToggleLeftPanel: () => void
   onToggleRightPanel: () => void
-  onResizePanel: (side: 'left' | 'right', delta: number) => void
-  onResizeToolBlock: (delta: number) => void
   onToolChange: (toolId: StudioToolId) => void
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
@@ -120,7 +115,6 @@ export interface AssetStudioScreenProps extends AssetStudioScreenCallbacks {
   checkerMode: CheckerMode
   gridVisible: boolean
   dirtyState: 'blank' | 'unchanged' | 'changed' | 'submitted'
-  sourceAssetName?: string
   submitDisabledReason?: string
   loadModalOpen: boolean
   loadModalTab: AssetLoadTab
@@ -145,7 +139,6 @@ export function AssetStudioScreen({
   selectedSwatchId,
   recentSwatchIds,
   dirtyState,
-  sourceAssetName,
   submitDisabledReason,
   loadModalOpen,
   loadModalTab,
@@ -158,7 +151,6 @@ export function AssetStudioScreen({
   onNewAsset,
   onToggleLeftPanel,
   onToggleRightPanel,
-  onResizeToolBlock,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
@@ -228,7 +220,6 @@ export function AssetStudioScreen({
             swatches={swatches}
             selectedSwatchId={selectedSwatchId}
             recentSwatchIds={recentSwatchIds}
-            resizingTools={layout.resizing === 'tools'}
             onToolChange={onToolChange}
             onBrushSizeChange={onBrushSizeChange}
             onOpacityChange={onOpacityChange}
@@ -237,7 +228,6 @@ export function AssetStudioScreen({
             onRedo={onRedo}
             onClear={onClear}
             onOpenLoadModal={onOpenLoadModal}
-            onResizeToolBlock={onResizeToolBlock}
           />
         }
         center={
@@ -282,10 +272,6 @@ export function AssetStudioScreen({
               onAttrsChange={onAttrsChange}
               onSubmit={onSubmit}
               onOpenWarehouse={onOpenWarehouse}
-            />
-            <DirtyStateNotice
-              state={dirtyState === 'unchanged' ? 'unchanged' : dirtyState === 'submitted' ? 'submitted' : 'dirty'}
-              message={getDirtyMessage(dirtyState, sourceAssetName)}
             />
             {submitError ? (
               <p className={styles.submitError} role="alert">
@@ -332,7 +318,6 @@ interface LeftToolsPanelProps {
   swatches: PaletteSwatchModel[]
   selectedSwatchId: string
   recentSwatchIds: string[]
-  resizingTools: boolean
   onToolChange: (toolId: StudioToolId) => void
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
@@ -341,7 +326,6 @@ interface LeftToolsPanelProps {
   onRedo: () => void
   onClear: () => void
   onOpenLoadModal: () => void
-  onResizeToolBlock: (delta: number) => void
 }
 
 function LeftToolsPanel({
@@ -355,7 +339,6 @@ function LeftToolsPanel({
   swatches,
   selectedSwatchId,
   recentSwatchIds,
-  resizingTools,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
@@ -364,13 +347,12 @@ function LeftToolsPanel({
   onRedo,
   onClear,
   onOpenLoadModal,
-  onResizeToolBlock,
 }: LeftToolsPanelProps) {
   return (
     <StudioPanel
       side="left"
       title="도구"
-      state={resizingTools ? 'resizing' : 'expanded'}
+      state="expanded"
       actions={
         <Button size="small" variant="secondary" onClick={onOpenLoadModal}>
           에셋 불러오기
@@ -431,12 +413,6 @@ function LeftToolsPanel({
           disabled={state === 'submitting'}
           onSelect={onSelectColor}
         />
-        <PanelResizeHandle
-          axis="vertical"
-          label="도구 블록 세로 크기 조절"
-          dragging={resizingTools}
-          onResizeStep={(delta) => onResizeToolBlock(delta * 0.05)}
-        />
       </Stack>
     </StudioPanel>
   )
@@ -451,20 +427,4 @@ function toVisibleSize(size: AssetStudioSize) {
 
 function getToolLabel(tools: ToolButtonProps['tool'][], activeTool: StudioToolId) {
   return tools.find((tool) => tool.id === activeTool)?.label ?? '펜'
-}
-
-function getDirtyMessage(state: AssetStudioScreenProps['dirtyState'], sourceAssetName: string | undefined) {
-  if (state === 'unchanged') {
-    return `${sourceAssetName ?? '불러온 에셋'}을 수정한 뒤 저장할 수 있어요.`
-  }
-
-  if (state === 'submitted') {
-    return '에셋 생성을 요청했어요. 현재 캔버스와 속성은 유지됩니다.'
-  }
-
-  if (state === 'blank') {
-    return '새 에셋을 그리고 속성을 입력해 주세요.'
-  }
-
-  return '그림 또는 속성이 변경되었습니다.'
 }

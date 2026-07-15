@@ -35,7 +35,6 @@ export interface AvatarStudioScreenFixture {
   checkerMode?: AvatarStudioScreenProps['checkerMode']
   gridVisible?: boolean
   dirtyState?: AvatarStudioScreenProps['dirtyState']
-  sourceAvatarName?: string
   submitDisabledReason?: string
   loadModalOpen?: boolean
   loadModalTab?: AvatarStudioScreenProps['loadModalTab']
@@ -73,12 +72,10 @@ export const avatarStudioScreenFixtures: AvatarStudioScreenFixture[] = [
   }),
   createFixture('a-avatar-studio-loaded-unchanged', 'loadedUnchanged', '불러온 아바타 수정 전', {
     dirtyState: 'unchanged',
-    sourceAvatarName: '달리기 아바타',
     submitDisabledReason: '불러온 아바타를 수정한 뒤 저장할 수 있어요.',
   }),
   createFixture('a-avatar-studio-loaded-changed', 'loadedChanged', '불러온 아바타 수정 후', {
     dirtyState: 'changed',
-    sourceAvatarName: '달리기 아바타',
   }),
   createFixture('a-avatar-studio-invalid-name', 'invalidName', '이름 오류', {
     form: { ...defaultForm, name: '' },
@@ -128,7 +125,6 @@ export function toAvatarStudioScreenProps(
     checkerMode: fixture.checkerMode ?? 'light',
     gridVisible: fixture.gridVisible ?? true,
     dirtyState: fixture.dirtyState ?? 'changed',
-    sourceAvatarName: fixture.sourceAvatarName,
     submitDisabledReason: fixture.submitDisabledReason,
     loadModalOpen: fixture.loadModalOpen ?? false,
     loadModalTab: fixture.loadModalTab ?? 'mine',
@@ -141,8 +137,6 @@ export function toAvatarStudioScreenProps(
     onNewAvatar: noop,
     onToggleLeftPanel: noop,
     onToggleRightPanel: noop,
-    onResizePanel: noop,
-    onResizeToolBlock: noop,
     onToolChange: noop,
     onBrushSizeChange: noop,
     onOpacityChange: noop,

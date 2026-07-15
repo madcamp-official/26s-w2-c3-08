@@ -115,6 +115,7 @@ assert.match(screenSource, /assetCanvasSurface/)
 assert.doesNotMatch(screenSource, /workspaceMeta/)
 assert.doesNotMatch(screenSource, /getStateLabel/)
 assert.doesNotMatch(screenSource, /격자 켜기|격자 끄기|어두운 체커|밝은 체커/)
+assert.doesNotMatch(screenSource, /DirtyStateNotice|PanelResizeHandle|dirty-state-notice|도구 블록 세로 크기 조절/)
 
 assert.doesNotMatch(attributeFormSource, /item|avatar/)
 assert.doesNotMatch(
@@ -196,13 +197,11 @@ async function testLayoutPersistence({
   const callbacks = createAssetStudioCallbacks(runtime)
 
   callbacks.onToggleLeftPanel()
-  callbacks.onResizePanel('right', 24)
-  callbacks.onResizeToolBlock(0.05)
 
-  assert.equal(runtime.savedLayouts.length, 3)
+  assert.equal(runtime.savedLayouts.length, 1)
   assert.equal(runtime.state.layout.leftCollapsed, true)
-  assert.equal(runtime.state.layout.rightPanelWidth, 364)
-  assert.equal(runtime.state.layout.resizing, 'tools')
+  assert.equal(runtime.state.layout.rightPanelWidth, 340)
+  assert.equal(runtime.state.layout.resizing, null)
 }
 
 async function testWarehouseCta({

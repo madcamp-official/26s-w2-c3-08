@@ -41,17 +41,12 @@ function normalizeLayout(value: unknown): AssetStudioLayoutValue {
     rightCollapsed: value.rightCollapsed === true,
     leftPanelWidth: clampPanelWidth(readNumber(value.leftPanelWidth) ?? defaults.leftPanelWidth),
     rightPanelWidth: clampPanelWidth(readNumber(value.rightPanelWidth) ?? defaults.rightPanelWidth),
-    toolBlockRatio: clampRatio(readNumber(value.toolBlockRatio) ?? defaults.toolBlockRatio),
     resizing: null,
   }
 }
 
 function clampPanelWidth(value: number) {
   return Math.min(420, Math.max(220, Math.trunc(value)))
-}
-
-function clampRatio(value: number) {
-  return Math.min(0.8, Math.max(0.2, value))
 }
 
 function readNumber(value: unknown) {

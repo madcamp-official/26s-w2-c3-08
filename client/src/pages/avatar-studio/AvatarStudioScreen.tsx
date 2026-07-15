@@ -16,10 +16,8 @@ import { StudioShell } from '../../design-system/shells'
 import {
   AssetLoadModal,
   BrushSizeControl,
-  DirtyStateNotice,
   DrawingToolbar,
   DrawingViewport,
-  PanelResizeHandle,
   StudioPanel,
   type AssetLoadItem,
   type AssetLoadTab,
@@ -52,7 +50,7 @@ export interface AvatarStudioLayoutValue {
   rightCollapsed: boolean
   leftPanelWidth: number
   rightPanelWidth: number
-  resizing?: 'left' | 'right' | 'tools' | null
+  resizing?: 'left' | 'right' | null
 }
 
 export interface AvatarStudioToast {
@@ -78,8 +76,6 @@ export interface AvatarStudioScreenCallbacks {
   onNewAvatar: () => void
   onToggleLeftPanel: () => void
   onToggleRightPanel: () => void
-  onResizePanel: (side: 'left' | 'right', delta: number) => void
-  onResizeToolBlock: (delta: number) => void
   onToolChange: (toolId: StudioToolId) => void
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
@@ -119,7 +115,6 @@ export interface AvatarStudioScreenProps extends AvatarStudioScreenCallbacks {
   checkerMode: CheckerMode
   gridVisible: boolean
   dirtyState: 'blank' | 'unchanged' | 'changed' | 'submitted'
-  sourceAvatarName?: string
   submitDisabledReason?: string
   loadModalOpen: boolean
   loadModalTab: AssetLoadTab
@@ -144,7 +139,6 @@ export function AvatarStudioScreen({
   recentSwatchIds,
   canvasImage,
   dirtyState,
-  sourceAvatarName,
   submitDisabledReason,
   loadModalOpen,
   loadModalTab,
@@ -157,8 +151,6 @@ export function AvatarStudioScreen({
   onNewAvatar,
   onToggleLeftPanel,
   onToggleRightPanel,
-  onResizePanel,
-  onResizeToolBlock,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
@@ -222,7 +214,6 @@ export function AvatarStudioScreen({
             selectedSwatch={selectedSwatch}
             selectedSwatchId={selectedSwatchId}
             recentSwatchIds={recentSwatchIds}
-            resizingTools={layout.resizing === 'tools'}
             onToolChange={onToolChange}
             onBrushSizeChange={onBrushSizeChange}
             onOpacityChange={onOpacityChange}
@@ -231,7 +222,6 @@ export function AvatarStudioScreen({
             onRedo={onRedo}
             onClear={onClear}
             onOpenLoadModal={onOpenLoadModal}
-            onResizeToolBlock={onResizeToolBlock}
           />
         }
         center={
@@ -258,6 +248,7 @@ export function AvatarStudioScreen({
               outsideDim={false}
               surface="paper"
               showVisibleFrame={false}
+              showStatus={false}
               status={submitting ? 'disabled' : activeTool === 'move' ? 'move' : dirtyState === 'blank' ? 'blank' : 'drawing'}
               toolLabel={getToolLabel(tools, activeTool)}
             >
@@ -298,10 +289,6 @@ export function AvatarStudioScreen({
                 disabled={submitting}
                 onChange={onDescriptionChange}
               />
-              <DirtyStateNotice
-                state={dirtyState === 'unchanged' ? 'unchanged' : dirtyState === 'submitted' ? 'submitted' : 'dirty'}
-                message={getDirtyMessage(dirtyState, sourceAvatarName)}
-              />
               {submitDisabledReason && state !== 'invalidName' ? (
                 <p className={styles.submitReason}>{submitDisabledReason}</p>
               ) : null}
@@ -320,22 +307,6 @@ export function AvatarStudioScreen({
               </div>
             </section>
           </StudioPanel>
-        }
-        statusLayer={
-          <Inline gap="small">
-            <PanelResizeHandle
-              axis="horizontal"
-              label="왼쪽 패널 폭 조절"
-              dragging={layout.resizing === 'left'}
-              onResizeStep={(delta) => onResizePanel('left', delta * 16)}
-            />
-            <PanelResizeHandle
-              axis="horizontal"
-              label="오른쪽 패널 폭 조절"
-              dragging={layout.resizing === 'right'}
-              onResizeStep={(delta) => onResizePanel('right', delta * 16)}
-            />
-          </Inline>
         }
         toastLayer={
           toast ? (
@@ -375,7 +346,6 @@ interface AvatarToolsPanelProps {
   selectedSwatch: PaletteSwatchModel
   selectedSwatchId: string
   recentSwatchIds: string[]
-  resizingTools: boolean
   onToolChange: (toolId: StudioToolId) => void
   onBrushSizeChange: (brushSize: number) => void
   onOpacityChange: (opacity: number) => void
@@ -384,7 +354,6 @@ interface AvatarToolsPanelProps {
   onRedo: () => void
   onClear: () => void
   onOpenLoadModal: () => void
-  onResizeToolBlock: (delta: number) => void
 }
 
 function AvatarToolsPanel({
@@ -399,7 +368,6 @@ function AvatarToolsPanel({
   selectedSwatch,
   selectedSwatchId,
   recentSwatchIds,
-  resizingTools,
   onToolChange,
   onBrushSizeChange,
   onOpacityChange,
@@ -408,13 +376,12 @@ function AvatarToolsPanel({
   onRedo,
   onClear,
   onOpenLoadModal,
-  onResizeToolBlock,
 }: AvatarToolsPanelProps) {
   return (
     <StudioPanel
       side="left"
       title="도구"
-      state={resizingTools ? 'resizing' : 'expanded'}
+      state="expanded"
       actions={
         <Button size="small" variant="secondary" onClick={onOpenLoadModal}>
           아바타 불러오기
@@ -475,12 +442,6 @@ function AvatarToolsPanel({
           recentSwatchIds={recentSwatchIds}
           disabled={state === 'submitting'}
           onSelect={onSelectColor}
-        />
-        <PanelResizeHandle
-          axis="vertical"
-          label="도구 블록 세로 크기 조절"
-          dragging={resizingTools}
-          onResizeStep={(delta) => onResizeToolBlock(delta * 0.05)}
         />
       </Stack>
     </StudioPanel>
@@ -787,23 +748,4 @@ function clampInteger(value: number, min: number, max: number) {
 
 function getToolLabel(tools: ToolButtonProps['tool'][], activeTool: StudioToolId) {
   return tools.find((tool) => tool.id === activeTool)?.label ?? '펜'
-}
-
-function getDirtyMessage(
-  dirtyState: AvatarStudioScreenProps['dirtyState'],
-  sourceAvatarName: string | undefined,
-) {
-  if (dirtyState === 'unchanged') {
-    return `${sourceAvatarName ?? '불러온 아바타'}를 수정한 뒤 저장할 수 있어요.`
-  }
-
-  if (dirtyState === 'submitted') {
-    return '방금 저장한 내용과 같아요.'
-  }
-
-  if (dirtyState === 'blank') {
-    return '새 아바타 작업을 시작했어요.'
-  }
-
-  return '저장하지 않은 변경이 있어요.'
 }

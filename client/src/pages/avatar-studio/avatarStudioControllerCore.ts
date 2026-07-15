@@ -403,7 +403,6 @@ export function createAvatarStudioScreenProps(
     checkerMode: state.checkerMode,
     gridVisible: state.gridVisible,
     dirtyState,
-    sourceAvatarName: state.loadedSource?.name,
     submitDisabledReason: deriveSubmitDisabledReason(state, contentHash),
     loadModalOpen: state.loadModalOpen,
     loadModalTab: state.loadModalTab,
@@ -430,8 +429,6 @@ export function createAvatarStudioCallbacks(
   | 'onNewAvatar'
   | 'onToggleLeftPanel'
   | 'onToggleRightPanel'
-  | 'onResizePanel'
-  | 'onResizeToolBlock'
   | 'onToolChange'
   | 'onBrushSizeChange'
   | 'onOpacityChange'
@@ -466,12 +463,6 @@ export function createAvatarStudioCallbacks(
       ...layout,
       rightCollapsed: !layout.rightCollapsed,
       resizing: null,
-    })),
-    onResizePanel: (side, delta) => resizeAvatarStudioPanel(runtime, side, delta),
-    onResizeToolBlock: (delta) => updateAvatarStudioLayout(runtime, (layout) => ({
-      ...layout,
-      resizing: 'tools',
-      leftPanelWidth: clampPanelWidth(layout.leftPanelWidth + Math.round(delta * 10)),
     })),
     onToolChange: (toolId) => setAvatarStudioTool(runtime, toolId),
     onBrushSizeChange: (brushSize) => setAvatarStudioBrushSize(runtime, brushSize),
@@ -717,19 +708,6 @@ export function updateAvatarStudioLayout(
       viewState: layout.resizing ? 'default' : state.viewState,
     }
   })
-}
-
-export function resizeAvatarStudioPanel(
-  runtime: AvatarStudioControllerRuntime,
-  side: 'left' | 'right',
-  delta: number,
-) {
-  updateAvatarStudioLayout(runtime, (layout) => ({
-    ...layout,
-    leftPanelWidth: side === 'left' ? clampPanelWidth(layout.leftPanelWidth + delta) : layout.leftPanelWidth,
-    rightPanelWidth: side === 'right' ? clampPanelWidth(layout.rightPanelWidth + delta) : layout.rightPanelWidth,
-    resizing: side,
-  }))
 }
 
 function setAvatarStudioTool(runtime: AvatarStudioControllerRuntime, toolId: StudioToolId) {
@@ -985,10 +963,6 @@ function mapErrorToViewState(error: AvatarStudioControllerError): AvatarStudioSc
   }
 
   return 'submitFailed'
-}
-
-function clampPanelWidth(value: number) {
-  return clampNumber(Math.round(value), 220, 420)
 }
 
 function clampNumber(value: number, min: number, max: number) {

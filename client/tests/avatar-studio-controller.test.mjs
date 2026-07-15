@@ -65,6 +65,7 @@ assert.match(drawingPortSource, /height: imageData\.height/)
 assert.match(screenSource, /AVATAR_VISIBLE_WIDTH/)
 assert.match(screenSource, /surface="paper"/)
 assert.match(screenSource, /showVisibleFrame=\{false\}/)
+assert.match(screenSource, /showStatus=\{false\}/)
 assert.match(screenSource, /workspaceSize=\{\{ width: AVATAR_VISIBLE_WIDTH, height: AVATAR_VISIBLE_HEIGHT \}\}/)
 assert.match(screenSource, /data-v2-component="avatar-drawing-canvas"/)
 assert.match(screenSource, /data-v2-component="avatar-rgb-hex-palette"/)
@@ -74,6 +75,7 @@ assert.match(screenSource, /onPaste=\{\(event\) => event\.preventDefault\(\)\}/)
 assert.match(packageSource, /avatar-studio:check/)
 assert.doesNotMatch(screenSource, /어두운 체커|밝은 체커|격자 끄기|격자 켜기/)
 assert.doesNotMatch(screenSource, /AvatarPaintPreview/)
+assert.doesNotMatch(screenSource, /DirtyStateNotice|PanelResizeHandle|dirty-state-notice|도구 블록 세로 크기 조절/)
 
 assert.doesNotMatch(
   screenSource,

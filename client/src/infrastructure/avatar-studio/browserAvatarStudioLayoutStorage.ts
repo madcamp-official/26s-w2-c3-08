@@ -45,8 +45,7 @@ function normalizeLayout(value: unknown): AvatarStudioLayoutValue {
     rightPanelWidth: clampPanelWidth(readNumber(value.rightPanelWidth) ?? 320),
     resizing:
       value.resizing === 'left' ||
-      value.resizing === 'right' ||
-      value.resizing === 'tools'
+      value.resizing === 'right'
         ? value.resizing
         : null,
   }

@@ -189,7 +189,6 @@ export function createDefaultAssetStudioLayout(): AssetStudioLayoutValue {
     rightCollapsed: false,
     leftPanelWidth: 292,
     rightPanelWidth: 340,
-    toolBlockRatio: 0.56,
     resizing: null,
   }
 }
@@ -311,7 +310,6 @@ export function createAssetStudioScreenProps(
     checkerMode: state.checkerMode,
     gridVisible: state.gridVisible,
     dirtyState,
-    sourceAssetName: state.loadedSource?.name,
     submitDisabledReason: deriveSubmitDisabledReason(state, contentHash),
     loadModalOpen: state.loadModalOpen,
     loadModalTab: state.loadModalTab,
@@ -339,8 +337,6 @@ export function createAssetStudioCallbacks(
   | 'onNewAsset'
   | 'onToggleLeftPanel'
   | 'onToggleRightPanel'
-  | 'onResizePanel'
-  | 'onResizeToolBlock'
   | 'onToolChange'
   | 'onBrushSizeChange'
   | 'onOpacityChange'
@@ -375,12 +371,6 @@ export function createAssetStudioCallbacks(
       ...layout,
       rightCollapsed: !layout.rightCollapsed,
       resizing: null,
-    })),
-    onResizePanel: (side, delta) => resizeAssetStudioPanel(runtime, side, delta),
-    onResizeToolBlock: (delta) => updateAssetStudioLayout(runtime, (layout) => ({
-      ...layout,
-      toolBlockRatio: clampRatio(layout.toolBlockRatio + delta),
-      resizing: 'tools',
     })),
     onToolChange: (toolId) => setAssetStudioTool(runtime, toolId),
     onBrushSizeChange: (brushSize) => setAssetStudioBrushSize(runtime, brushSize),
@@ -675,28 +665,6 @@ function updateAssetStudioLayout(
   }))
 }
 
-function resizeAssetStudioPanel(
-  runtime: AssetStudioControllerRuntime,
-  side: 'left' | 'right',
-  delta: number,
-) {
-  updateAssetStudioLayout(runtime, (layout) => {
-    if (side === 'left') {
-      return {
-        ...layout,
-        leftPanelWidth: clampPanelWidth(layout.leftPanelWidth + delta),
-        resizing: 'left',
-      }
-    }
-
-    return {
-      ...layout,
-      rightPanelWidth: clampPanelWidth(layout.rightPanelWidth + delta),
-      resizing: 'right',
-    }
-  })
-}
-
 function setAssetStudioTool(runtime: AssetStudioControllerRuntime, toolId: StudioToolId) {
   runtime.setState((state) => ({
     ...state,
@@ -906,14 +874,6 @@ function clampCellCount(value: number) {
   }
 
   return Math.min(8, Math.max(1, Math.trunc(value)))
-}
-
-function clampPanelWidth(value: number) {
-  return Math.min(420, Math.max(220, Math.trunc(value)))
-}
-
-function clampRatio(value: number) {
-  return Math.min(0.8, Math.max(0.2, value))
 }
 
 function isUserCreatableCategory(category: AssetStudioCategory) {

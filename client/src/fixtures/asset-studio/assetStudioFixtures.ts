@@ -39,7 +39,6 @@ export interface AssetStudioScreenFixture {
   checkerMode?: AssetStudioScreenProps['checkerMode']
   gridVisible?: boolean
   dirtyState?: AssetStudioScreenProps['dirtyState']
-  sourceAssetName?: string
   submitDisabledReason?: string
   loadModalOpen?: boolean
   loadModalTab?: AssetStudioScreenProps['loadModalTab']
@@ -65,7 +64,6 @@ const defaultLayout: AssetStudioLayoutValue = {
   rightCollapsed: false,
   leftPanelWidth: 292,
   rightPanelWidth: 340,
-  toolBlockRatio: 0.56,
   resizing: null,
 }
 
@@ -101,12 +99,10 @@ export const assetStudioScreenFixtures: AssetStudioScreenFixture[] = [
   }),
   createFixture('b-asset-studio-loaded-unchanged', 'loadedUnchanged', '불러온 원본 수정 전', {
     dirtyState: 'unchanged',
-    sourceAssetName: '튼튼한 발판 원본',
     submitDisabledReason: '불러온 에셋을 수정한 뒤 만들 수 있어요.',
   }),
   createFixture('b-asset-studio-loaded-changed', 'loadedChanged', '불러온 원본 수정 후', {
     dirtyState: 'changed',
-    sourceAssetName: '튼튼한 발판 원본',
   }),
   createFixture('b-asset-studio-invalid-missing-name', 'invalidMissingName', '이름 누락', {
     form: { ...defaultForm, name: '' },
@@ -163,7 +159,6 @@ export function toAssetStudioScreenProps(
     checkerMode: fixture.checkerMode ?? 'light',
     gridVisible: fixture.gridVisible ?? true,
     dirtyState: fixture.dirtyState ?? 'changed',
-    sourceAssetName: fixture.sourceAssetName,
     submitDisabledReason: fixture.submitDisabledReason,
     loadModalOpen: fixture.loadModalOpen ?? false,
     loadModalTab: fixture.loadModalTab ?? 'mine',
@@ -176,8 +171,6 @@ export function toAssetStudioScreenProps(
     onNewAsset: noop,
     onToggleLeftPanel: noop,
     onToggleRightPanel: noop,
-    onResizePanel: noop,
-    onResizeToolBlock: noop,
     onToolChange: noop,
     onBrushSizeChange: noop,
     onOpacityChange: noop,
