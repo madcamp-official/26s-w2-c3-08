@@ -86,6 +86,12 @@ for (const copy of [
   '그림·속성 수정하기',
   '다시 시도',
   '다시 로그인',
+  'AI 생성 단계',
+  'AI 응답',
+  'Qwen LLM',
+  'WAN 모델',
+  'Qwen LLM이 WAN 프롬프트를 정리했어요.',
+  'WAN 모델 응답 시간이 초과됐어요.',
   '생성이 끝난 뒤 사용할 수 있어요.',
   '대기 중 · 예상 2~4분',
   '생성 중 · 남은 시간 약 3분',
@@ -111,6 +117,9 @@ assert.match(screenSource, /data-v2-component="asset-preview"/)
 assert.match(screenSource, /sourceImageUrl/)
 assert.match(screenSource, /className=\{styles\.previewImage\}/)
 assert.match(screenSource, /data-v2-component="asset-review-modal"/)
+assert.match(screenSource, /data-v2-component="ai-pipeline-trace"/)
+assert.match(screenSource, /responseSummary/)
+assert.match(screenSource, /getAiStageLabel/)
 assert.match(screenSource, /data-v2-component="cooldown-button"/)
 assert.match(screenSource, /const canUse = asset\.status === 'ready'/)
 assert.match(screenSource, /const canUseAsset = asset\?\.status === 'ready'/)
@@ -140,6 +149,11 @@ for (const callback of [
 assert.match(screenSource, /export type WarehouseAssetCategory = 'avatar' \| 'platform' \| 'obstacle' \| 'monster' \| 'background'/)
 assert.doesNotMatch(screenSource, /WarehouseFilter = .*item/)
 assert.doesNotMatch(fixtureSource, /category: ['"]item['"]/)
+assert.match(fixtureSource, /failedAiTrace/)
+assert.match(fixtureSource, /stage: ['"]qwen['"]/)
+assert.match(fixtureSource, /stage: ['"]wan['"]/)
+assert.match(fixtureSource, /code: ['"]QWEN_OK['"]/)
+assert.match(fixtureSource, /code: ['"]WAN_TIMEOUT['"]/)
 assert.match(screenSource, /warehouseFilters/)
 assert.match(screenSource, /value: 'platform'/)
 assert.match(screenSource, /value: 'obstacle'/)

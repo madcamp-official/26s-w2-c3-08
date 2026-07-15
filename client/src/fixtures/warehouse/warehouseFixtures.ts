@@ -12,6 +12,23 @@ export type WarehouseFixtureViewport = '1280x720' | '1440x900' | '1920x1080'
 
 const fixtureAvatarImageUrl = 'data:image/gif;base64,R0lGODdhAQACAIAAAP////8AACwAAAAAAQACAAACAkQBADs='
 
+const failedAiTrace: NonNullable<WarehouseAssetViewModel['aiTrace']> = [
+  {
+    stage: 'qwen',
+    status: 'success',
+    code: 'QWEN_OK',
+    message: 'Qwen LLM이 WAN 프롬프트를 정리했어요.',
+    responseSummary: '{"wan_prompt":"red gate obstacle sprite","wan_negative_prompt":"photorealistic"}',
+  },
+  {
+    stage: 'wan',
+    status: 'failed',
+    code: 'WAN_TIMEOUT',
+    message: 'WAN 모델 응답 시간이 초과됐어요.',
+    responseSummary: '{"request_id":"asset-obstacle-failed","timeout_ms":90000}',
+  },
+]
+
 export interface WarehouseScreenFixture {
   id: string
   screenId: 'S2B_WAREHOUSE'
@@ -131,7 +148,8 @@ const failedObstacle: WarehouseAssetViewModel = {
   errorText: '에셋 생성에 실패했어요. 다시 시도할 수 있어요.',
   createdAtText: '5분 전',
   sizeText: '2x2',
-  actions: [{ id: 'static', label: '정적', status: 'available' }],
+  aiTrace: failedAiTrace,
+  actions: [{ id: 'static', label: '정적', status: 'available', errorText: 'WAN 모델 응답 시간이 초과됐어요.', aiTrace: failedAiTrace }],
 }
 
 const malformedAsset: WarehouseAssetViewModel = {
@@ -216,11 +234,13 @@ export const warehouseScreenFixtures: WarehouseScreenFixture[] = [
   createWarehouseFixture({
     id: 's2b-warehouse-failed',
     title: '창고 생성 실패',
-    description: 'failed 카드와 다시 시도 affordance를 표시합니다.',
+    description: 'failed 카드, 다시 시도 affordance, Qwen/WAN AI trace를 표시합니다.',
     state: 'failed',
     selectedTab: 'component',
     selectedFilter: 'obstacle',
     assets: [failedObstacle],
+    selectedAssetId: failedObstacle.id,
+    selectedAction: 'static',
     viewport: '1440x900',
   }),
   createWarehouseFixture({

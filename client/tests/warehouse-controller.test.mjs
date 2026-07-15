@@ -25,6 +25,7 @@ await testReadyOnlyActions(core)
 await testFailedRetryAndActionRegeneration(core)
 await testReconnect(core)
 await testRouteToStudio(core)
+await testAiTraceMapping(core)
 
 assert.equal(statSync(join(repoRoot, 'client/src/pages/warehouse/WarehouseController.tsx')).isFile(), true)
 assert.equal(statSync(join(repoRoot, 'client/src/pages/warehouse/useWarehouseController.ts')).isFile(), true)
@@ -261,6 +262,78 @@ async function testRouteToStudio({ editWarehouseAssetSource }) {
   ])
 }
 
+async function testAiTraceMapping({
+  handleWarehouseAssetJobEvent,
+  mapWarehouseAssetsToViewModels,
+}) {
+  const nowMs = Date.parse('2026-07-14T00:00:00.000Z')
+  const qwenWanTrace = [
+    {
+      stage: 'qwen',
+      status: 'success',
+      code: 'QWEN_OK',
+      message: 'Qwen LLM이 WAN 프롬프트를 정리했어요.',
+      responseSummary: '{"wan_prompt":"green platform sprite"}',
+    },
+    {
+      stage: 'wan',
+      status: 'failed',
+      code: 'WAN_TIMEOUT',
+      message: 'WAN 모델 응답 시간이 초과됐어요.',
+      responseSummary: '{"timeout_ms":90000}',
+    },
+  ]
+  const asset = createAsset({
+    id: 'trace-platform',
+    category: 'platform',
+    status: 'failed',
+    aiTrace: qwenWanTrace,
+    errorCode: 'WAN_TIMEOUT',
+    errorMessage: 'WAN 모델 응답 시간이 초과됐어요.',
+    sprites: [
+      {
+        action: 'static',
+        status: 'failed',
+        lastRegenAt: null,
+        aiTrace: qwenWanTrace,
+        errorCode: 'WAN_TIMEOUT',
+        errorMessage: 'WAN 모델 응답 시간이 초과됐어요.',
+      },
+    ],
+  })
+  const runtime = createRuntime({ assets: [asset], nowMs })
+
+  const viewModels = mapWarehouseAssetsToViewModels(runtime.state.assets, runtime.state.session, nowMs)
+
+  assert.deepEqual(viewModels[0].aiTrace, qwenWanTrace)
+  assert.deepEqual(viewModels[0].actions[0].aiTrace, qwenWanTrace)
+  assert.equal(viewModels[0].errorText, 'WAN 모델 응답 시간이 초과됐어요. 오류 코드: WAN_TIMEOUT')
+  assert.equal(viewModels[0].actions[0].errorText, 'WAN 모델 응답 시간이 초과됐어요. 오류 코드: WAN_TIMEOUT')
+
+  const recoveryTrace = [
+    ...qwenWanTrace,
+    {
+      stage: 'storage',
+      status: 'success',
+      code: 'STORAGE_OK',
+      message: '생성 이미지를 저장했어요.',
+      responseSummary: '{"url":"https://assets.example/generated.png"}',
+    },
+  ]
+
+  handleWarehouseAssetJobEvent(runtime, {
+    assetId: 'trace-platform',
+    status: 'ready',
+    action: 'static',
+    aiTrace: recoveryTrace,
+    updatedAtMs: nowMs + 1_000,
+  })
+
+  assert.equal(runtime.state.assets[0].status, 'ready')
+  assert.deepEqual(runtime.state.assets[0].sprites[0].aiTrace, recoveryTrace)
+  assert.deepEqual(runtime.state.assets[0].aiTrace, qwenWanTrace)
+}
+
 function createRuntime(options = {}) {
   const session = options.session ?? createSession()
   const nowMs = options.nowMs ?? Date.parse('2026-07-14T00:00:00.000Z')
@@ -382,6 +455,9 @@ function createAsset(overrides = {}) {
     createdAt: overrides.createdAt ?? '2026-07-13T00:00:00.000Z',
     widthCells: overrides.widthCells ?? (category === 'avatar' ? null : 2),
     heightCells: overrides.heightCells ?? (category === 'avatar' ? null : 1),
+    errorCode: overrides.errorCode ?? null,
+    errorMessage: overrides.errorMessage ?? null,
+    aiTrace: overrides.aiTrace,
     sprites: overrides.sprites ?? [
       {
         action: category === 'avatar' ? 'idle' : 'static',
