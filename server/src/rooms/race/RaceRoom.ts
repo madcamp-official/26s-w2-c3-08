@@ -6,11 +6,13 @@ import type { Client } from "colyseus";
 import type { User } from "@prisma/client";
 import { GAME_RULES } from "shared";
 import {
-  type Phase, NEXT_PHASE, phaseDurationSec, RACE_MSG, type RaceJoinOptions,
+  type Phase, NEXT_PHASE, phaseDurationSec, RACE_MSG, RACE_S2C_MSG, type RaceJoinOptions,
 } from "shared/race";
 import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
 import { RaceState, MemberState } from "../schema/RaceState.js";
 import { prisma } from "../../prisma.js";
+import { resolveMemberLines } from "../../game/resolveMemberLines.js";
+import { mergeLines } from "../../game/mergeLines.js";
 
 function hashPassword(pw: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -22,13 +24,25 @@ function verifyPassword(pw: string, stored: string): boolean {
   return timingSafeEqual(scryptSync(pw, salt, 32), Buffer.from(hash, "hex"));
 }
 
+/** Fisher-Yates — 라인 병합 순서 랜덤화(게임 규칙: "테스트 완료된 라인끼리 랜덤 순서로 연결") */
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
 export class RaceRoom extends PhysicsRoom {
   maxClients = 8;
   state = new RaceState();
 
   private roomRowId: bigint | null = null;
+  private roomCode = "";
   private hostSessionId = "";
   private passwordHash: string | null = null;
+  private transitioning = false;
+  /** racing 진입 시 확정되는 골 지점(타일) — 4단계 골 판정용 */
+  protected goalFlagTiles: { x: number; y: number } | null = null;
 
   /** 2단계: 빈 월드(로비엔 물리 대상 없음). 3단계에서 racing 진입 시 병합맵으로 교체. */
   protected worldDef(): WorldDef {
@@ -45,13 +59,13 @@ export class RaceRoom extends PhysicsRoom {
     if (options?.password) this.passwordHash = hashPassword(options.password);
 
     // DB Room 행 생성 (기록용, 비동기)
-    const code = randomBytes(3).toString("hex");
+    this.roomCode = randomBytes(3).toString("hex");
     void (async () => {
       try {
         const creator = await prisma.user.findUnique({ where: { token: options?.userToken ?? "" } });
         const row = await prisma.room.create({
           data: {
-            code,
+            code: this.roomCode,
             name: options?.name ?? null,
             hostId: creator?.id ?? 0n,
             isPublic: options?.isPublic ?? true,
@@ -68,50 +82,87 @@ export class RaceRoom extends PhysicsRoom {
 
     this.onMessage(RACE_MSG.start, (client) => {
       if (client.sessionId !== this.hostSessionId || this.state.phase !== "lobby") return;
-      this.enterPhase("preview");
+      void this.enterPhase("preview");
     });
     this.onMessage(RACE_MSG.restart, (client) => {
       if (client.sessionId !== this.hostSessionId || this.state.phase !== "finished") return;
-      this.enterPhase("lobby");
+      void this.enterPhase("lobby");
     });
   }
 
   // ── 페이즈 엔진 ─────────────────────────────────────
   protected override fixedTick(): void {
     super.fixedTick();
-    if (this.state.phaseEndsAt > 0 && this.clock_ >= this.state.phaseEndsAt) {
+    if (!this.transitioning && this.state.phaseEndsAt > 0 && this.clock_ >= this.state.phaseEndsAt) {
       const next = NEXT_PHASE[this.state.phase as Phase];
-      if (next) this.enterPhase(next);
+      if (next) void this.enterPhase(next);
     }
   }
 
-  private enterPhase(phase: Phase): void {
-    // 진입 훅 (3단계에서 채움) — lineCount는 racing 진입 전에 확정해야 duration 계산이 맞음
-    if (phase === "racing") this.onEnterRacing();
+  /**
+   * 재진입 가드(transitioning): onEnterRacing이 DB 조회로 비동기 대기하는 동안
+   * fixedTick이 매 틱 재호출하지 않도록. 그 사이엔 phaseEndsAt이 아직 안 갱신됐기 때문.
+   */
+  private async enterPhase(phase: Phase): Promise<void> {
+    if (this.transitioning) return;
+    this.transitioning = true;
+    try {
+      // 진입 훅 — lineCount는 racing 진입 전에 확정해야 duration 계산이 맞음
+      if (phase === "racing") await this.onEnterRacing();
 
-    this.state.phase = phase;
-    const sec = phaseDurationSec(phase, this.state.lineCount);
-    this.state.phaseEndsAt = sec === null ? 0 : this.clock_ + sec * 1000;
-    console.log(`[race] phase → ${phase}${sec !== null ? ` (${sec}s)` : ""}`);
+      this.state.phase = phase;
+      const sec = phaseDurationSec(phase, this.state.lineCount);
+      this.state.phaseEndsAt = sec === null ? 0 : this.clock_ + sec * 1000;
+      console.log(`[race] phase → ${phase}${sec !== null ? ` (${sec}s)` : ""}`);
 
-    if (phase === "building") this.onEnterBuilding();
-    if (phase === "finished") this.onEnterFinished();
+      if (phase === "building") this.onEnterBuilding();
+      if (phase === "finished") this.onEnterFinished();
 
-    // DB 기록 (비동기)
-    if (this.roomRowId !== null) {
-      prisma.room.update({
-        where: { id: this.roomRowId },
-        data: { status: phase, phaseStartedAt: new Date(), lineCount: this.state.lineCount || null },
-      }).catch((e) => console.warn("[race] Room 상태 기록 실패:", e?.message ?? e));
+      // DB 기록 (비동기)
+      if (this.roomRowId !== null) {
+        prisma.room.update({
+          where: { id: this.roomRowId },
+          data: { status: phase, phaseStartedAt: new Date(), lineCount: this.state.lineCount || null },
+        }).catch((e) => console.warn("[race] Room 상태 기록 실패:", e?.message ?? e));
+      }
+    } finally {
+      this.transitioning = false;
     }
   }
 
   /** 3단계: 라인 할당·에디터 진입 준비 */
   protected onEnterBuilding(): void {}
 
-  /** 3단계: 테스트 통과 라인 병합 → loadWorld. 2단계는 인원수로 lineCount만 확정 */
-  protected onEnterRacing(): void {
-    this.state.lineCount = Math.max(1, this.state.members.size);
+  /**
+   * 테스트 통과 라인 병합 → loadWorld. 본인 라인이 없는 유저는 DB 랜덤 라인으로 대체하고
+   * 본인에게만 통지(lineFallback). 라인이 아무것도 없으면(시드 실패 등) 인원수로 폴백.
+   */
+  protected async onEnterRacing(): Promise<void> {
+    const memberUserIds: bigint[] = [];
+    const userIdToSessionId = new Map<string, string>();
+    this.state.members.forEach((m, sessionId) => {
+      memberUserIds.push(BigInt(m.userId));
+      userIdToSessionId.set(m.userId, sessionId);
+    });
+
+    try {
+      const { lines, fallbackUserIds } = await resolveMemberLines(this.roomCode, memberUserIds);
+      shuffleInPlace(lines);
+      const { worldDef, goalFlagTiles } = mergeLines(lines);
+      this.loadWorld(worldDef);
+      this.state.lineCount = lines.length;
+      this.goalFlagTiles = goalFlagTiles;
+
+      for (const userId of fallbackUserIds) {
+        const sessionId = userIdToSessionId.get(userId.toString());
+        const client = sessionId ? this.clients.find((c) => c.sessionId === sessionId) : undefined;
+        client?.send(RACE_S2C_MSG.lineFallback, { reason: "no_test_passed" });
+      }
+      console.log(`[race] 병합 완료 라인=${lines.length} 결손대체=${fallbackUserIds.length}`);
+    } catch (e) {
+      console.warn("[race] 라인 병합 실패, 인원수 폴백:", e instanceof Error ? e.message : e);
+      this.state.lineCount = Math.max(1, this.state.members.size);
+    }
   }
 
   /** 4단계: 순위 확정·RaceResult 저장 */

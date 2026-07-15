@@ -9,6 +9,15 @@ export const RACE_MSG = {
   restart: "restart",
 } as const;
 
+/** 서버 → 클라(개별 send) */
+export const RACE_S2C_MSG = {
+  /** 본인 라인이 결손(테스트 미완료)이라 DB 랜덤 라인으로 대체됐음을 통지 */
+  lineFallback: "lineFallback",
+} as const;
+export interface LineFallbackPayload {
+  reason: "no_test_passed";
+}
+
 /** joinOrCreate("race", options) 계약 */
 export interface RaceJoinOptions {
   /** POST /api/session이 발급한 유저 토큰 (필수) */
