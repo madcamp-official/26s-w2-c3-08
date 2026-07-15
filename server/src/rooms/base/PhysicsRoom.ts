@@ -11,7 +11,7 @@ import {
   updateAggro, registerHit,
   type BlockSpec, type BlockInstance, createBlock, blockSolid, blockRect,
   tryBreak, stepBlockRespawn,
-  type ItemSpec, type ItemInstance, createItem,
+  type ItemSpec, type ItemInstance, createItem, stepItemPhysics,
   type ProjectileSpec, type ProjectileInstance, spawnProjectile, stepProjectile,
   type LineBounds, checkLineExit,
 } from "shared/parts";
@@ -97,7 +97,7 @@ export abstract class PhysicsRoom extends Room {
         if (bs) bs.active = false;
       }
     },
-    hitQBlock: (client: Client, m: { blockId: string }) => {
+    hitQBlock: (client: Client, m: { blockId: string; by?: "headbutt" | "pound" }) => {
       const b = this.blocksRt.get(m.blockId);
       if (!b || b.emptied || !b.spec.emitsItem) return;
       b.emptied = true;
@@ -109,8 +109,12 @@ export abstract class PhysicsRoom extends Room {
         ? assets[Math.floor(Math.random() * assets.length)]
         : assets[0];
       const id = `qi_${m.blockId}`;
-      const spec: ItemSpec = { id, kind: kind as ItemSpec["kind"], x: b.x + b.spec.w / 2, y: b.y - 4 };
-      this.itemsRt.set(id, createItem(spec));
+      // 머리치기(headbutt) = 원작처럼 위쪽에 뜬 채 등장. 내려찍기(pound) = 중력 받아 아래로 떨어짐(§B, 2026-07-16).
+      const falling = m.by === "pound";
+      const spec: ItemSpec = falling
+        ? { id, kind: kind as ItemSpec["kind"], x: b.x + b.spec.w / 2, y: b.y + b.spec.h + 4 }
+        : { id, kind: kind as ItemSpec["kind"], x: b.x + b.spec.w / 2, y: b.y - 4 };
+      this.itemsRt.set(id, createItem(spec, falling));
       const st = new ItemState();
       st.kind = spec.kind; st.x = spec.x; st.y = spec.y;
       this.state.items.set(id, st);
@@ -382,12 +386,15 @@ export abstract class PhysicsRoom extends Room {
       }
     });
 
-    // ── 아이템 재생성 + 경합 중재 (§60) ──
+    // ── 아이템 재생성 + 경합 중재 (§60) + 내려찍기로 나온 아이템 낙하(§B) ──
     for (const [id, it] of this.itemsRt) {
       const st = this.state.items.get(id);
       if (it.taken) {
         it.respawnLeftMs -= FIXED_MS;
         if (it.respawnLeftMs <= 0) { it.taken = false; if (st) st.available = true; }
+      } else if (it.falling) {
+        stepItemPhysics(it, terrain, FIXED_MS);
+        if (st) { st.x = it.spec.x; st.y = it.spec.y; }
       }
     }
     this.resolveClaims();

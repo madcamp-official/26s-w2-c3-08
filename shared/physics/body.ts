@@ -90,7 +90,7 @@ function resolveMTV(b: Body, r: Rect): "left" | "right" | "up" | "down" | null {
 export function moveAndCollide(b: Body, terrain: Terrain, dtMs: number, t: Tuning = TUNING): void {
   const dt = dtMs / 1000;
   clampSpeed(b, t);
-  const wasGrounded = b.grounded;
+  const prevOnSlopeDir = b.onSlopeDir;   // 경사 벽 판정용 — 방금 전 틱까지 타고 있던 경사 기억
   let pushedL = false, pushedR = false, pushedU = false, pushedD = false;
 
   // ── X축 ──────────────────────────────────────────────
@@ -137,16 +137,19 @@ export function moveAndCollide(b: Body, terrain: Terrain, dtMs: number, t: Tunin
     }
   }
 
-  // ── 바닥 경사 ────────────────────────────────────────
-  const SNAP = 12;
+  // ── 바닥 경사(밟는 대각선 면) — 벽 판정보다 먼저 계산해서, 이번 틱에 경사 표면에 정상적으로
+  // 얹히는 경우(막 다 올라왔거나, 옆 경사 틈 사이로 떨어지다가 반대쪽 경사면에 착지하는 경우
+  // 등)를 "밖에서 침입"으로 오판해 벽이 순간이동시키는 걸 막는다(2026-07-16, 봉우리 사이가
+  // 뚫려 있는 경우까지 재현 리포트로 확인).
   b.onSlopeDir = 0;
   for (const s of querySlopes(terrain)) {
     if (s.kind === "floor") {
       const sy = slopeSurfaceY(s, b.x);
       if (sy === null || b.vy < 0) continue;
+      // "아쉽게 못 올라가도 붙여주는" 관대한 스냅(wasGrounded 기반 최대 12px 미리 당김)은
+      // 경사에서는 적용하지 않는다(2026-07-16) — 실제로 겹친 경우(pen)만 표면에 붙임.
       const pen = bottom(b) > sy && top(b) < s.y + s.h;
-      const snap = wasGrounded && bottom(b) >= sy - SNAP;
-      if (pen || snap) {
+      if (pen) {
         b.y = sy; b.vy = 0; b.grounded = true; b.onSlopeDir = s.dir;
       }
     } else {
@@ -155,6 +158,40 @@ export function moveAndCollide(b: Body, terrain: Terrain, dtMs: number, t: Tunin
       if (sy === null) continue;
       const ceilBottom = s.y + s.h - (sy - s.y); // 반전: 아래로 내려온 천장면
       if (top(b) < ceilBottom && bottom(b) > s.y && b.vy < 0) b.vy = 0;
+    }
+  }
+
+  // ── 경사 벽·밑면 (§2026-07-16: 밟는 대각선 말고 나머지 두 면도 기본 단단함, 옵션으로 끌 수 있음) ──
+  // 삼각형이라 일반 solids MTV 재사용이 애매해 전용 처리. 위 대각선 스냅 이후에 실행. 벽은
+  // "이 경사에도, 방금 전 틱까지도 지지받지 못한 채" 옆에서 파고들 때만 막는다 — 꼭짓점을
+  // 막 넘어서는 그 정확한 틱은 이번 틱 표면 지지(null)와 직전 틱 지지(prevOnSlopeDir) 중
+  // 하나로 반드시 잡힘(2026-07-16, "넘어가는 순간 순간이동" 재현으로 확인 — onSlopeDir 리셋과
+  // 같은 틱에 벽이 반응해서 직전 틱 값을 안 보면 그 찰나의 프레임을 놓침).
+  for (const s of querySlopes(terrain)) {
+    if (s.kind !== "floor") continue;
+    if (b.onSlopeDir === s.dir || prevOnSlopeDir === s.dir) continue;
+    const faces = s.faces ?? {};
+    const wallX = s.dir === 1 ? s.x + s.w : s.x;
+    if (faces.side !== false) {
+      // 벽 쪽으로 "이동 중"일 때만 막는다(진짜 벽 충돌의 정의). 이 조건이 없으면 꼭짓점을 넘어
+      // 벽 반대쪽으로 걸어나가는 몸(몸통 절반이 아직 벽 x에 걸쳐 있고 한 틱 낙하로 세로 겹침도
+      // 참이 되는 상태)을 "침입"으로 오판해 벽 바깥으로 최대 반폭(32px)씩 밀어버림 — 그 밀린
+      // 자리가 공중이라 구덩이 낙하까지 이어지던 순간이동 버그의 실원인(2026-07-16 확정).
+      const movingIntoWall = s.dir === 1 ? b.vx < 0 : b.vx > 0;
+      const onOutside = s.dir === 1 ? b.x > wallX : b.x < wallX;
+      const overlapsY = bottom(b) > s.y && top(b) < s.y + s.h;
+      const crossesWall = s.dir === 1 ? left(b) < wallX : right(b) > wallX;
+      if (movingIntoWall && onOutside && overlapsY && crossesWall) {
+        if (s.dir === 1) { b.x = wallX + b.w / 2; b.vx = 0; b.touchingWall = -1; }
+        else { b.x = wallX - b.w / 2; b.vx = 0; b.touchingWall = 1; }
+      }
+    }
+    if (faces.bottom !== false) {
+      const overlapsX = right(b) > s.x && left(b) < s.x + s.w;
+      const slopeBottom = s.y + s.h;
+      if (overlapsX && b.vy < 0 && top(b) < slopeBottom && bottom(b) > slopeBottom) {
+        b.y = slopeBottom + b.h; b.vy = 0;
+      }
     }
   }
 

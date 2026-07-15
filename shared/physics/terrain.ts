@@ -32,6 +32,8 @@ export interface Slope {
   h: number;
   dir: 1 | -1;
   kind: "floor" | "ceiling";
+  /** 대각선(밟는 면)은 항상 단단함. 나머지 두 면(높은 쪽 세로 벽·밑면)은 옵션 — 생략 시 둘 다 단단함(§2026-07-16). */
+  faces?: { side?: boolean; bottom?: boolean };
 }
 
 export interface Terrain {

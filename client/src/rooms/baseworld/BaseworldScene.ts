@@ -3,14 +3,15 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { getStateCallbacks } from "@colyseus/sdk";
-import { TUNING, type Terrain, facesOf } from "shared/physics";
+import { TUNING, type Terrain, facesOf, createBody } from "shared/physics";
 import "shared/behavior";
 import "shared/properties";
+import { compileRules, stepRules, type Ctx } from "shared/behavior";
 import {
   type Avatar, type AvatarInput, createAvatar, stepAvatar, applyItem, clearItemEffects,
   pushSelfOut, checkIStomped, checkStompedMe, headStand,
   createCarryState, stepCarry, type CarryState, type Carryable,
-  blockRect, type ItemSpec,
+  blockRect, type ItemSpec, type BlockSpec,
 } from "shared/parts";
 import { getProperty } from "shared/properties";
 import { TESTMAP } from "shared/maps";
@@ -18,8 +19,9 @@ import {
   createGhostView, ghostServerUpdate, ghostStep, ghostSnapshot, ghostRenderAt, type GhostView,
 } from "../../netphysics/interpolate.js";
 import { sendAvatarState } from "../../netphysics/reconcile.js";
-import { createSquash, setSquash, stepSquash, type SquashState } from "../../netphysics/squash.js";
+import { createSquash, setSquash, stepSquash, createSpring, stepSpring, type SquashState, type SpringState } from "../../netphysics/squash.js";
 import { feedback, monsterPatternChanged } from "../../fx/dispatch.js";
+import { screenShake } from "../../fx/juice.js";
 import { unlockAudio } from "../../audio/zzfx.js";
 import { setListenerPosition } from "../../audio/listener.js";
 import { playSound } from "../../audio/sfx.js";
@@ -27,7 +29,7 @@ import { blockVisualTagsFromSpec, monsterVisualTagsFromSpec } from "shared/visua
 import {
   flickerAlpha, squashedBox, revealAlpha, drawFaceBorders, drawSeamMergedBorders, type SeamRect,
   drawSlopeBorder, drawPlayerBorder, drawSwitchTogglerBorder, drawSwitchAffectedBorder,
-  drawGhostBlock, drawItemGiverGlow, itemPulseScale,
+  drawItemGiverGlow, itemPulseScale,
   drawConveyorArrows, drawIceGlint, drawDashLines, drawBounceArrow, drawDirectionArrow,
   drawRideHint, drawDetectRing, drawCrumbleWarning, drawPeriodicWarning,
   drawHpPips, drawEnrageMark, drawShooterMark, drawSplitMark, drawImmortalMark,
@@ -47,6 +49,7 @@ interface View {
   stale: boolean;     // 일정 시간 tick 정지 = 탭 백그라운드 → 충돌 통과(B)
   pound: number;      // 상대 내려찍기 상태 (넉백+스턴 판정용)
   ghostPushLeftMs: number;  // 상대-밀기(노이즈) 스무딩 잔여 — iPush(내 입력)는 즉시라 스무딩 안 함
+  crouchSpring: SpringState;   // §B2 웅크림 스프라이트 스프링(축소·복원 띠용) — 원격 플레이어용
 }
 
 export class BaseworldScene extends Phaser.Scene {
@@ -54,6 +57,7 @@ export class BaseworldScene extends Phaser.Scene {
   me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
   carry: CarryState = createCarryState();
   mySquash = createSquash();
+  crouchSpring = createSpring(1);   // §B2 웅크림 스프라이트 스프링(축소·복원 띠용)
   tick = 0;
   acc = 0;
   sendAcc = 0;
@@ -62,7 +66,8 @@ export class BaseworldScene extends Phaser.Scene {
   monsters = new Map<string, View>();
   /** 몬스터 사운드/연출용 상태 전이 추적 (MonsterState 필드 엣지 감지 — 서버 emit이 클라에 직접 안 옴) */
   monsterFx = new Map<string, { alive: boolean; stunned: boolean; hidden: boolean; action: string }>();
-  blockCrumbleFx = new Map<string, boolean>();   // crumbling 전이 감지(§A-2 텔레그래프 사운드)
+  blockCrumbleFx = new Map<string, { crumbling: boolean; startAt: number }>();   // crumbling 전이 감지(사운드) + 시작시각(진행도 연출용)
+  blockBumpFx = new Map<string, { squash: SquashState; untilMs: number }>();   // 물음표·스위치 블록 "띠용"(§B4)
   /** 다른 플레이어(고스트) 사운드용 상태 전이 추적 — PlayerState에 없는 필드(dead·wallJump)는 재현 불가(TODO) */
   playerFx = new Map<string, {
     grounded: boolean; slide: boolean; pound: number;
@@ -70,12 +75,17 @@ export class BaseworldScene extends Phaser.Scene {
   }>();
   projectiles = new Map<string, Phaser.GameObjects.Rectangle>();
   itemRects = new Map<string, Phaser.GameObjects.Rectangle>();
+  itemSpawnAt = new Map<string, number>();   // 스폰 유예(§spawnGraceMs) — 나오자마자 바로 먹히는 것 방지
   carryRects = new Map<string, Phaser.GameObjects.Rectangle>();
   blockRects = new Map<string, Phaser.GameObjects.Rectangle>();
   // 보간 상태 (dead reckoning) — 모든 움직이는 것 (§21-1)
   projGhosts = new Map<string, GhostView>();
   carryGhosts = new Map<string, GhostView>();
   blockGhosts = new Map<string, GhostView>();
+  // §A: 내가 밟고 있는(라이드 중인) 블록은 서버 왕복·고스트 보간을 기다리지 않고 로컬 직접 시뮬레이션.
+  // 이유: 고스트(dead-reckoning+LERP)는 블록이 멈췄다 출발할 때 지연이 커서, 밟은 발판이 화면보다 늦게
+  // 따라와 유저가 뚫고 지나가는 버그의 근본 원인이었음. 내가 타고 있는지는 순수 로컬 정보라 왕복 불필요.
+  blockShadowRt = new Map<string, { x: number; y: number; mem: Record<string, number>; engaged: boolean }>();
   // 몬스터 로컬 타격 확정 (서버 왕복 안 기다림) — id → {예측 타격수, 시각}
   localMonHits = new Map<string, { count: number; at: number }>();
   myRect!: Phaser.GameObjects.Rectangle;
@@ -174,21 +184,29 @@ export class BaseworldScene extends Phaser.Scene {
     this.entityVisualGfx = this.add.graphics().setDepth(5.5); // 몬스터·플레이어(4~5) 전부 위
 
     const $ = getStateCallbacks(this.room);
+    // 스위치 토글(§B3): 라인 전역 발동이므로 모든 클라(관련 없는 라인도 포함, 라인 1개짜리 맵이라 전원)가 화면 흔들림으로 체감
+    $(this.room.state).listen("switchOn", () => { screenShake(this, 120, 0.0035); });
     // 고스트 플레이어
+    // 모든 onAdd에서 새로 만들기 전에 기존 걸 파괴 — 재연결·씬 재시작 등으로 onAdd가 같은 id에
+    // 두 번 불리면(Colyseus는 콜백 등록 시점에 기존 항목 전부에 대해서도 onAdd를 쏨) 이전 오브젝트가
+    // 고아로 남아 화면에 계속 보이는 버그가 있었음(2026-07-16 피드백: "물리판정은 없어지는데 스프라이트는 남음").
     $(this.room.state).players.onAdd((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId) return;
+      this.dropView(this.players, id);
       const v = this.makeView(p.x, p.y, p.w, p.h, 0xff5555, p.nickname || id.slice(0, 4));
       this.players.set(id, v);
     });
     $(this.room.state).players.onRemove((_p: PlayerNet, id: string) => { this.dropView(this.players, id); this.playerFx.delete(id); });
     // 몬스터
     $(this.room.state).monsters.onAdd((m: MonsterNet, id: string) => {
+      this.dropView(this.monsters, id);
       const v = this.makeView(m.x, m.y, m.w, m.h, 0xcc66ff, m.asset);
       this.monsters.set(id, v);
     });
     $(this.room.state).monsters.onRemove((_m: MonsterNet, id: string) => { this.dropView(this.monsters, id); this.monsterFx.delete(id); });
     // 발사체
     $(this.room.state).projectiles.onAdd((pr: ProjNet, id: string) => {
+      this.projectiles.get(id)?.destroy();
       this.projectiles.set(id, this.add.rectangle(pr.x, pr.y, TUNING.sizes.projectile, TUNING.sizes.projectile, 0xffaa33).setOrigin(0.5, 1).setDepth(4));
     });
     $(this.room.state).projectiles.onRemove((pr: ProjNet, id: string) => {
@@ -199,10 +217,16 @@ export class BaseworldScene extends Phaser.Scene {
     });
     // 아이템
     $(this.room.state).items.onAdd((it: ItemNet, id: string) => {
+      this.itemRects.get(id)?.destroy();
       this.itemRects.set(id, this.add.rectangle(it.x, it.y, TUNING.sizes.item, TUNING.sizes.item, 0x66ffcc).setOrigin(0.5, 1).setDepth(3));
+      // 스폰 유예(§spawnGraceMs, 2026-07-16): 물음표 블록에서 막 나온 아이템이 스폰 위치와 겹쳐
+      // 있는 플레이어에게 그 자리에서 바로(같은 프레임 수준으로) 먹혀버려 "나오자마자 사라져서
+      // 먹은 건지도 모르겠다"는 피드백 — 원작처럼 잠깐 뜬 걸 보여준 다음에야 먹을 수 있게 함.
+      this.itemSpawnAt.set(id, this.time.now);
     });
     // 잡기 파츠 (돌)
     $(this.room.state).carryables.onAdd((c: CarryNet, id: string) => {
+      this.carryRects.get(id)?.destroy();
       this.carryRects.set(id, this.add.rectangle(c.x, c.y, TUNING.sizes.carryable, TUNING.sizes.carryable, 0xb08850).setOrigin(0.5, 1).setDepth(3));
     });
     // 잡기 거부 (서버 소유권 패배 §30-4) — 손에서 사라짐, 이전 행동 원복 없음
@@ -214,7 +238,8 @@ export class BaseworldScene extends Phaser.Scene {
     $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
       const spec = TESTMAP.blocks.find((b) => b.id === id);
       if (!spec) return;
-      this.blockRects.set(id, this.add.rectangle(bs.x, bs.y, spec.w, spec.h, 0x8888aa).setOrigin(0, 0).setDepth(2));
+      this.blockRects.get(id)?.destroy();
+      this.blockRects.set(id, this.add.rectangle(bs.x, bs.y, spec.w, spec.h, 0x888888).setOrigin(0, 0).setDepth(2));
     });
     // 아이템 획득 중재 결과 (§60)
     this.room.onMessage("itemClaim", (m: { itemId: string; winner: string | null }) => {
@@ -243,6 +268,7 @@ export class BaseworldScene extends Phaser.Scene {
       fxLeftMs: 0,
       lastTick: -1, lastTickAt: 0, stale: false,
       pound: 0, ghostPushLeftMs: 0,
+      crouchSpring: createSpring(1),
     };
   }
   dropView(map: Map<string, View>, id: string): void {
@@ -267,6 +293,15 @@ export class BaseworldScene extends Phaser.Scene {
     return e && this.time.now - e.at < 2000 ? Math.max(serverHits, e.count) : serverHits;
   }
 
+  /** 내 발이 지금 이 블록 윗면에 있는가 (§A 라이드 판정). 2026-07-16 피드백: "너무 안 좋고 자꾸
+   *  내려간다" — grounded 스냅(±6px) 요구가 너무 빡빡해서 캐리가 안 붙는 틈이 있었음. grounded를
+   *  필수로 안 두고, 발이 윗면 근방(위로 좀 더 널널, 아래로도 여유)에 있으면 라이드로 인정. */
+  private isRidingBlock(bx: number, by: number, spec: BlockSpec): boolean {
+    const b = this.me.body;
+    const withinX = Math.abs(b.x - (bx + spec.w / 2)) < (b.w + spec.w) / 2;
+    return withinX && b.y >= by - 14 && b.y <= by + 20;
+  }
+
   /** 이동 발판 보간 전진: 충돌(currentTerrain)·렌더가 같은 위치를 쓰도록 fixedTick에서 갱신 */
   stepBlockGhosts(): void {
     if (!this.room.state?.blocks) return;
@@ -275,6 +310,48 @@ export class BaseworldScene extends Phaser.Scene {
       if (!g) { g = createGhostView(bs.x, bs.y); this.blockGhosts.set(id, g); }
       if (bs.x !== g.srvX || bs.y !== g.srvY) ghostServerUpdate(g, bs.x, bs.y, bs.vx, bs.vy); // 새 패치만
       ghostStep(g, FIXED_MS, TUNING.net.monsterLerp);
+
+      // §A: 내가 밟고 있으면 고스트 대신 로컬 stepRules 결과로 대체(서버와 동일 규칙, 지연 없음)
+      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      if (!spec?.rules || !bs.active) { this.blockShadowRt.delete(id); return; }
+      let sh = this.blockShadowRt.get(id);
+      if (!sh) { sh = { x: g.x, y: g.y, mem: {}, engaged: false }; this.blockShadowRt.set(id, sh); }
+      const riding = this.isRidingBlock(sh.engaged ? sh.x : g.x, sh.engaged ? sh.y : g.y, spec);
+      if (!riding) { sh.engaged = false; return; }
+      if (!sh.engaged) { sh.x = g.x; sh.y = g.y; sh.engaged = true; }   // 라이드 시작 순간=서버 위치에서 이어받음
+      const prevX = sh.x, prevY = sh.y;   // §A-캐리: 이번 틱 이동량 계산용
+      const motionOk = !spec.switchReact || spec.switchReact.mode !== "motion"
+        || this.room.state.switchOn === spec.switchReact.whenOn;
+      if (motionOk) {
+        const body = createBody(sh.x + spec.w / 2, sh.y + spec.h, spec.w, spec.h, ["block"]);
+        body.gravity = false;
+        body.facing = (sh.mem["__facing"] ?? 1) as 1 | -1;
+        const emptyMem = sh.mem as unknown as Record<string, unknown>;
+        let compiled = emptyMem["__compiled"] as unknown as ReturnType<typeof compileRules> | undefined;
+        if (!compiled) { compiled = compileRules(spec.rules); emptyMem["__compiled"] = compiled as unknown as number; }
+        const ctx: Ctx = {
+          self: body, dtMs: FIXED_MS, t: TUNING, terrain: this.currentTerrain(),
+          players: [this.me.body], target: null, rng: Math.random,
+          mem: sh.mem, events: new Set(), emit: () => {},
+          switchOn: this.room.state.switchOn, hpRatio: 1,
+        };
+        stepRules(compiled, ctx);
+        body.x += body.vx * (FIXED_MS / 1000);
+        body.y += body.vy * (FIXED_MS / 1000);
+        sh.mem["__facing"] = body.facing;
+        sh.x = body.x - spec.w / 2;
+        sh.y = body.y - spec.h;
+      }
+      // §A-캐리: 발판이 이번 틱 이동한 만큼 위에 탄 나도 리지드하게 같이 옮김.
+      // 이게 없으면 중력이 나를 끌어내리는 동안 발판만 앞서 움직여서(특히 위로) 발밑을 뚫고 지나가 버린다 —
+      // 지연(고스트 랙) 제거만으로는 못 고치는, 애초에 "캐리" 개념 자체가 없었던 게 진짜 원인.
+      this.me.body.x += sh.x - prevX;
+      this.me.body.y += sh.y - prevY;
+      g.x = sh.x; g.y = sh.y;
+      // 고스트의 내부 외삽 목표(lastX/Y)도 같이 붙여둔다 — 안 그러면 라이드 중 계속 자기 혼자 dead
+      // reckoning으로 딴 곳을 향해 표류하다가, 내려서는 순간 거기로 확 튀는("점프하면 원위치로 복귀")
+      // 버그가 생긴다(2026-07-16 피드백). 라이드 끝나도 다음 ghostStep이 이미 같은 지점이라 안 튐.
+      g.lastX = sh.x; g.lastY = sh.y;
     });
   }
 
@@ -438,7 +515,9 @@ export class BaseworldScene extends Phaser.Scene {
       const hMult = prevPound === 2 ? TUNING.stomp.poundReachH : TUNING.stomp.reachH;
       const halfWs = (b.w * hMult) / 2;
       const hOvStomp = Math.min(b.x + halfWs, mx + m.w / 2) - Math.max(b.x - halfWs, mx - m.w / 2);
-      const hOvBase = Math.min(b.x + b.w / 2, mx + m.w / 2) - Math.max(b.x - b.w / 2, mx - m.w / 2);
+      // 옆 대미지 판정은 기본 폭보다 살짝 좁게(§B2) — 애매하게 걸치는 경우 밟기(hOvStomp, 위에서 별도 처리)가 우선되게 함
+      const halfWd = (b.w * 0.8) / 2;
+      const hOvBase = Math.min(b.x + halfWd, mx + m.w / 2) - Math.max(b.x - halfWd, mx - m.w / 2);
       const vOv = Math.min(b.y, my) - Math.max(b.y - b.h, my - m.h);
       if (hOvStomp <= 0 || vOv <= 0) return;
       // A: 위에서 내려오면 확실히 밟기(데미지 없음). fromAbove(현재 상반부) OR 스윕(직전엔 머리 위, 지금 통과)
@@ -510,23 +589,41 @@ export class BaseworldScene extends Phaser.Scene {
       const r = blockRect({ spec, x: bx, y: by, state: "active", respawnLeftMs: 0, graceLeftMs: 0, emptied: bs.emptied, mem: {} });
       const withinX = Math.abs(b.x - (r.x + r.w / 2)) < (b.w + r.w) / 2;
       const headAt = b.y - b.h;
-      const bonkHead = withinX && prevVy < 0 && Math.abs(headAt - (r.y + r.h)) < 10;
-      const poundOn = withinX && prevPound === 2 && Math.abs(b.y - r.y) < 12;
-      if (bonkHead) {
-        if (spec.emitsItem && !bs.emptied) this.room.send("hitQBlock", { blockId: id });
-        else if (spec.breakBy?.headbutt) this.room.send("breakBlock", { blockId: id, by: "headbutt" });
+      const blockTop = r.y, blockBottom = r.y + r.h;
+      // 겹침 기반(§B1): 정확히 면에 닿지 않아도 조금이라도 걸치면 인정(마리오 원작 방식). 거리기반(±10/12px) 대신 블록 세로 구간과의 겹침으로 판정.
+      // 2026-07-16: ±2px는 여전히 빡빡하다는 피드백 — ±6px로 완화. + ceilBonk(같은 틱에 점프가 천장에
+      // 즉시 막힌 경우, avatar.ts) 도 인정 — 클리어런스가 좁은 블록은 물리가 vy를 같은 틱에 0으로
+      // 꺾어버려서 prevVy<0 시점을 못 잡는 경우가 있었음(디버그로 실제 확인, sw1이 그 사례).
+      const bonkHead = withinX && (prevVy < 0 || this.me.fx.has("ceilBonk")) && headAt <= blockBottom + 6 && headAt >= blockTop - 6;
+      const poundOn = withinX && prevPound === 2 && b.y >= blockTop - 6 && b.y <= blockBottom + 6;
+      // 물음표는 머리치기·내려찍기 둘 다로 발동(2026-07-16: 내려찍기 쪽이 빠져 있었음)
+      if ((bonkHead || poundOn) && spec.emitsItem && !bs.emptied) {
+        this.room.send("hitQBlock", { blockId: id, by: bonkHead ? "headbutt" : "pound" });
       }
+      if (bonkHead && spec.breakBy?.headbutt) this.room.send("breakBlock", { blockId: id, by: "headbutt" });
       if (poundOn && spec.breakBy?.pound) this.room.send("breakBlock", { blockId: id, by: "pound" });
       // 스위치 토글: 아이템 블록과 동일하게 "아래에서 치거나 내려찍었을 때"만 발동(2026-07-15 통일).
       // 이전엔 접촉(onTouch)으로 처리해 닿아 있는 매 틱마다 토글이 재전송되는 버그가 있었음.
-      if ((bonkHead || poundOn) && spec.properties?.some((p) => p.type === "switchToggle")) {
+      const isSwitchToggler = spec.properties?.some((p) => p.type === "switchToggle");
+      if ((bonkHead || poundOn) && isSwitchToggler) {
         this.room.send("toggleSwitch", {});
         feedback.toggleSwitch(this, this.me.body.x, this.me.body.y);
       }
+      // 물음표·스위치 블록 "띠용"(§B4): 히트박스는 그대로, 스프라이트만 충격 반대방향으로 잠깐 이동
+      if ((bonkHead || poundOn) && (spec.emitsItem || isSwitchToggler)) {
+        let fx = this.blockBumpFx.get(id);
+        if (!fx) { fx = { squash: createSquash(), untilMs: 0 }; this.blockBumpFx.set(id, fx); }
+        setSquash(fx.squash, "bumpY", bonkHead ? -1 : 1, 10);
+        fx.untilMs = this.time.now + 130;
+      }
       // 물성 (당하는 쪽 로컬 적용 §properties) — switchToggle은 위에서 별도 처리(더 이상 onTouch 없음)
       if (spec.properties) {
-        const touching = withinX && b.y >= r.y - 2 && b.y - b.h <= r.y + r.h + 2;
-        const standing = withinX && Math.abs(b.y - r.y) < 4 && b.grounded;
+        const blockTop = r.y, blockBottom = r.y + r.h;
+        const touching = withinX && b.y >= blockTop - 2 && b.y - b.h <= blockBottom + 2;
+        // §B5: 정확히 grounded+4px 스냅이 아니라 겹침·스윕 기반으로 완화(몬스터 stomp·블록 bonk/pound와 통일).
+        // 직전엔 블록 위였는데 지금 닿았으면(대각선 착지 등 grounded 갱신이 한 틱 늦는 경우) 도 top으로 인정.
+        const landedOnTop = prevBottomY <= blockTop + 4 && b.y >= blockTop - 4;
+        const standing = withinX && b.y >= blockTop - 4 && b.y <= blockTop + 8 && (b.grounded || landedOnTop);
         for (const propSpec of spec.properties) {
           const impl = getProperty(propSpec.type);
           if (!impl) continue;
@@ -547,6 +644,9 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 아이템 접촉 → 서버 경합 (§60) ──
     this.room.state.items.forEach((it: ItemNet, id: string) => {
       if (!it.available) return;
+      // 스폰 유예: 막 나온 아이템은 잠깐 보여준 뒤에야 먹을 수 있음(§spawnGraceMs, 2026-07-16)
+      const spawnedAt = this.itemSpawnAt.get(id);
+      if (spawnedAt !== undefined && this.time.now - spawnedAt < TUNING.item.spawnGraceMs) return;
       if (Math.abs(it.x - b.x) < (TUNING.sizes.item + b.w) / 2 && Math.abs(it.y - b.y) < b.h) {
         this.room.send("claimItem", { itemId: id });
       }
@@ -611,12 +711,19 @@ export class BaseworldScene extends Phaser.Scene {
     this.myRect.setVisible(true);
   }
 
+  /** 웅크림/슬라이드 시 목표 세로 배율 (§B2) — standingH()와 동일 기준(크기 무관 0.95타일) */
+  private crouchScaleTarget(crouch: boolean, slide: boolean, bodyH: number): number {
+    return crouch || slide ? (TUNING.crouch.heightTiles * TUNING.world.tileSize) / bodyH : 1;
+  }
+
   render(delta: number): void {
     if (!this.stateReady()) return;   // 첫 상태 도착 전 스킵 (§28)
     const b = this.me.body;
+    const dtSec = delta / 1000;
     stepSquash(this.mySquash);
+    stepSpring(this.crouchSpring, this.crouchScaleTarget(this.me.crouch, this.me.slide, b.h), dtSec);
     this.myRect.setSize(b.w, b.h);
-    this.myRect.setScale(this.mySquash.sx, this.mySquash.sy);
+    this.myRect.setScale(this.mySquash.sx, this.mySquash.sy * this.crouchSpring.v);
     this.myRect.setPosition(b.x + this.mySquash.offsetX, b.y + this.mySquash.offsetY);
     // 무적=노랑 / 내려찍기·공중스핀=주황(애니메이션 없어 구별용) / 평상=파랑
     this.myRect.fillColor = this.me.invincibleLeftMs > 0 ? 0xffee55
@@ -638,9 +745,10 @@ export class BaseworldScene extends Phaser.Scene {
       } else if (nowMs - v.lastTickAt > TUNING.net.staleMs) v.stale = true;
       ghostRenderAt(v.ghost, nowMs - TUNING.net.interpDelayMs);   // 지연 시점 보간(예측 X)
       stepSquash(v.squash);
+      stepSpring(v.crouchSpring, this.crouchScaleTarget(p.crouch, p.slide, p.h), dtSec);
       v.w = p.w; v.h = p.h; v.pound = p.pound;
       v.rect.setSize(p.w, p.h);
-      v.rect.setScale(v.squash.sx, v.squash.sy);
+      v.rect.setScale(v.squash.sx, v.squash.sy * v.crouchSpring.v);
       v.rect.setPosition(v.ghost.x + v.squash.offsetX, v.ghost.y + v.squash.offsetY);   // 찌부/shift 앵커 적용(내 몸과 동일)
       // 정지 = 반투명(통과 중), 무적(피격/부활 유예)이면 점멸 — 둘 다 아니면 불투명
       v.rect.setAlpha(v.stale ? 0.35 : p.invincible ? flickerAlpha(nowMs) : 1);
@@ -733,7 +841,8 @@ export class BaseworldScene extends Phaser.Scene {
       r.setVisible(c.alive);
       if (!c.alive) { this.carryGhosts.delete(id); return; }   // 재생성 시 순간이동 방지(다시 생성)
       if (this.carry.heldId === id) {
-        r.setPosition(b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset), b.y - b.h * 0.3);
+        // 웅크리면 손도 같이 낮아지도록 crouchSpring 반영(§B2 — 안 그러면 손이 줄어든 몸통 위로 붕 뜸)
+        r.setPosition(b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset), b.y - b.h * 0.3 * this.crouchSpring.v);
       } else {
         let g = this.carryGhosts.get(id);
         if (!g) { g = createGhostView(c.x, c.y); this.carryGhosts.set(id, g); }
@@ -747,7 +856,7 @@ export class BaseworldScene extends Phaser.Scene {
     // 손 연출 (§30-3): 기본 손 + 캐릭터색 틴트 + 스프링(늦게 따라옴)
     if (this.carry.heldId) {
       const hx = b.x + b.facing * (b.w / 2 + TUNING.sizes.handOffset);
-      const hy = b.y - b.h * 0.3;
+      const hy = b.y - b.h * 0.3 * this.crouchSpring.v;
       this.handRect.setVisible(true);
       this.handRect.x += (hx - this.handRect.x) * TUNING.carry.handLerp;
       this.handRect.y += (hy - this.handRect.y) * TUNING.carry.handLerp;
@@ -762,11 +871,21 @@ export class BaseworldScene extends Phaser.Scene {
       r.setVisible((bs.active && bs.visibleNow) || bs.reappearing);
       r.setAlpha(bs.reappearing ? flickerAlpha(this.time.now) : 1);
       const g = this.blockGhosts.get(id);   // 충돌과 동일한 보간 위치
-      r.setPosition(g ? g.x : bs.x, g ? g.y : bs.y);
-      r.fillColor = bs.emptied ? 0x555555 : 0x8888aa;
-      // 접촉반응(낙하/파괴) 텔레그래프 시작 순간 사운드(§A-2)
-      if (bs.crumbling && !this.blockCrumbleFx.get(id)) playSound("crumble", { x: bs.x, y: bs.y });
-      this.blockCrumbleFx.set(id, bs.crumbling);
+      const bumpFx = this.blockBumpFx.get(id);
+      if (bumpFx) {
+        if (this.time.now > bumpFx.untilMs) setSquash(bumpFx.squash, "none");
+        stepSquash(bumpFx.squash, 0.35);
+      }
+      r.setPosition((g ? g.x : bs.x) + (bumpFx?.squash.offsetX ?? 0), (g ? g.y : bs.y) + (bumpFx?.squash.offsetY ?? 0));
+      r.fillColor = bs.emptied ? 0x555555 : 0x888888;
+      // 접촉반응(낙하/파괴) 텔레그래프 — 시작 전이 감지(사운드 1회) + 시작시각 기록(진행도 연출용, §2026-07-16)
+      const cfx = this.blockCrumbleFx.get(id);
+      if (bs.crumbling && !cfx?.crumbling) {
+        playSound("crumble", { x: bs.x, y: bs.y });
+        this.blockCrumbleFx.set(id, { crumbling: true, startAt: this.time.now });
+      } else {
+        this.blockCrumbleFx.set(id, { crumbling: bs.crumbling, startAt: cfx?.startAt ?? this.time.now });
+      }
     });
     this.drawVisualLanguage();
     this.renderServerview();
@@ -815,28 +934,40 @@ export class BaseworldScene extends Phaser.Scene {
       const spec = TESTMAP.blocks.find((bl) => bl.id === id);
       if (!spec) return;
       const g = this.blockGhosts.get(id);
-      const left = g ? g.x : bs.x, top = g ? g.y : bs.y;
+      const bumpFx = this.blockBumpFx.get(id);   // §B4: 띠용 오프셋 — 블록 사각형과 동일하게 테두리도 반영
+      const left = (g ? g.x : bs.x) + (bumpFx?.squash.offsetX ?? 0), top = (g ? g.y : bs.y) + (bumpFx?.squash.offsetY ?? 0);
       const cx = left + spec.w / 2, cy = top + spec.h / 2;
       const reveal = revealAt(cx, cy, spec.w, spec.h);
 
       // 낙하/파괴 반응 텔레그래프 — 안전 정보라 active 여부와 무관하게 항상, reveal 게이팅 없음
-      if (bs.crumbling) laterDraws.push(() => drawCrumbleWarning(ground, left, top, spec.w, spec.h, nowMs));
+      if (bs.crumbling) {
+        const startAt = this.blockCrumbleFx.get(id)?.startAt ?? nowMs;
+        const progress = Math.min(1, (nowMs - startAt) / TUNING.rules.crumbleWarnMs);
+        laterDraws.push(() => drawCrumbleWarning(ground, left, top, spec.w, spec.h, nowMs, progress));
+      }
 
       if (!bs.active || !bs.visibleNow) {
-        // 스위치 OFF로 비실체화된 블록 — 유령 표시(§1.2 신규)
-        if (spec.switchReact && bs.active) laterDraws.push(() => drawGhostBlock(ground, left, top, spec.w, spec.h, spec.switchReact!.whenOn));
+        // 스위치 OFF로 비실체화된 블록 — 유령 표시(§1.2). 실체 쪽과 통일: 항상 점선+움직임(2026-07-16 피드백:
+        // "숨겨졌다 나타났을 때 실선으로 바뀌는 게 이상하다, 그냥 점선으로") — materialized=false만 다름.
+        if (spec.switchReact && bs.active) {
+          const whenOn = spec.switchReact.whenOn;
+          laterDraws.push(() => drawSwitchAffectedBorder(ground, left, top, spec.w, spec.h, whenOn, this.room.state.switchOn, false, nowMs));
+        }
         return;
       }
 
       const tags = blockVisualTagsFromSpec(spec);
-      if (tags.faces && (!spec.shape || spec.shape === "rect")) {
+      // switchToggler·switchAffected는 자체 테두리(회전 줄무늬/점선)가 전부라 일반 흰 실선 면 테두리를
+      // 따로 또 그리면 뒤에 흰 테두리가 겹쳐 보임(2026-07-16 피드백: "흰 테두리 뭔가가 있는데"). 스킵.
+      const hasOwnBorder = tags.auras.includes("switchToggler") || tags.auras.includes("switchAffected");
+      if (tags.faces && !hasOwnBorder && (!spec.shape || spec.shape === "rect")) {
         seamRects.push({ left, top, w: spec.w, h: spec.h, faces: tags.faces });
       }
       if (tags.auras.includes("switchToggler")) {
         laterDraws.push(() => drawSwitchTogglerBorder(ground, left, top, spec.w, spec.h, this.room.state.switchOn, nowMs));
       } else if (tags.auras.includes("switchAffected") && spec.switchReact) {
         const whenOn = spec.switchReact.whenOn;
-        laterDraws.push(() => drawSwitchAffectedBorder(ground, left, top, spec.w, spec.h, whenOn, this.room.state.switchOn));
+        laterDraws.push(() => drawSwitchAffectedBorder(ground, left, top, spec.w, spec.h, whenOn, this.room.state.switchOn, true, nowMs));
       }
       if (tags.auras.includes("itemGiver")) laterDraws.push(() => drawItemGiverGlow(ground, left, top, spec.w, spec.h, nowMs));
 
@@ -868,12 +999,15 @@ export class BaseworldScene extends Phaser.Scene {
 
     // ── 엔티티 레이어(entities, 자기 몸 위 — 병합 없이 항상 통짜로) ──────────
     // squash(벽 찌부·밀림 등 연출) 반영 — 시각 사각형이 움직이면 테두리도 같이 움직여야 함(피드백 2026-07-15).
-    drawPlayerBorder(entities, squashedBox(this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h, this.mySquash), true);
+    // 웅크림 스프링(§B2)도 반영 — 안 그러면 스프라이트는 줄어드는데 테두리는 원래 크기 그대로 남음(2026-07-16 피드백)
+    drawPlayerBorder(entities, squashedBox(this.me.body.x, this.me.body.y, this.me.body.w, this.me.body.h,
+      { ...this.mySquash, sy: this.mySquash.sy * this.crouchSpring.v }), true);
     this.room.state.players.forEach((p: PlayerNet, id: string) => {
       if (id === this.room.sessionId || p.dead) return;
       const v = this.players.get(id);
       if (!v || v.stale) return;
-      drawPlayerBorder(entities, squashedBox(v.ghost.x, v.ghost.y, p.w, p.h, v.squash), false);
+      drawPlayerBorder(entities, squashedBox(v.ghost.x, v.ghost.y, p.w, p.h,
+        { ...v.squash, sy: v.squash.sy * v.crouchSpring.v }), false);
     });
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;
@@ -947,7 +1081,7 @@ export class BaseworldScene extends Phaser.Scene {
 }
 
 // ── 네트 상태 타입 (schema 미러 — any 회피용 최소 형태) ──
-interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number; slide: boolean; grounded: boolean; touchingWall: number; dead: boolean; wallJumpSeq: number; invincible: boolean }
+interface PlayerNet { x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; nickname: string; tick: number; pound: number; slide: boolean; crouch: boolean; grounded: boolean; touchingWall: number; dead: boolean; wallJumpSeq: number; invincible: boolean }
 interface MonsterNet { asset: string; x: number; y: number; vx: number; vy: number; w: number; h: number; facing: number; alive: boolean; stunned: boolean; hidden: boolean; hitCount: number; hp: number; windupAnim: string; windupEndsAt: number; currentAction: string; graceEndsAt: number }
 interface BlockNet { x: number; y: number; vx: number; vy: number; active: boolean; emptied: boolean; visibleNow: boolean; reappearing: boolean; crumbling: boolean }
 interface ItemNet { kind: string; x: number; y: number; available: boolean }

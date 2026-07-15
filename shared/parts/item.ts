@@ -1,5 +1,7 @@
 // 아이템 파츠 (§58): 6종. 획득 = 자기 클라 판정, 경합 = 서버 가중랜덤(§60).
 import { TUNING, type Tuning } from "../physics/tuning.js";
+import type { Terrain } from "../physics/terrain.js";
+import { type Body, createBody, moveAndCollide } from "../physics/body.js";
 import type { Avatar } from "./avatar.js";
 import { applySizeStage } from "./avatar.js";
 
@@ -19,10 +21,25 @@ export interface ItemInstance {
   spec: ItemSpec;
   taken: boolean;
   respawnLeftMs: number;
+  /** 물음표 블록을 내려찍어(pound) 나온 아이템만 중력을 받아 바닥까지 떨어짐(§B, 2026-07-16).
+   *  머리치기로 나온 아이템은 원작처럼 제자리에 뜬 채로 유지(gravity 없음). */
+  body?: Body;
+  falling: boolean;
 }
 
-export function createItem(spec: ItemSpec): ItemInstance {
-  return { spec, taken: false, respawnLeftMs: 0 };
+export function createItem(spec: ItemSpec, falling = false): ItemInstance {
+  const body = falling ? createBody(spec.x, spec.y, TUNING.sizes.item, TUNING.sizes.item, ["item"]) : undefined;
+  return { spec, taken: false, respawnLeftMs: 0, body, falling };
+}
+
+/** 매 틱: 내려찍기로 나온 아이템만 중력+충돌 적용, 착지하면 정지(§B) */
+export function stepItemPhysics(item: ItemInstance, terrain: Terrain, dtMs: number, t: Tuning = TUNING): void {
+  if (!item.falling || !item.body) return;
+  const b = item.body;
+  b.vy = Math.min(b.vy + t.gravity.base * (dtMs / 1000), t.gravity.maxFallSpeed);
+  moveAndCollide(b, terrain, dtMs, t);
+  item.spec.x = b.x; item.spec.y = b.y;
+  if (b.grounded) { item.falling = false; b.vy = 0; }
 }
 
 /** 획득 적용 (서버 중재 승리 후, 자기 클라에서). 0.4초 고정 + 하이라이트(§58) */

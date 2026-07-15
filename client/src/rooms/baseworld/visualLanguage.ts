@@ -144,13 +144,17 @@ export function drawSeamMergedBorders(gfx: Phaser.GameObjects.Graphics, rects: S
 }
 
 /**
- * 경사(구불구불한 지형) 테두리 — 직사각형이 아니므로 별도 처리. 밟는 표면(대각선)만 흰 실선으로 그림
- * (경사는 항상 단단한 바닥/천장이라 다른 색 상태가 없음 — solidWhite 고정).
+ * 경사(구불구불한 지형) 테두리 — 직사각형이 아니므로 별도 처리. 밟는 표면(대각선)은 항상 흰 실선.
+ * 나머지 두 면(높은 쪽 세로 벽·밑면, floor 한정)은 물리와 동일하게 옵션에 따라 실선/점선.
  */
 export function drawSlopeBorder(gfx: Phaser.GameObjects.Graphics, s: Slope): void {
   gfx.lineStyle(BORDER_WIDTH, BORDER_COLOR.solidWhite, 0.95);
   if (s.kind === "floor") {
     gfx.lineBetween(s.x, slopeSurfaceY(s, s.x) ?? s.y, s.x + s.w, slopeSurfaceY(s, s.x + s.w) ?? s.y);
+    const faces = s.faces ?? {};
+    const wallX = s.dir === 1 ? s.x + s.w : s.x;
+    strokeFace(gfx, wallX, s.y, wallX, s.y + s.h, faces.side === false ? "dashed" : "solidWhite", false);
+    strokeFace(gfx, s.x, s.y + s.h, s.x + s.w, s.y + s.h, faces.bottom === false ? "dashed" : "solidWhite", false);
   } else {
     const y0 = s.y + s.h - ((slopeSurfaceY(s, s.x) ?? s.y) - s.y);
     const y1 = s.y + s.h - ((slopeSurfaceY(s, s.x + s.w) ?? s.y) - s.y);
@@ -202,29 +206,64 @@ function drawRotatingStripedRect(
     isMajor = !isMajor;
   }
 }
+/**
+ * 아래(머리치기)·위(내려찍기) 양쪽 다 발동함을 화살표로 안내(§B4). 물음표 블록엔 있었는데
+ * 스위치 토글러엔 아예 없었고, 물음표조차 "내려찍기도 된다"는 안내는 없었음(2026-07-16 피드백).
+ */
+function drawHitDirectionHints(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, color: number, alpha: number, nowMs: number): void {
+  const cx = left + w / 2;
+  const ay = top + h + 5 + 3 * Math.sin(nowMs / 200);   // 아래쪽: 위를 향한 화살표(머리치기)
+  gfx.fillStyle(color, alpha);
+  gfx.fillTriangle(cx - 5, ay + 6, cx + 5, ay + 6, cx, ay);
+  const by = top - 5 - 3 * Math.sin(nowMs / 200);   // 위쪽: 아래를 향한 화살표(내려찍기)
+  gfx.fillTriangle(cx - 5, by - 6, cx + 5, by - 6, cx, by);
+}
+
 export function drawSwitchTogglerBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, switchOn: boolean, nowMs: number): void {
   const RED = 0xff3b30, CYAN = 0x2ec4c4;
   const majorColor = switchOn ? RED : CYAN, minorColor = switchOn ? CYAN : RED;
   drawRotatingStripedRect(gfx, left, top, w, h, majorColor, minorColor, 18, 6, nowMs);
+  drawHitDirectionHints(gfx, left, top, w, h, 0xffffff, 0.7 + 0.2 * Math.sin(nowMs / 260), nowMs);
 }
 
-/** 스위치 영향 블록 — 현재 스위치 상태와 자신의 발동 조건이 일치하면 진하게, 아니면 옅게 틴트 */
-export function drawSwitchAffectedBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, whenOn: boolean, switchOn: boolean): void {
+/** 둘레를 따라 도는 점선(marching ants) — 한 색, dash/gap이 시간에 따라 흘러 "움직인다"는 게 보임 */
+function drawMarchingDashedRect(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, color: number, alpha: number, nowMs: number): void {
+  const dashLen = 10, gapLen = 6, speedPxPerSec = 40;
+  const perimeter = 2 * (w + h);
+  const cycle = dashLen + gapLen;
+  const offset = ((nowMs / 1000) * speedPxPerSec) % cycle;
+  const pointAt = (dIn: number): [number, number] => {
+    const d = ((dIn % perimeter) + perimeter) % perimeter;
+    if (d <= w) return [left + d, top];
+    if (d <= w + h) return [left + w, top + (d - w)];
+    if (d <= 2 * w + h) return [left + w - (d - w - h), top + h];
+    return [left, top + h - (d - 2 * w - h)];
+  };
+  gfx.lineStyle(BORDER_WIDTH - 1, color, alpha);
+  let d = -offset;
+  while (d < perimeter) {
+    const d0 = Math.max(d, 0), d1 = Math.min(d + dashLen, perimeter);
+    if (d1 > d0) {
+      const [x0, y0] = pointAt(d0);
+      const [x1, y1] = pointAt(d1);
+      gfx.lineBetween(x0, y0, x1, y1);
+    }
+    d += cycle;
+  }
+}
+
+/**
+ * 스위치 영향 블록(§1.2) — 실체든 유령이든 항상 점선+움직임으로 통일(2026-07-16 피드백: "숨겨졌다
+ * 나타났을 때 실선으로 바뀌는 게 이상하다, 그냥 점선으로 + 스위치 토글러처럼 움직이게").
+ * materialized로만 구분: 실체=칠 있음+진한 점선, 유령=칠 옅음+연한 점선.
+ */
+export function drawSwitchAffectedBorder(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, whenOn: boolean, switchOn: boolean, materialized: boolean, nowMs: number): void {
+  const color = whenOn ? 0xff3b30 : 0x2ec4c4;
   const active = whenOn === switchOn;
-  gfx.lineStyle(BORDER_WIDTH - 1, whenOn ? 0xff3b30 : 0x2ec4c4, active ? 0.85 : 0.3);
-  gfx.strokeRect(left, top, w, h);
-}
-
-/** 스위치 OFF로 비실체화된 블록 — 통째로 숨기지 않고 "여기 생길 자리" 유령으로 표시(§1.2 신규 구현) */
-export function drawGhostBlock(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, whenOn: boolean): void {
-  gfx.fillStyle(whenOn ? 0xff3b30 : 0x2ec4c4, 0.22);
+  if (materialized) gfx.fillStyle(color, active ? 0.14 : 0.06);
+  else gfx.fillStyle(color, 0.22);
   gfx.fillRect(left, top, w, h);
-  gfx.lineStyle(2, whenOn ? 0xff3b30 : 0x2ec4c4, 0.5);
-  const seg = 8;
-  for (let x = left; x < left + w; x += seg * 2) gfx.lineBetween(x, top, Math.min(x + seg, left + w), top);
-  for (let x = left; x < left + w; x += seg * 2) gfx.lineBetween(x, top + h, Math.min(x + seg, left + w), top + h);
-  for (let y = top; y < top + h; y += seg * 2) gfx.lineBetween(left, y, left, Math.min(y + seg, top + h));
-  for (let y = top; y < top + h; y += seg * 2) gfx.lineBetween(left + w, y, left + w, Math.min(y + seg, top + h));
+  drawMarchingDashedRect(gfx, left, top, w, h, color, materialized ? (active ? 0.85 : 0.35) : 0.5, nowMs);
 }
 
 /**
@@ -239,9 +278,7 @@ export function drawItemGiverGlow(gfx: Phaser.GameObjects.Graphics, left: number
   gfx.strokeRect(left, top, w, h);
   gfx.lineStyle(BORDER_WIDTH, 0xffee55, pulse);
   gfx.lineBetween(left, top + h, left + w, top + h);
-  const cx = left + w / 2, ay = top + h + 5 + 3 * Math.sin(nowMs / 200);
-  gfx.fillStyle(0xffee55, pulse);
-  gfx.fillTriangle(cx - 5, ay + 6, cx + 5, ay + 6, cx, ay);
+  drawHitDirectionHints(gfx, left, top, w, h, 0xffee55, pulse, nowMs);
 }
 
 /** 아이템 스프링 확대·축소 펄스 배율 (§1.2 신규 구현) — 아이템 rect의 setScale에 곱해 쓴다 */
@@ -332,15 +369,50 @@ export function drawDetectRing(gfx: Phaser.GameObjects.Graphics, cx: number, cy:
   gfx.strokeCircle(cx, cy, radiusPx);
 }
 
-/** 낙하/파괴 반응 텔레그래프 — 금가기(대각선 크랙) + 흔들림은 호출부가 좌표를 흔들어 표현.
- * crumbling 자체는 안전 정보라 reveal 게이팅 없이 항상 그림. */
-export function drawCrumbleWarning(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, nowMs: number): void {
-  const flicker = 0.6 + 0.4 * Math.sin(nowMs / 70);
-  gfx.lineStyle(2, 0xffcc33, flicker);
-  gfx.lineBetween(left + w * 0.2, top, left + w * 0.5, top + h * 0.5);
-  gfx.lineBetween(left + w * 0.5, top + h * 0.5, left + w * 0.35, top + h);
-  gfx.lineBetween(left + w * 0.8, top, left + w * 0.6, top + h * 0.5);
-  gfx.lineBetween(left + w * 0.6, top + h * 0.5, left + w * 0.75, top + h);
+/**
+ * 테두리 자체가 지글거리는(sizzle) 경고 라인 — 사각형을 통째로 옮기는 게 아니라, 둘레를 짧은
+ * 구간으로 쪼개서 구간마다 서로 다른 위상으로 따로 떨리게 그린다(2026-07-16 피드백:
+ * "그냥 흔들렸으면 좋겠음. 지글지글하게. 통째로 움직이는게 아니라").
+ */
+function drawSizzlingRect(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, color: number, alpha: number, jitterAmt: number, nowMs: number): void {
+  const perimeter = 2 * (w + h);
+  const segLen = 9;
+  const pointAt = (dIn: number): [number, number] => {
+    const d = ((dIn % perimeter) + perimeter) % perimeter;
+    if (d <= w) return [left + d, top];
+    if (d <= w + h) return [left + w, top + (d - w)];
+    if (d <= 2 * w + h) return [left + w - (d - w - h), top + h];
+    return [left, top + h - (d - 2 * w - h)];
+  };
+  gfx.lineStyle(2, color, alpha);
+  for (let d = 0; d < perimeter; d += segLen) {
+    const [x0, y0] = pointAt(d), [x1, y1] = pointAt(Math.min(d + segLen, perimeter));
+    const phase = d * 0.9;   // 구간마다 다른 위상 → 서로 따로 흔들림(끓는 느낌)
+    const jx0 = Math.sin(nowMs / 30 + phase) * jitterAmt, jy0 = Math.cos(nowMs / 24 + phase * 1.3) * jitterAmt;
+    const jx1 = Math.sin(nowMs / 30 + phase + 1.5) * jitterAmt, jy1 = Math.cos(nowMs / 24 + (phase + 1.5) * 1.3) * jitterAmt;
+    gfx.lineBetween(x0 + jx0, y0 + jy0, x1 + jx1, y1 + jy1);
+  }
+}
+
+/**
+ * 붕괴/파괴 예고 — "금 가는" 그림은 블록이 사각형이 아니거나(경사·천장 등) 유저가 그린 그림이
+ * 구불구불한 임의 모양이면 안 맞는다는 지적(2026-07-16)으로 폐기. 대신 **도형에 전혀 의존하지
+ * 않는** 신호로 대체: ①테두리 지글거림(둘레 구간별로 따로 떨림, 안 흔들리는 카운트다운 링과
+ * 대비돼서 "불안정함"이 더 잘 읽힘) ②머리 위 카운트다운 링(남은 시간을 파이 형태로 소진) —
+ * 어떤 모양의 에셋이든 항상 통한다.
+ */
+export function drawCrumbleWarning(gfx: Phaser.GameObjects.Graphics, left: number, top: number, w: number, h: number, nowMs: number, progress = 1): void {
+  const flicker = 0.5 + 0.5 * Math.sin(nowMs / (150 - progress * 100));   // 진행될수록 더 빠르게 깜빡
+  const jitterAmt = 0.5 + progress * 3.5;   // 진행될수록 더 격하게 지글거림
+  drawSizzlingRect(gfx, left, top, w, h, 0xffcc33, flicker * (0.4 + progress * 0.55), jitterAmt, nowMs);
+
+  const cx = left + w / 2, ringY = top - 12, ringR = 7;   // 링은 고정 — 지글거리는 테두리와 대비되는 안정적 기준점
+  gfx.lineStyle(2, 0x222222, 0.45);
+  gfx.strokeCircle(cx, ringY, ringR);
+  gfx.lineStyle(2, 0xffcc33, 0.95);
+  gfx.beginPath();
+  gfx.arc(cx, ringY, ringR, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2, false);
+  gfx.strokePath();
 }
 
 /** 점멸(blink) 블록 — 사라지기 직전 예고(빠른 알파 요동). msLeft = 다음 전환까지 남은 시간 */
