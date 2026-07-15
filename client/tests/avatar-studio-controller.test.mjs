@@ -62,6 +62,9 @@ assert.match(drawingPortSource, /eraseVisiblePoint/)
 assert.match(drawingPortSource, /sampleVisibleRgb/)
 assert.match(drawingPortSource, /width: imageData\.width/)
 assert.match(drawingPortSource, /height: imageData\.height/)
+assert.match(drawingPortSource, /readVisibleImagePixels/)
+assert.match(drawingPortSource, /createWorkspacePixelsFromVisible/)
+assert.doesNotMatch(drawingPortSource, /seedAvatarSource|hashString\(asset\.id\)/)
 assert.match(screenSource, /AVATAR_VISIBLE_WIDTH/)
 assert.match(screenSource, /surface="paper"/)
 assert.match(screenSource, /showVisibleFrame=\{false\}/)
@@ -115,7 +118,7 @@ async function testLoadedUnchangedBlocksSubmit({
     },
   ]
 
-  const loadResult = loadAvatarStudioSource(runtime, 'avatar-1')
+  const loadResult = await loadAvatarStudioSource(runtime, 'avatar-1')
   assert.equal(loadResult.ok, true)
 
   const result = await submitAvatarStudio(runtime)
@@ -254,7 +257,7 @@ function createRuntime(createInitialAvatarStudioControllerState, options = {}) {
         this.hash = 'reset-hash'
         return { ok: true, value: { hash: this.hash } }
       },
-      loadAvatarSource() {
+      async loadAvatarSource() {
         this.hash = 'loaded-hash'
         return { ok: true, value: { hash: this.hash } }
       },

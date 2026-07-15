@@ -202,7 +202,7 @@ export interface AvatarStudioDrawingPort {
   eraseVisiblePoint(point: AvatarStudioCanvasPoint, brushSize: number): boolean
   sampleVisibleRgb(point: AvatarStudioCanvasPoint): AvatarStudioRgb | null
   reset(): AvatarStudioResult<{ hash: string }>
-  loadAvatarSource(asset: AvatarStudioAssetRecord): AvatarStudioResult<{ hash: string }>
+  loadAvatarSource(asset: AvatarStudioAssetRecord): Promise<AvatarStudioResult<{ hash: string }>>
   exportPng(): AvatarStudioResult<{ image: string; hash: string; width: number; height: number }>
   undo(): boolean
   redo(): boolean
@@ -332,7 +332,7 @@ export async function bootAvatarStudioController(
   await refreshAvatarStudioLoadableAvatars(runtime)
 
   if (options.sourceAssetId) {
-    const loadResult = loadAvatarStudioSource(runtime, options.sourceAssetId)
+    const loadResult = await loadAvatarStudioSource(runtime, options.sourceAssetId)
 
     return {
       destination: 'avatarStudio' as const,
@@ -487,7 +487,9 @@ export function createAvatarStudioCallbacks(
     onOpenLoadModal: () => openAvatarStudioLoadModal(runtime),
     onCloseLoadModal: () => closeAvatarStudioLoadModal(runtime),
     onLoadTabChange: (tab) => setAvatarStudioLoadTab(runtime, tab),
-    onSelectLoadAvatar: (assetId) => loadAvatarStudioSource(runtime, assetId),
+    onSelectLoadAvatar: (assetId) => {
+      void loadAvatarStudioSource(runtime, assetId)
+    },
     onNameChange: (name) => updateAvatarStudioForm(runtime, { name }),
     onDescriptionChange: (description) => updateAvatarStudioForm(runtime, { description }),
     onSubmit: () => {
@@ -513,7 +515,7 @@ export function updateAvatarStudioForm(
   }))
 }
 
-export function loadAvatarStudioSource(
+export async function loadAvatarStudioSource(
   runtime: AvatarStudioControllerRuntime,
   assetId: string,
 ) {
@@ -523,7 +525,7 @@ export function loadAvatarStudioSource(
     return { ok: false as const, reason: 'not_found' as const }
   }
 
-  const result = runtime.drawingPort.loadAvatarSource(asset)
+  const result = await runtime.drawingPort.loadAvatarSource(asset)
 
   if (!result.ok) {
     runtime.setState((state) => ({

@@ -2,11 +2,11 @@ import {
   AVATAR_DRAWING_DIMENSIONS,
   createDrawingEngineCore,
   visibleToWorkspacePixel,
+  type DrawingDimensions,
   type DrawingEngineCore,
 } from '../../experiments/drawing-engine/core/index.ts'
 import { encodePngDataUrl } from '../../experiments/drawing-engine/canvas-adapter/browserCanvasAdapter.ts'
 import {
-  type AvatarStudioAssetRecord,
   type AvatarStudioDrawingPort,
   type AvatarStudioResult,
 } from '../../pages/avatar-studio/avatarStudioControllerCore'
@@ -50,11 +50,24 @@ export function createAvatarStudioDrawingPort(): AvatarStudioDrawingPort {
         },
       }
     },
-    loadAvatarSource(asset) {
+    async loadAvatarSource(asset) {
       try {
+        const sourceImageUrl = asset.sourceImageUrl?.trim()
+
+        if (!sourceImageUrl) {
+          return createFailure('export_failure', '저장된 아바타 원본 이미지를 찾을 수 없어요.', false)
+        }
+
+        const dimensions = engine.getDimensions()
+        const visiblePixels = await readVisibleImagePixels(
+          sourceImageUrl,
+          dimensions.visibleWidth,
+          dimensions.visibleHeight,
+        )
+        const initialPixels = createWorkspacePixelsFromVisible(visiblePixels, dimensions)
+
         engine.destroy()
-        engine = createEngine()
-        seedAvatarSource(engine, asset)
+        engine = createEngine(initialPixels)
         engine.markCleanBaseline()
 
         return {
@@ -122,44 +135,69 @@ function mapVisiblePoint(engine: DrawingEngineCore, point: AvatarStudioCanvasPoi
   )
 }
 
-function createEngine() {
+function createEngine(initialPixels?: Uint8ClampedArray) {
   return createDrawingEngineCore({
     dimensions: AVATAR_DRAWING_DIMENSIONS,
+    initialPixels,
   })
 }
 
-function seedAvatarSource(engine: DrawingEngineCore, asset: AvatarStudioAssetRecord) {
-  const dimensions = engine.getDimensions()
-  const seed = hashString(asset.id)
-
-  for (const point of [
-    { x: 96, y: 160 },
-    { x: 128, y: 192 },
-    { x: 160, y: 160 },
-    { x: 128, y: 280 },
-    { x: 128, y: 360 },
-  ]) {
-    engine.drawPoint({
-      point: visibleToWorkspacePixel(point, dimensions),
-      color: {
-        r: 70 + (seed % 120),
-        g: 80 + (seed % 100),
-        b: 110 + (seed % 90),
-        a: 255,
-      },
-      brushSize: point.y > 250 ? 8 : 6,
-    })
+async function readVisibleImagePixels(
+  sourceImageUrl: string,
+  width: number,
+  height: number,
+): Promise<Uint8ClampedArray> {
+  if (typeof document === 'undefined' || typeof Image === 'undefined') {
+    throw new Error('Avatar source image loading requires a browser environment.')
   }
+
+  const image = await loadImageElement(sourceImageUrl)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+
+  if (!context) {
+    throw new Error('2D canvas context is unavailable.')
+  }
+
+  context.clearRect(0, 0, width, height)
+  context.imageSmoothingEnabled = false
+  context.drawImage(image, 0, 0, width, height)
+
+  return new Uint8ClampedArray(context.getImageData(0, 0, width, height).data)
 }
 
-function hashString(value: string) {
-  let hash = 0
+function loadImageElement(sourceImageUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
 
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0
+    if (!sourceImageUrl.startsWith('data:')) {
+      image.crossOrigin = 'anonymous'
+    }
+
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Avatar source image failed to load.'))
+    image.src = sourceImageUrl
+  })
+}
+
+function createWorkspacePixelsFromVisible(
+  visiblePixels: Uint8ClampedArray,
+  dimensions: DrawingDimensions,
+): Uint8ClampedArray {
+  const workspacePixels = new Uint8ClampedArray(dimensions.workspaceWidth * dimensions.workspaceHeight * 4)
+  const visibleStride = dimensions.visibleWidth * 4
+
+  for (let y = 0; y < dimensions.visibleHeight; y += 1) {
+    const sourceOffset = y * visibleStride
+    const targetOffset =
+      ((dimensions.visibleOrigin.y + y) * dimensions.workspaceWidth + dimensions.visibleOrigin.x) * 4
+
+    workspacePixels.set(visiblePixels.subarray(sourceOffset, sourceOffset + visibleStride), targetOffset)
   }
 
-  return hash
+  return workspacePixels
 }
 
 function clampInteger(value: number, min: number, max: number): number {
