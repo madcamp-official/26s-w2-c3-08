@@ -284,6 +284,10 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.onMessage("tp", (m: { sessionId: string; x: number; y: number }) => {
       if (m.sessionId === this.room.sessionId) { this.me.body.x = m.x; this.me.body.y = m.y; }
     });
+    // 추락사 리스폰 통지(RaceRoom/TestLineRoom 공용 — RACE_S2C_MSG.respawnAt과 TESTLINE_MSG.respawnAt 둘 다 "respawnAt")
+    this.room.onMessage("respawnAt", (m: { x: number; y: number }) => {
+      this.me.body.x = m.x; this.me.body.y = m.y; this.me.body.vx = 0; this.me.body.vy = 0;
+    });
 
     this.cameras.main.setBounds(0, 0, TESTMAP.width, TESTMAP.height);
     this.cameras.main.startFollow(this.myRect, true, 0.15, 0.15);

@@ -19,6 +19,7 @@ import { anchorToTopLeft, occupiedTiles, canPlace } from "../engine/placement.js
 import { flagForbiddenTiles, bothFlagsForbidden } from "../engine/flags.js";
 import { playSound } from "../../audio/sfx.js";
 import { getSlotImage } from "../render/images.js";
+import { setCanvasHost } from "../testmode/testRunner.js";
 
 const WORLD_W = GRID_W * TILE;
 const WORLD_H = GRID_H * TILE;
@@ -105,6 +106,12 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
   }
 
   // 캔버스 크기·DPR 추적 — 리사이즈 직후 즉시 재드로우(깜빡임 방지)
+  // 테스트 모드가 이 호스트 위에 Phaser 게임을 얹을 수 있게 등록(testRunner.ts)
+  useEffect(() => {
+    setCanvasHost(hostRef.current);
+    return () => setCanvasHost(null);
+  }, []);
+
   useEffect(() => {
     const host = hostRef.current, canvas = canvasRef.current;
     if (!host || !canvas) return;
