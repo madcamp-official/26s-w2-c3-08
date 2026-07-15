@@ -26,7 +26,13 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
     if (state?.phase === "finished") onFinished();
   }, [state?.phase]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!room || !state) return null;
+  if (!room || !state) {
+    return (
+      <div className="dsScreen" style={{ background: YELLOW.list, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ color: INK, fontFamily: "var(--font-point)", fontSize: 20 }}>방 정보를 불러오는 중…</span>
+      </div>
+    );
+  }
 
   const members: (MemberSnap & { sessionId: string })[] = [];
   state.members.forEach((m, id) => members.push({ ...m, sessionId: id }));

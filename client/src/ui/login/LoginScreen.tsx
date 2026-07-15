@@ -49,8 +49,8 @@ export function LoginScreen({ onDone }: { onDone: () => void }) {
         <h1 className="dsPointFont" style={{ fontSize: 44, color: INK, margin: 0 }}>
           게임 제목
         </h1>
-        {/* 닉네임 입력 — 손그림 테두리 상자 안에 투명 input */}
-        <SketchBox fill={YELLOW.card} stroke={INK} radius={12} preset="chip" style={{ width: 280, height: 56 }}>
+        {/* 닉네임 입력 — 손그림 테두리 상자 안에 투명 input. 상시 지글(요청). */}
+        <SketchBox fill={YELLOW.card} stroke={INK} radius={12} preset="chip" jiggle style={{ width: 280, height: 56 }}>
           <input
             value={displayValue}
             onChange={(e) => !hasSession && setNickname(e.target.value)}

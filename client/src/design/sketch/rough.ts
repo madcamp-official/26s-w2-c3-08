@@ -8,13 +8,14 @@ import type { Options } from "roughjs/bin/core";
 const gen = rough.generator();
 
 /** 화면 코드에 흩뿌리지 않기 위한 손그림 프리셋. roughness=꼬불정도, bowing=선 휨. */
+// roughness/bowing이 크면 여러 겹 선이 심하게 엇나가 지저분해진다(피드백). 살짝 손그림 느낌만 나게 낮춤.
 export const SKETCH = {
   /** 일반 테두리(버튼·카드·바). */
-  frame: { roughness: 1.5, bowing: 1.6, strokeWidth: 2.4 },
+  frame: { roughness: 0.8, bowing: 0.7, strokeWidth: 2.2 },
   /** 작은 부속품(아이콘 칩·탭) — 과하지 않게. */
-  chip: { roughness: 1.2, bowing: 1.3, strokeWidth: 2 },
-  /** 팝업·안내판 테두리 — 조금 더 크게 꼬불. */
-  panel: { roughness: 1.8, bowing: 1.8, strokeWidth: 2.6 },
+  chip: { roughness: 0.7, bowing: 0.6, strokeWidth: 2 },
+  /** 팝업·안내판 테두리 — 조금 더 꼬불. */
+  panel: { roughness: 1.0, bowing: 0.9, strokeWidth: 2.4 },
 } as const;
 
 export type SketchPreset = keyof typeof SKETCH;

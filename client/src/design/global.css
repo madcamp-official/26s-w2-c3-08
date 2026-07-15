@@ -14,7 +14,8 @@
 /* 리셋 — 이 프로젝트가 Vite 템플릿 index.css(#root width:1126px 제한 등)를 안 쓰므로 여기서 전담 */
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; }
-body { background: #10151c; }
+/* 손그림 노랑 테마 — 화면 전환 사이 빈 순간에도 검은 배경이 안 보이게 크림으로. */
+body { background: #FFF6DB; }
 
 :root {
   --color-build-yellow: #F6BE00;

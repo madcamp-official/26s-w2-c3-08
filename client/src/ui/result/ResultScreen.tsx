@@ -21,7 +21,13 @@ export function ResultScreen({ onMain }: { onLobby: () => void; onRestart: () =>
   const { ref, trigger } = useMorphTransition<HTMLButtonElement>();
 
   const state = room?.state as unknown as RaceStateSnap | undefined;
-  if (!room || !state) return null;
+  if (!room || !state) {
+    return (
+      <div className="dsScreen" style={{ background: YELLOW.list, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ color: INK, fontFamily: "var(--font-point)", fontSize: 20 }}>결과를 불러오는 중…</span>
+      </div>
+    );
+  }
 
   const members: (MemberSnap & { sessionId: string })[] = [];
   state.members.forEach((m, id) => members.push({ ...m, sessionId: id }));
