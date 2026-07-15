@@ -41,7 +41,8 @@ for (const state of [
 }
 
 for (const copy of [
-  '메인',
+  '릴레이 맵 메이커',
+  '멀티플레이어 AI 릴레이 맵 제작 게임',
   '게임하기',
   '에셋 만들기',
   '내 창고',
@@ -70,6 +71,9 @@ for (const copy of [
 }
 
 assert.match(screenSource, /<LauncherShell/)
+assert.match(screenSource, /layout="open"/)
+assert.match(screenSource, /main-background-mario-nowarp\.mp4/)
+assert.match(screenSource, /backgroundVideoSrc=\{mainBackgroundVideoSrc\}/)
 assert.match(screenSource, /<AvatarPanel/)
 assert.match(screenSource, /sourceImageUrl/)
 assert.match(screenSource, /className=\{styles\.avatarImage\}/)
@@ -79,6 +83,9 @@ assert.match(screenSource, /<Modal/)
 assert.match(screenSource, /<Toast/)
 assert.match(screenSource, /data-v2-screen="s2-main"/)
 assert.match(screenSource, /data-v2-component="main-screen"/)
+assert.match(screenSource, /data-v2-component="main-game-cta"/)
+assert.match(screenSource, /data-v2-component="main-asset-cta"/)
+assert.match(screenSource, /data-v2-component="main-warehouse-cta"/)
 assert.match(screenSource, /data-v2-component="avatar-panel"/)
 assert.match(screenSource, /data-v2-component="settings-modal"/)
 assert.match(screenSource, /data-v2-component="settings-issue-code"/)
@@ -128,9 +135,22 @@ assert.match(gallerySource, /selectedCase\.mainFixtureId/)
 assert.match(appSource, /case 'main':/)
 assert.match(appSource, /<MainController \/>/)
 
-assert.match(screenCss, /min-height: 720px/)
-assert.match(screenCss, /grid-template-columns: minmax\(0, 1\.2fr\) minmax\(320px, 420px\)/)
+assert.match(screenCss, /min-height: max\(720px, 100svh\)/)
+assert.match(screenCss, /display: flex/)
+assert.match(screenCss, /justify-content: center/)
+assert.match(screenCss, /\.actionStack/)
+assert.match(screenCss, /width: min\(calc\(var\(--spacing-16\) \* 5 \+ var\(--spacing-10\)\), 100%\)/)
+assert.match(screenCss, /\.actionStack :global\(button\)/)
+assert.match(screenCss, /min-height: calc\(var\(--spacing-16\) \+ var\(--spacing-8\)\)/)
+assert.doesNotMatch(screenCss, /\.heroStats/)
+assert.match(screenCss, /\.avatarPanelAction/)
+assert.match(screenCss, /width: min\(calc\(var\(--spacing-16\) \* 6\), 100%\)/)
+assert.match(screenCss, /height: calc\(var\(--spacing-16\) \* 4\)/)
+assert.doesNotMatch(screenCss, /heroMeta|heroFeatureList|heroActionDeck|commandKicker|secondaryActionList/)
 assert.match(screenCss, /@media \(max-width: 900px\)/)
+assert.doesNotMatch(screenCss, /heroCoursePreview|courseSky|courseRunner|summaryPanel/)
+assert.doesNotMatch(screenCss, /@keyframes avatar-stage-scan/)
+assert.doesNotMatch(screenCss, /main-orb-drift/)
 
 const forbiddenImportPattern = /(zustand|appStore|localStorage|realtime|socket|api\/|net\/|phaser|SessionPort|StoragePort)/i
 const rawHexPattern = /(^|[^A-Za-z0-9])#(?:[0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})(?![A-Za-z0-9])/

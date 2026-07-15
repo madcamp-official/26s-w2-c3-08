@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react'
 
 import { Badge, TextField } from '../../design-system/components'
-import { Button, Text } from '../../design-system/primitives'
+import { Button } from '../../design-system/primitives'
 import { LauncherShell, type LauncherShellState } from '../../design-system/shells'
 import styles from './LoginScreen.module.css'
 
@@ -21,10 +21,10 @@ export interface LoginScreenProps {
   onSubmitNickname: (nickname: string) => void
 }
 
-const appTitle = '멀티플레이 AI 릴레이 맵 메이커'
-const screenTitle = '닉네임을 정해주세요'
-const screenDescription = '같은 닉네임도 사용할 수 있어요. 기기는 세션으로 구분됩니다.'
-const nicknameGuide = '1~12자로 입력해주세요.'
+const appTitle = '릴레이 맵 메이커'
+const screenDescription = '멀티플레이어 AI 릴레이 맵 제작 게임'
+const nicknameGuide = '닉네임은 1~12자까지 입력할 수 있어요.'
+const nicknamePlaceholder = '닉네임을 입력하세요'
 const nicknameInputId = 's1-login-nickname'
 const nicknameErrorId = 's1-login-nickname-error'
 
@@ -60,70 +60,66 @@ export function LoginScreen({
     <LauncherShell
       className={styles.shell}
       title={appTitle}
-      subtitle="S1 Login"
+      layout="centered"
       state={shellState}
-      status={<LoginStatus state={state} />}
+      status={shouldShowStatus(state) ? <LoginStatus state={state} /> : undefined}
       data-v2-screen="s1-login"
       data-v2-state={state}
     >
       <div className={styles.layout} data-v2-component="login-screen" data-v2-state={state}>
-        <section className={styles.copyBlock} aria-labelledby="s1-login-title">
-          <p className={styles.eyebrow}>시작하기</p>
-          <h2 id="s1-login-title">{screenTitle}</h2>
-          <p>{screenDescription}</p>
-        </section>
-
-        <form
-          className={styles.form}
-          aria-label="닉네임으로 시작하기"
-          data-v2-component="login-form"
-          data-v2-state={state}
-          onSubmit={handleSubmit}
-        >
-          <div className={styles.fieldFrame}>
-            <TextField
-              id={nicknameInputId}
-              label="닉네임"
-              value={nickname}
-              placeholder="1~12자"
-              helper={nicknameGuide}
-              required
-              disabled={isBusy}
-              loading={state === 'boot'}
-              aria-invalid={Boolean(errorMessage) || undefined}
-              aria-describedby={errorMessage ? nicknameErrorId : undefined}
-              onChange={onNicknameChange}
-            />
+        <section className={styles.heroPanel} aria-labelledby="s1-login-title">
+          <div className={styles.copyBlock}>
+            <h2 id="s1-login-title">{appTitle}</h2>
+            <p>{screenDescription}</p>
           </div>
 
-          <p
-            id={nicknameErrorId}
-            className={styles.errorArea}
-            aria-live="polite"
-            data-v2-component="login-error"
-            data-v2-state={errorMessage ? 'error' : 'idle'}
+          <form
+            className={styles.form}
+            aria-label="닉네임으로 시작하기"
+            data-v2-component="login-form"
+            data-v2-state={state}
+            onSubmit={handleSubmit}
           >
-            {errorMessage}
-          </p>
+            <div className={styles.fieldFrame}>
+              <TextField
+                id={nicknameInputId}
+                className={styles.nicknameField}
+                label="닉네임"
+                value={nickname}
+                placeholder={nicknamePlaceholder}
+                helper={nicknameGuide}
+                disabled={isBusy}
+                loading={state === 'boot'}
+                aria-invalid={Boolean(errorMessage) || undefined}
+                aria-describedby={errorMessage ? nicknameErrorId : undefined}
+                onChange={onNicknameChange}
+              />
+            </div>
 
-          <Button
-            type="submit"
-            size="large"
-            fullWidth
-            loading={state === 'submitting'}
-            disabled={!canSubmit}
-            data-v2-component="login-submit"
-            data-v2-state={state === 'submitting' ? 'submitting' : canSubmit ? 'enabled' : 'disabled'}
-          >
-            시작하기
-          </Button>
-        </form>
+            <p
+              id={nicknameErrorId}
+              className={styles.errorArea}
+              aria-live="polite"
+              data-v2-component="login-error"
+              data-v2-state={errorMessage ? 'error' : 'idle'}
+            >
+              {errorMessage}
+            </p>
 
-        <div className={styles.previewBlock} aria-hidden="true">
-          <span className={styles.previewTile} />
-          <span className={styles.previewTile} />
-          <span className={styles.previewTile} />
-        </div>
+            <Button
+              type="submit"
+              size="large"
+              fullWidth
+              className={styles.submitButton}
+              loading={state === 'submitting'}
+              disabled={!canSubmit}
+              data-v2-component="login-submit"
+              data-v2-state={state === 'submitting' ? 'submitting' : canSubmit ? 'enabled' : 'disabled'}
+            >
+              시작하기
+            </Button>
+          </form>
+        </section>
       </div>
     </LauncherShell>
   )
@@ -146,11 +142,11 @@ function LoginStatus({ state }: { state: LoginScreenState }) {
     return <Badge state="failed" label="세션 만료" />
   }
 
-  return (
-    <Text variant="caption" tone="secondary" weight="bold">
-      로컬 모드
-    </Text>
-  )
+  return null
+}
+
+function shouldShowStatus(state: LoginScreenState) {
+  return state === 'boot' || state === 'submitting' || state === 'serverError' || state === 'expiredSession'
 }
 
 function getShellState(state: LoginScreenState): LauncherShellState {

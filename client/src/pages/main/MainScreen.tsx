@@ -5,9 +5,11 @@ import {
   Toast,
   type BadgeState,
 } from '../../design-system/components'
-import { Button, IconButton, Text } from '../../design-system/primitives'
+import { Button, IconButton } from '../../design-system/primitives'
 import { LauncherShell } from '../../design-system/shells'
 import styles from './MainScreen.module.css'
+
+const mainBackgroundVideoSrc = '/media/main-background-mario-nowarp.mp4'
 
 export type MainScreenState =
   | 'systemAvatar'
@@ -82,7 +84,6 @@ export function MainScreen({
   state,
   nickname,
   avatar,
-  assetSummary,
   settingsOpen,
   settingsState,
   settingsValues,
@@ -107,9 +108,10 @@ export function MainScreen({
   return (
     <LauncherShell
       className={styles.shell}
-      title="멀티플레이 AI 릴레이 맵 메이커"
-      subtitle="S2 Main"
+      title="릴레이 맵 메이커"
+      layout="open"
       state="default"
+      backgroundVideoSrc={mainBackgroundVideoSrc}
       status={<Badge state="ready" label={`환영해요, ${nickname}`} />}
       actions={
         <IconButton
@@ -134,54 +136,32 @@ export function MainScreen({
       data-v2-state={state}
     >
       <div className={styles.layout} data-v2-component="main-screen" data-v2-state={state}>
-        <section className={styles.hero} aria-labelledby="s2-main-title">
-          <p className={styles.eyebrow}>메인</p>
-          <h2 id="s2-main-title">릴레이 맵 제작을 시작해요</h2>
-          <p>아바타를 확인하고, 게임에 들어가거나 새 에셋을 만들 수 있어요.</p>
-          <div className={styles.ctaGrid}>
-            <Button size="large" onClick={onNavigateLobby} data-v2-component="main-game-cta">
-              게임하기
-            </Button>
-            <Button
-              size="large"
-              variant="secondary"
-              onClick={onOpenAssetStudio}
-              data-v2-component="main-asset-cta"
-            >
-              에셋 만들기
-            </Button>
-            <Button
-              size="large"
-              variant="secondary"
-              onClick={() => onOpenWarehouse('avatar')}
-              data-v2-component="main-warehouse-cta"
-            >
-              내 창고
-            </Button>
-          </div>
-        </section>
-
         <AvatarPanel avatar={avatar} onOpenWarehouse={() => onOpenWarehouse('avatar')} />
 
-        <section className={styles.summaryPanel} aria-labelledby="s2-main-summary-title">
-          <div>
-            <p className={styles.eyebrow}>창고 요약</p>
-            <h3 id="s2-main-summary-title">내가 만든 에셋 {assetSummary.total}개</h3>
-          </div>
-          <dl className={styles.summaryGrid}>
-            <div>
-              <dt>사용 가능</dt>
-              <dd>{assetSummary.ready}</dd>
-            </div>
-            <div>
-              <dt>작업 중</dt>
-              <dd>{assetSummary.working}</dd>
-            </div>
-            <div>
-              <dt>실패</dt>
-              <dd>{assetSummary.failed}</dd>
-            </div>
-          </dl>
+        <section className={styles.actionStack} aria-labelledby="s2-main-title">
+          <h2 id="s2-main-title">릴레이 맵 메이커</h2>
+          <p>멀티플레이어 AI 릴레이 맵 제작 게임</p>
+          <Button size="large" fullWidth onClick={onNavigateLobby} data-v2-component="main-game-cta">
+            게임하기
+          </Button>
+          <Button
+            size="large"
+            variant="secondary"
+            fullWidth
+            onClick={onOpenAssetStudio}
+            data-v2-component="main-asset-cta"
+          >
+            에셋 만들기
+          </Button>
+          <Button
+            size="large"
+            variant="secondary"
+            fullWidth
+            onClick={() => onOpenWarehouse('avatar')}
+            data-v2-component="main-warehouse-cta"
+          >
+            내 창고
+          </Button>
         </section>
       </div>
 
@@ -233,13 +213,11 @@ function AvatarPanel({ avatar, onOpenWarehouse }: AvatarPanelProps) {
         )}
       </div>
       <div className={styles.avatarCopy}>
-        <Text variant="caption" tone="secondary" weight="bold">
-          장착한 아바타
-        </Text>
         <h3>{avatar.title}</h3>
-        <p>{avatar.description}</p>
+        <p>자신만의 아바타를 만들어보세요!</p>
         <Badge state={getAvatarBadgeState(avatar.state)} label={avatar.statusText} />
         {avatar.estimateText ? <span className={styles.estimate}>{avatar.estimateText}</span> : null}
+        <span className={styles.avatarPanelAction}>창고에서 아바타 보기</span>
       </div>
     </button>
   )

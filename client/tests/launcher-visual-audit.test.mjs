@@ -28,12 +28,15 @@ assert.equal(statSync(join(repoRoot, 'client/tests/visual/launcher-screenshots.s
 
 assert.match(launcherShellSource, /role="status"/)
 assert.match(launcherShellSource, /aria-live="polite"/)
+assert.match(launcherShellSource, /layout = 'framed'/)
+assert.match(launcherShellCss, /\[data-layout='centered'\]/)
 assert.match(launcherShellCss, /grid-template-rows: auto minmax\(0, 1fr\)/)
 assert.match(launcherShellCss, /overflow: auto/)
 assert.match(launcherShellCss, /scrollbar-gutter: stable/)
 
 assert.match(loginCss, /align-self: center/)
-assert.match(loginCss, /\.previewBlock::before/)
+assert.match(loginCss, /width: min\(calc\(var\(--spacing-16\) \* 7 \+ var\(--spacing-8\)\), calc\(100vw - var\(--spacing-8\)\)\)/)
+assert.match(loginCss, /\.heroPanel/)
 assert.match(mainCss, /\.avatarPreview::before/)
 assert.match(mainCss, /\.volumeField input:focus-visible/)
 assert.match(warehouseCss, /\.assetPreview::before/)

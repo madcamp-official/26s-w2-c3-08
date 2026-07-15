@@ -30,12 +30,12 @@ for (const state of [
 }
 
 for (const copy of [
-  '멀티플레이 AI 릴레이 맵 메이커',
-  '닉네임을 정해주세요',
-  '같은 닉네임도 사용할 수 있어요. 기기는 세션으로 구분됩니다.',
+  '릴레이 맵 메이커',
+  '멀티플레이어 AI 릴레이 맵 제작 게임',
   '닉네임',
+  '닉네임을 입력하세요',
   '시작하기',
-  '1~12자로 입력해주세요.',
+  '닉네임은 1~12자까지 입력할 수 있어요.',
   '닉네임을 입력해주세요.',
   '닉네임은 12자 이하로 입력해주세요.',
   '시작할 수 없어요. 다시 시도해주세요.',
@@ -45,6 +45,7 @@ for (const copy of [
 }
 
 assert.match(screenSource, /<LauncherShell/)
+assert.match(screenSource, /layout="centered"/)
 assert.match(screenSource, /<TextField/)
 assert.match(screenSource, /<Button/)
 assert.match(screenSource, /data-v2-screen="s1-login"/)
@@ -66,8 +67,18 @@ assert.match(screenSource, /loading=\{state === 'submitting'\}/)
 assert.match(screenCss, /\.errorArea/)
 assert.match(screenCss, /min-height: var\(--spacing-6\)/)
 assert.match(screenCss, /min-height: 720px/)
-assert.match(screenCss, /grid-template-columns: minmax\(0, 1fr\) 240px/)
-assert.match(screenCss, /@media \(max-width: 900px\)/)
+assert.match(screenCss, /width: min\(calc\(var\(--spacing-16\) \* 7 \+ var\(--spacing-8\)\), calc\(100vw - var\(--spacing-8\)\)\)/)
+assert.match(screenCss, /\.heroPanel/)
+assert.match(screenCss, /\.copyBlock/)
+assert.match(screenCss, /\.nicknameField/)
+assert.match(screenCss, /min-height: calc\(var\(--spacing-16\) \+ var\(--spacing-1\)\)/)
+assert.match(screenCss, /\.submitButton\.submitButton/)
+assert.match(screenCss, /min-height: calc\(var\(--spacing-16\) \+ var\(--spacing-2\)\)/)
+assert.match(screenCss, /font-size: var\(--typography-size-title-sm\)/)
+assert.doesNotMatch(screenSource, /previewBlock|previewStage|previewStats|previewTile/)
+assert.doesNotMatch(screenCss, /previewBlock|previewStage|previewStats|previewTile/)
+assert.doesNotMatch(screenCss, /login-orb-drift/)
+assert.match(screenCss, /@media \(max-width: 520px\)/)
 
 for (const fixtureId of [
   's1-login-boot',

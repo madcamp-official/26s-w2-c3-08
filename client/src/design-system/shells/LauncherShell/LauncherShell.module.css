@@ -5,6 +5,7 @@
   color: var(--semantic-color-text-primary);
   background:
     linear-gradient(
+      180deg,
       var(--semantic-color-launcher-background-top),
       var(--semantic-color-launcher-background-bottom)
     );
@@ -21,9 +22,39 @@
   pointer-events: none;
 }
 
+.backgroundVideoLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.backgroundVideoLayer::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      180deg,
+      var(--semantic-color-launcher-background-top),
+      var(--semantic-color-launcher-background-bottom)
+    );
+  content: '';
+  opacity: var(--opacity-overlay-medium);
+}
+
+.backgroundVideo {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  opacity: var(--opacity-overlay-medium);
+  transform: scale(1.02);
+}
+
 .frame {
   position: relative;
   z-index: var(--z-index-base);
+  box-sizing: border-box;
   width: min(1180px, calc(100% - var(--spacing-12)));
   min-height: inherit;
   display: grid;
@@ -35,9 +66,14 @@
 
 .header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--spacing-5);
   align-items: start;
+}
+
+.leadingNav {
+  display: flex;
+  align-items: center;
 }
 
 .titleBand {
@@ -88,6 +124,7 @@
 .content {
   min-width: 0;
   min-height: 0;
+  box-sizing: border-box;
   display: grid;
   align-content: start;
   overflow: auto;
@@ -97,6 +134,183 @@
   background: var(--semantic-color-launcher-panel);
   box-shadow: var(--effects-shadow-panel);
   scrollbar-gutter: stable;
+}
+
+.shell[data-density='compact'] .frame {
+  gap: var(--spacing-4);
+  padding: var(--spacing-4) 0;
+}
+
+.shell[data-density='compact'] .titleBand {
+  width: min(560px, 100%);
+  gap: var(--spacing-1);
+  padding: var(--spacing-3) var(--spacing-4);
+}
+
+.shell[data-density='compact'] .titleBand h1 {
+  font-size: var(--typography-size-title-sm);
+}
+
+.shell[data-density='compact'] .content {
+  padding: var(--spacing-5);
+}
+
+.shell[data-layout='framed'] .header:not(:has(.leadingNav)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.shell[data-layout='framed'] .header:not(:has(.leadingNav)) .titleBand {
+  grid-column: 1;
+}
+
+.shell[data-layout='centered'] {
+  min-height: 100svh;
+}
+
+.shell[data-layout='centered'] .tileGrid {
+  background-image:
+    linear-gradient(to right, var(--semantic-color-text-inverse) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--semantic-color-text-inverse) 1px, transparent 1px);
+  opacity: var(--opacity-overlay-subtle);
+}
+
+.shell[data-layout='centered'] .frame {
+  width: 100%;
+  min-height: inherit;
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--spacing-0);
+  padding: var(--spacing-6);
+}
+
+.shell[data-layout='centered'] .header {
+  position: absolute;
+  inset-block-end: var(--spacing-4);
+  inset-inline-end: var(--spacing-4);
+  z-index: var(--z-index-sticky);
+  display: block;
+}
+
+.shell[data-layout='centered'] .titleBand,
+.shell[data-layout='centered'] .headerAside nav,
+.shell[data-layout='centered'] .leadingNav,
+.shell[data-layout='centered'] .actions {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  box-shadow: none;
+  transform: translate(-100vw, -100vh);
+  white-space: nowrap;
+}
+
+.shell[data-layout='centered'] .headerAside,
+.shell[data-layout='centered'] .statusLayer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.shell[data-layout='centered'] .statusLayer {
+  min-height: var(--spacing-10);
+  align-items: center;
+  padding: 0 var(--spacing-3);
+  border-radius: var(--radius-md);
+  color: var(--semantic-color-text-inverse);
+  background: var(--semantic-color-game-hud-surface);
+  box-shadow: var(--effects-shadow-hud);
+}
+
+.shell[data-layout='centered'] .content {
+  min-height: 0;
+  align-content: center;
+  justify-content: center;
+  place-items: center;
+  overflow: visible;
+  padding: var(--spacing-0);
+  border: 0;
+  border-radius: var(--radius-none);
+  background: transparent;
+  box-shadow: none;
+  scrollbar-gutter: auto;
+}
+
+.shell[data-layout='open'] .tileGrid {
+  background-image:
+    linear-gradient(to right, var(--semantic-color-text-inverse) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--semantic-color-text-inverse) 1px, transparent 1px);
+  opacity: var(--opacity-overlay-subtle);
+}
+
+.shell[data-layout='open'] .frame {
+  width: min(1152px, calc(100% - var(--spacing-8)));
+  gap: var(--spacing-4);
+  padding: var(--spacing-4) 0 var(--spacing-8);
+}
+
+.shell[data-layout='open'] .header {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+.shell[data-layout='open'] .titleBand {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-none);
+  color: var(--semantic-color-action-primary-background);
+  background: transparent;
+  box-shadow: none;
+}
+
+.shell[data-layout='open'] .titleBand p {
+  display: none;
+}
+
+.shell[data-layout='open'] .titleBand h1 {
+  max-width: 100%;
+  color: var(--semantic-color-action-primary-background);
+  font-size: var(--typography-size-title-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 var(--spacing-1) var(--spacing-2) var(--semantic-color-border-strong);
+  white-space: nowrap;
+}
+
+.shell[data-layout='open'][data-title-tone='inverse'] .titleBand h1,
+.shell[data-layout='open'][data-title-tone='inverse'] .titleBand span {
+  color: var(--semantic-color-text-inverse);
+}
+
+.shell[data-layout='open'] .titleBand span {
+  color: var(--semantic-color-text-inverse);
+  font-size: var(--typography-size-caption);
+}
+
+.shell[data-layout='open'] .headerAside {
+  align-items: center;
+  grid-auto-flow: column;
+}
+
+.shell[data-layout='open'] .content {
+  overflow: visible;
+  padding: var(--spacing-0);
+  border: 0;
+  border-radius: var(--radius-none);
+  background: transparent;
+  box-shadow: none;
+  scrollbar-gutter: auto;
+}
+
+.shell[data-layout='open'] .statusLayer {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--semantic-color-border-default);
+  border-radius: var(--radius-full);
+  background: var(--semantic-color-surface-panel);
 }
 
 .toastLayer,
