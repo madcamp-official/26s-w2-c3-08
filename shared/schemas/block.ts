@@ -36,7 +36,8 @@ const Motion = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ride_start") }),
   z.object({ type: z.literal("ride_oneway"), sink: z.boolean() }),
   z.object({ type: z.literal("spin"), speed: Speed3, radius: Range3 }),
-  z.object({ type: z.literal("pendulum") }),
+  // radius(진자 줄 길이 프리셋) — 2026-07-16 추가. default로 기존 저장 attrs({type:"pendulum"})도 유효 유지.
+  z.object({ type: z.literal("pendulum"), radius: Range3.default("normal") }),
   z.object({ type: z.literal("charge"), dir: z.enum(["down", "left", "right"]), after: z.enum(["return", "respawn", "once"]) }),
 ]);
 

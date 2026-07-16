@@ -86,7 +86,12 @@ export function buildBlock(id: string, a: BlockAttrs, g: BuildGeom): BlockSpec {
   switch (a.motion.type) {
     case "patrol": rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "patrol", speed: a.motion.speed } }); break;
     case "spin": rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "rotate", speed: a.motion.speed } }); break;
-    case "pendulum": rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "pendulum" } }); break;
+    case "pendulum": {
+      // radius 프리셋 → 진자 줄 길이(px). normal=128(액션 기본값과 동일 — 기존 저장물 거동 불변).
+      const PENDULUM_LEN: Record<string, number> = { near: 64, normal: 128, far: 224 };
+      rules.push({ when: triggerGate ?? { type: "always" }, do: { type: "pendulum", length: PENDULUM_LEN[a.motion.radius] } });
+      break;
+    }
     case "charge":
       rules.push({ when: { type: "always" }, do: { type: "idle" } });
       rules.push({

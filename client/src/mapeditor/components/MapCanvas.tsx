@@ -35,6 +35,8 @@ const BTN_RIGHT = 2;
  *  실행하지 않고 팬으로 전환한다(스펙: "클릭 즉시 반응하지 않고 짧게 대기"). 한쪽이 미세하게
  *  먼저 눌려도 오배치가 없도록 pointerdown에서는 절대 즉시 실행하지 않는다. */
 const PAN_GRACE_MS = 90;
+/** 더블클릭 인정 간격(ms) — 같은 타일 두 번째 좌클릭이면 배치 대신 좌우반전 */
+const DBLCLICK_MS = 350;
 
 interface Tile { x: number; y: number }
 
@@ -61,6 +63,8 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
     panLast: { x: 0, y: 0 },
     // 팬 유예 중 보류된 단독 동작 — 타이머 만료 시 실행, 반대 버튼 오면 폐기
     pending: null as null | { mode: "place" | "erase" | "flag"; flag?: "start" | "end"; tile: Tile; timer: number },
+    // 더블클릭(좌우반전) 감지 — 같은 타일 재클릭 시각
+    lastClick: { key: "", at: 0 },
   });
 
   /** 보류 동작 폐기(타이머 포함) */
@@ -81,10 +85,22 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
       playSound("pick");
       return;
     }
+    // 더블클릭 = 좌우반전(스펙: 반전은 더블클릭). 같은 타일을 DBLCLICK_MS 안에 다시 좌클릭하면
+    // 배치 재시도(denied) 대신 그 자리 배치물을 뒤집는다.
+    const key = `${p.tile.x},${p.tile.y}`;
+    const now = performance.now();
+    if (p.mode === "place") {
+      const isDouble = g.current.lastClick.key === key && now - g.current.lastClick.at < DBLCLICK_MS;
+      g.current.lastClick = { key, at: now };
+      if (isDouble && useEditorStore.getState().flipAt(p.tile.x, p.tile.y)) {
+        playSound("flip");
+        return;
+      }
+    }
     g.current.dragMode = p.mode;
     g.current.lastActedTile = null;
     actOnTile(p.tile, p.mode, false); // 단일 클릭 첫 타일 — 느슨한 판정으로 즉시 인정
-    g.current.lastActedTile = `${p.tile.x},${p.tile.y}`;
+    g.current.lastActedTile = key;
   }
 
   function clampPan(nx: number, ny: number, z: number) {

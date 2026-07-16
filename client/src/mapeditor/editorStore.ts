@@ -54,6 +54,8 @@ interface EditorState {
   placeAtAnchor: (anchorX: number, anchorY: number) => boolean;
   /** 타일 (tx,ty)를 덮는 배치물 삭제. 성공 시 true */
   eraseAt: (tx: number, ty: number) => boolean;
+  /** 타일 (tx,ty)를 덮는 배치물 좌우반전 토글(더블클릭). 성공 시 true */
+  flipAt: (tx: number, ty: number) => boolean;
   /** 깃발 이동(규칙 위반이면 무시). 성공 시 true */
   moveFlag: (which: "start" | "end", nx: number, ny: number) => boolean;
   /** 드래그로 "들려 있는" 깃발 — 렌더러가 흔들흔들+그림자 연출(스펙: 꾹 누르면 들림 표시) */
@@ -132,6 +134,15 @@ export const useEditorStore = create<EditorState>()(
         const next = { ...s.placements };
         delete next[hit];
         set({ placements: next });
+        return true;
+      },
+
+      flipAt: (tx, ty) => {
+        const s = get();
+        const hit = itemAt(Object.values(s.placements), tx, ty);
+        if (!hit) return false;
+        const it = s.placements[hit];
+        set({ placements: { ...s.placements, [hit]: { ...it, flipX: !it.flipX } } });
         return true;
       },
 
