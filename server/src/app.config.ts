@@ -15,6 +15,7 @@ import { MyRoom } from "./rooms/MyRoom.js";
 import { BaseworldRoom } from "./rooms/baseworld/BaseworldRoom.js";
 import { RaceRoom } from "./rooms/race/RaceRoom.js";
 import { TestLineRoom } from "./rooms/testline/TestLineRoom.js";
+import { QuickHubRoom } from "./rooms/quick/QuickHubRoom.js";
 import { aiWorkerRouter } from "./worker-api/routes.js";
 import { sessionRouter } from "./api/session.js";
 import { linesRouter } from "./api/lines.js";
@@ -30,7 +31,8 @@ const server = defineServer({
         my_room: defineRoom(MyRoom),
         baseworld: defineRoom(BaseworldRoom),
         race: defineRoom(RaceRoom),
-        testline: defineRoom(TestLineRoom)
+        testline: defineRoom(TestLineRoom),
+        quickhub: defineRoom(QuickHubRoom)
     },
 
     /**
