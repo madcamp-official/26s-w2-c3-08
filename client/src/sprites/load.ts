@@ -59,10 +59,13 @@ function registerAnims(scene: Phaser.Scene, manifest: AssetManifest): void {
     const aKey = animKey(manifest.key, action);
     if (scene.anims.exists(aKey)) continue;
     const spec = ACTIONS[action];
+    // 아바타 idle 첫 프레임 스킵(요청 2026-07-16) — 생성물 프레임0이 정지 소스에 가까워 뻣뻣.
+    const start = manifest.category === "avatar" && action === "idle" && sheet.frameCount > 1 ? 1 : 0;
+    const nFrames = sheet.frameCount - start;
     scene.anims.create({
       key: aKey,
-      frames: scene.anims.generateFrameNumbers(tKey, { start: 0, end: sheet.frameCount - 1 }),
-      frameRate: sheet.frameCount / (spec.durationSec ?? (spec.loop ? 3 : 1.5)),
+      frames: scene.anims.generateFrameNumbers(tKey, { start, end: sheet.frameCount - 1 }),
+      frameRate: nFrames / (spec.durationSec ?? (spec.loop ? 3 : 1.5)),
       repeat: spec.loop ? -1 : 0,
     });
   }
