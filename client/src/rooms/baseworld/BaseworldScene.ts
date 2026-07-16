@@ -140,10 +140,14 @@ export class BaseworldScene extends Phaser.Scene {
   prevSlide = false;      // 경사 슬라이딩 전이 감지
   prevSweepIndex = 0;     // 라인 파괴 스윕 전이 감지(레이스 전용 — RaceState.sweepIndex)
 
-  constructor(room: Room, world: SceneWorld = TESTMAP) {
+  /** 스프라이트(에셋) 로드를 끄고 폴백 사각형만 렌더 — 테스트맵 순수 열람용(?testmap) */
+  noSprites = false;
+
+  constructor(room: Room, world: SceneWorld = TESTMAP, opts?: { noSprites?: boolean }) {
     super("baseworld");
     this.room = room;
     this.world = world;
+    this.noSprites = opts?.noSprites ?? false;
     this.blockSpecById = new Map(world.blocks.map((b) => [b.id, b]));
     this.monsterSpecById = new Map(world.monsters.map((m) => [m.id, m]));
     this.itemSpecById = new Map(world.items.map((i) => [i.id, i]));
@@ -338,6 +342,7 @@ export class BaseworldScene extends Phaser.Scene {
   /** 로컬 키(몬스터 asset명·아이템 kind 등)로 매니페스트를 찾아 SpriteView에 배정(§sprites).
    *  매핑 없음·미준비·실패는 전부 무시 — 폴백(사각형) 유지. */
   private assignSpriteByKey(view: SpriteView, localKey: string): void {
+    if (this.noSprites) return;   // ?testmap 순수 열람 — 폴백 사각형만
     fetchManifestByKey(localKey).then((m) => {
       if (m && view.sprite.active) assignManifest(this, view, m);
     });

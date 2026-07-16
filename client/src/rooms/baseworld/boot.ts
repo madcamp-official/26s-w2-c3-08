@@ -11,7 +11,7 @@ let scene: BaseworldScene | null = null;
 
 /** parent 지정 시 그 요소 안에 꽉 채워 마운트(맵 에디터 테스트 모드) — 없으면 기존처럼 풀스크린.
  *  world 지정 시 그 월드로(테스트=단일 라인, 레이스=병합맵) — 없으면 TESTMAP(콘솔 경로). */
-export function startGame(room: Room, parent?: HTMLElement, world?: SceneWorld): void {
+export function startGame(room: Room, parent?: HTMLElement, world?: SceneWorld, opts?: { noSprites?: boolean }): void {
   if (game) stopGame();
   const embedded = !!parent;
   const w = world ?? TESTMAP;
@@ -25,7 +25,7 @@ export function startGame(room: Room, parent?: HTMLElement, world?: SceneWorld):
     container.style.cssText = "position:fixed;inset:0;z-index:1000;background:#1a1a24;";
     document.body.appendChild(container);
   }
-  scene = new BaseworldScene(room, w);
+  scene = new BaseworldScene(room, w, opts);
   game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: container,

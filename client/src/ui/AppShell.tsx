@@ -10,6 +10,7 @@ import { LobbyScreen } from "./lobby/LobbyScreen.js";
 import { WaitingRoomScreen } from "./waiting/WaitingRoomScreen.js";
 import { ResultScreen } from "./result/ResultScreen.js";
 import { QuickScreen } from "./quick/QuickScreen.js";
+import { TestMapScreen } from "./testmap/TestMapScreen.js";
 
 export type ScreenName = "login" | "main" | "lobby" | "waiting" | "result";
 
@@ -21,8 +22,10 @@ interface MeResponse {
 export function AppShell() {
   const [screen, setScreen] = useState<ScreenName | null>(null);   // null = 부팅 검증 중
   const setSession = useSessionStore((s) => s.setSession);
-  // 간이 레이스 모드(이벤트용, ?quick) — 정식 플로우 전부 우회
-  const quick = new URLSearchParams(location.search).has("quick");
+  // 이벤트용 우회 진입점(정식 플로우 건너뜀): ?quick=매칭 레이스, ?testmap=테스트맵 열람
+  const params = new URLSearchParams(location.search);
+  const quick = params.has("quick");
+  const testmap = params.has("testmap");
 
   useEffect(() => {
     // zustand persist는 localStorage 복원이 비동기다 — 복원 완료 전에 token을 읽으면 항상 null이라
@@ -51,6 +54,7 @@ export function AppShell() {
     }
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (testmap) return <TestMapScreen />;
   if (quick) return <QuickScreen />;
 
   return (
