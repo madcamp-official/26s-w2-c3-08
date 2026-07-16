@@ -19,6 +19,7 @@ export class RaceState extends GameState {
   @type("string") code = "";          // 방 코드 — 에디터 라인 저장 시 sourceRoomId로 전달(본인 라인 매칭 근거)
   @type("number") phaseEndsAt = 0;
   @type("uint8") lineCount = 0;       // racing 진입 시 확정 — 게임시간 = lineCount × 40s
+  @type("string") lineIds = "";       // 병합에 쓴 라인 id CSV(셔플된 순서 그대로) — 클라가 같은 월드를 조립(§14)
   @type("uint8") sweepIndex = 0;      // 파괴된 라인 수(0부터 순차)
   @type("number") goalX = 0;          // 골 x(px) — HUD 진행률용
   @type({ map: MemberState }) members = new MapSchema<MemberState>();

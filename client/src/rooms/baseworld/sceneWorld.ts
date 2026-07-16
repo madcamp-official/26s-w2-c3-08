@@ -20,6 +20,8 @@ export interface SceneWorld {
   blocks: BlockSpec[];
   monsters: MonsterSpec[];
   items: ItemSpec[];
+  /** 라인별 가로 범위(타일, 병합 좌표) — 파괴 스윕 연출 대상 판정용(레이스 전용, 없으면 스윕 연출 생략) */
+  lineRanges?: { startX: number; endX: number }[];
 }
 
 const T = TUNING.world.tileSize;
@@ -40,5 +42,6 @@ export function worldFromMerged(m: MergedMap): SceneWorld {
     blocks: m.worldDef.blocks,
     monsters: m.worldDef.monsters,
     items: m.worldDef.items,
+    lineRanges: m.lineRanges,
   };
 }

@@ -11,6 +11,7 @@ import { playSound } from "../../audio/sfx.js";
 import { waitForPhaseChange } from "../../net/raceRoom.js";
 import { MapEditor } from "../../mapeditor/MapEditor.js";
 import { stopTest } from "../../mapeditor/testmode/testRunner.js";
+import { RaceScreen } from "../race/RaceScreen.js";
 
 interface MemberSnap { userId: string; nickname: string; isHost: boolean; canBuild: boolean }
 interface RaceStateSnap {
@@ -42,6 +43,10 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
   // 제작 페이즈(프리뷰 포함) — 맵 에디터가 화면 전체를 이어받음(fixed overlay, P2 룸 마운트)
   if (state.phase === "preview" || state.phase === "building") {
     return <MapEditor />;
+  }
+  // 레이스(라스트댄스 포함) — 병합맵 게임 + HUD(P3)
+  if (state.phase === "racing" || state.phase === "lastdance") {
+    return <RaceScreen />;
   }
 
   const members: (MemberSnap & { sessionId: string })[] = [];

@@ -257,6 +257,7 @@ export class RaceRoom extends PhysicsRoom {
       this.merged = mergeLines(lines);
       this.loadWorld(this.merged.worldDef);
       this.state.lineCount = lines.length;
+      this.state.lineIds = lines.map((l) => l.id.toString()).join(",");   // 클라 월드 조립용(순서 보존)
       this.state.sweepIndex = 0;
       this.state.goalX = this.merged.goalFlagTiles.x * T;
 

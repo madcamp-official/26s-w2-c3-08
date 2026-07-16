@@ -138,6 +138,7 @@ export class BaseworldScene extends Phaser.Scene {
   prevGrounded = false;   // 착지·점프 전이 감지(사운드/이펙트)
   prevClinging = false;   // 벽 잡기(클링) 전이 감지
   prevSlide = false;      // 경사 슬라이딩 전이 감지
+  prevSweepIndex = 0;     // 라인 파괴 스윕 전이 감지(레이스 전용 — RaceState.sweepIndex)
 
   constructor(room: Room, world: SceneWorld = TESTMAP) {
     super("baseworld");
@@ -1005,6 +1006,69 @@ export class BaseworldScene extends Phaser.Scene {
     });
     this.drawVisualLanguage();
     this.renderServerview();
+    this.renderRaceFx();
+  }
+
+  /**
+   * 레이스 전용 연출(RaceState 있을 때만 동작 — testline/콘솔 경로는 필드가 없어 전부 스킵).
+   * ① 라인 파괴 스윕: sweepIndex 증가 감지 → 전원 화면 흔들림 + 폭발음 + 파괴 라인의 모든 에셋 자리 폭발.
+   * ② 라스트댄스: 1/2/3위(현재 bestX 순) 아바타 머리 위로 금/은/동 세로 직선(월드 오브젝트, 화려하지 않게).
+   */
+  private renderRaceFx(): void {
+    const st = this.room.state as {
+      phase?: string; sweepIndex?: number;
+      members?: { forEach: (fn: (m: { bestX: number; rank: number }, id: string) => void) => void };
+    };
+
+    // ── ① 스윕 연출 ──
+    const sweep = st.sweepIndex ?? 0;
+    if (sweep > this.prevSweepIndex && this.world.lineRanges) {
+      const t = TUNING.world.tileSize;
+      for (let li = this.prevSweepIndex; li < sweep; li++) {
+        const range = this.world.lineRanges[li];
+        if (!range) continue;
+        const x0 = range.startX * t, x1 = range.endX * t;
+        const points: { x: number; y: number }[] = [];
+        for (const bl of this.world.blocks) if (bl.x >= x0 && bl.x < x1) points.push({ x: bl.x + bl.w / 2, y: bl.y + bl.h / 2 });
+        for (const mo of this.world.monsters) if (mo.x >= x0 && mo.x < x1) points.push({ x: mo.x, y: mo.y - mo.h / 2 });
+        this.explodeAt(points);
+      }
+      screenShake(this, 450, 0.012);           // 전원 화면 흔들림(각자 클라에서 재생 = 전원)
+      playSound("sweepHit", { x: this.me.body.x, y: this.me.body.y });   // 리스너 위치 = 풀 볼륨
+    }
+    this.prevSweepIndex = sweep;
+
+    // ── ② 라스트댄스 금/은/동 세로선 ──
+    if (this.entityVisualGfx && st.phase === "lastdance" && st.members) {
+      const standings: { id: string; bestX: number }[] = [];
+      st.members.forEach((m, id) => standings.push({ id, bestX: m.bestX }));
+      standings.sort((a, b) => b.bestX - a.bestX);
+      const MEDAL = [0xffd700, 0xc0c0c0, 0xcd7f32];   // 금/은/동
+      const topY = this.world.top ?? 0;
+      standings.slice(0, 3).forEach((s, i) => {
+        let x: number | null = null, headY: number | null = null;
+        if (s.id === this.room.sessionId) {
+          x = this.me.body.x; headY = this.me.body.y - this.me.body.h;
+        } else {
+          const v = this.players.get(s.id);
+          if (v) { x = v.ghost.x; headY = v.ghost.y - v.h; }
+        }
+        if (x === null || headY === null) return;
+        this.entityVisualGfx.lineStyle(4, MEDAL[i], 0.9);
+        this.entityVisualGfx.lineBetween(x, headY - 6, x, topY);
+      });
+    }
+  }
+
+  /** 파괴 이펙트 — 각 지점에 확장·페이드 원(가벼운 폭발 표현, 파티클 시스템 없이) */
+  private explodeAt(points: { x: number; y: number }[]): void {
+    for (const p of points) {
+      const c = this.add.circle(p.x, p.y, 6, 0xff8833, 0.9).setDepth(15);
+      this.tweens.add({
+        targets: c, radius: 34, alpha: 0, duration: 420, ease: "Cubic.easeOut",
+        onComplete: () => c.destroy(),
+      });
+    }
   }
 
   /** 프리셋 이름 → 감지 반경(px), 텔레그래프용 */
