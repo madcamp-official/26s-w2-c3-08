@@ -3,9 +3,11 @@
 // 맵 캔버스 영역에만 BaseworldScene 마운트(서버 권위 물리 — 로컬 시뮬 아님). 골 판정·리스폰 전부 서버가 처리.
 // 아이템/배경은 저장 API가 아직 block/monster만 허용해서 이 시점엔 제외(§engine/placement.ts 주석 참조).
 import { Client, type Room } from "@colyseus/sdk";
+import { mergeLines, type LineRecord } from "shared/build";
 import { toLineData, validateEditorLine } from "../engine/serialize.js";
 import { useEditorStore } from "../editorStore.js";
 import { startGame, stopGame } from "../../rooms/baseworld/boot.js";
+import { worldFromMerged } from "../../rooms/baseworld/sceneWorld.js";
 import { HTTP_BASE } from "../../net/rest.js";
 import { useSessionStore } from "../../store/session.js";
 import { TESTLINE_MSG, type TestPassedPayload } from "shared/race";
@@ -63,12 +65,26 @@ export async function startTest(onBadge: (b: TestBadge, msg?: string) => void): 
   if (!res.ok) { onBadge("error", `저장 실패 ${res.status}`); return; }
   const { lineId } = (await res.json()) as { lineId: string | number };
 
+  // 서버가 저장한 그대로를 다시 받아 병합 — 서버(TestLineRoom)와 완전히 같은 소스로 월드를 만든다(§14).
+  // 로컬 배치 상태를 직접 쓰지 않는 이유: 서버 화이트리스트/정규화가 걸러낸 결과와 어긋나면
+  // "화면에는 있는데 서버 판정엔 없는" 불일치가 생기기 때문.
+  const lineRes = await fetch(`${HTTP_BASE}/api/lines/${lineId}`);
+  if (!lineRes.ok) { onBadge("error", `라인 조회 실패 ${lineRes.status}`); return; }
+  const lineRecord = (await lineRes.json()) as LineRecord;
+  let world;
+  try {
+    world = worldFromMerged(mergeLines([lineRecord]));
+  } catch (e) {
+    onBadge("error", e instanceof Error ? e.message : "월드 조립 실패");
+    return;
+  }
+
   try {
     const room = await getClient().joinOrCreate("testline", { userToken: token, lineId: String(lineId) });
     activeRoom = room;
     room.onMessage(TESTLINE_MSG.testPassed, (_m: TestPassedPayload) => onBadge("passed", "테스트 통과!"));
     room.onLeave(() => { activeRoom = null; });
-    startGame(room, canvasHost);
+    startGame(room, canvasHost, world);
     onBadge("running", "테스트 중 — 방향키/스페이스로 조작");
   } catch (e) {
     onBadge("error", e instanceof Error ? e.message : "룸 입장 실패");

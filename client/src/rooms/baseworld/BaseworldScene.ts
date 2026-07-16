@@ -11,10 +11,11 @@ import {
   type Avatar, type AvatarInput, createAvatar, stepAvatar, applyItem, clearItemEffects,
   pushSelfOut, checkIStomped, checkStompedMe, headStand,
   createCarryState, stepCarry, type CarryState, type Carryable,
-  blockRect, type ItemSpec, type BlockSpec,
+  blockRect, type ItemSpec, type BlockSpec, type MonsterSpec,
 } from "shared/parts";
 import { getProperty } from "shared/properties";
 import { TESTMAP } from "shared/maps";
+import type { SceneWorld } from "./sceneWorld.js";
 import {
   createGhostView, ghostServerUpdate, ghostStep, ghostSnapshot, ghostRenderAt, type GhostView,
 } from "../../netphysics/interpolate.js";
@@ -68,7 +69,13 @@ interface View {
 
 export class BaseworldScene extends Phaser.Scene {
   room: Room;
-  me: Avatar = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
+  /** 씬이 소비하는 월드 — 기본 TESTMAP(콘솔 경로), 테스트/레이스는 mergeLines 결과 주입(2026-07-16 파라미터화). */
+  world: SceneWorld;
+  /** id → 스펙 조회 맵 — 핫루프(.find 반복)를 O(1)로. */
+  blockSpecById: Map<string, BlockSpec>;
+  monsterSpecById: Map<string, MonsterSpec>;
+  itemSpecById: Map<string, ItemSpec>;
+  me: Avatar;
   carry: CarryState = createCarryState();
   mySquash = createSquash();
   crouchSpring = createSpring(1);   // §B2 웅크림 스프라이트 스프링(축소·복원 띠용)
@@ -132,9 +139,14 @@ export class BaseworldScene extends Phaser.Scene {
   prevClinging = false;   // 벽 잡기(클링) 전이 감지
   prevSlide = false;      // 경사 슬라이딩 전이 감지
 
-  constructor(room: Room) {
+  constructor(room: Room, world: SceneWorld = TESTMAP) {
     super("baseworld");
     this.room = room;
+    this.world = world;
+    this.blockSpecById = new Map(world.blocks.map((b) => [b.id, b]));
+    this.monsterSpecById = new Map(world.monsters.map((m) => [m.id, m]));
+    this.itemSpecById = new Map(world.items.map((i) => [i.id, i]));
+    this.me = createAvatar(world.spawn.x, world.spawn.y, TUNING.sizes.playerHeight);
   }
 
   /** 지연 큰 환경: join 직후 첫 상태 도착 전엔 스키마 맵이 undefined (§28 가드) */
@@ -145,38 +157,40 @@ export class BaseworldScene extends Phaser.Scene {
 
   // ── 지형 (동적 블록 반영) ──
   currentTerrain(): Terrain {
-    const solids = [...TESTMAP.terrain.solids];
-    if (!this.room.state?.blocks) return { solids, slopes: TESTMAP.terrain.slopes };
+    const solids = [...this.world.terrain.solids];
+    if (!this.room.state?.blocks) return { solids, slopes: this.world.terrain.slopes };
     this.room.state.blocks.forEach((bs: { x: number; y: number; active: boolean; visibleNow: boolean }, id: string) => {
       if (!bs.active || !bs.visibleNow) return;
-      const spec = TESTMAP.blocks.find((b) => b.id === id);
+      const spec = this.blockSpecById.get(id);
       if (!spec) return;
       const g = this.blockGhosts.get(id);   // 충돌도 보간 위치로 (렌더와 일치 → 라이딩 일관)
       const bx = g ? g.x : bs.x, by = g ? g.y : bs.y;
       solids.push({ x: bx, y: by, w: spec.w, h: spec.h, faces: spec.faces });
     });
-    return { solids, slopes: TESTMAP.terrain.slopes };
+    return { solids, slopes: this.world.terrain.slopes };
   }
 
   create(): void {
     const t = TUNING.world.tileSize;
+    const worldTop = this.world.top ?? 0;
+    const worldBottom = worldTop + this.world.height;
     // 격자 + 지형
     const grid = this.add.graphics().setDepth(-2);
     grid.lineStyle(1, 0xffffff, 0.06);
-    for (let x = 0; x <= TESTMAP.width; x += t) grid.lineBetween(x, 0, x, TESTMAP.height);
-    for (let y = 0; y <= TESTMAP.height; y += t) grid.lineBetween(0, y, TESTMAP.width, y);
-    for (const s of TESTMAP.terrain.solids) {
+    for (let x = 0; x <= this.world.width; x += t) grid.lineBetween(x, worldTop, x, worldBottom);
+    for (let y = worldTop; y <= worldBottom; y += t) grid.lineBetween(0, y, this.world.width, y);
+    for (const s of this.world.terrain.solids) {
       this.add.rectangle(s.x, s.y, s.w, s.h, 0x555566).setOrigin(0, 0).setDepth(-1);
     }
     const slopeG = this.add.graphics().setDepth(-1);
     slopeG.fillStyle(0x555566, 1);
-    for (const s of TESTMAP.terrain.slopes) {
+    for (const s of this.world.terrain.slopes) {
       if (s.dir === 1) slopeG.fillTriangle(s.x, s.y + s.h, s.x + s.w, s.y + s.h, s.x + s.w, s.y);
       else slopeG.fillTriangle(s.x, s.y + s.h, s.x + s.w, s.y + s.h, s.x, s.y);
     }
     // 깃발 (라인 경계 시각화)
-    this.add.rectangle(TESTMAP.line.startX + 8, TESTMAP.spawn.y - 96, 8, 96, 0x44ff44).setOrigin(0, 0).setDepth(-1);
-    this.add.rectangle(TESTMAP.line.endX - 16, TESTMAP.spawn.y - 96, 8, 96, 0xffd744).setOrigin(0, 0).setDepth(-1);
+    this.add.rectangle(this.world.line.startX + 8, this.world.spawn.y - 96, 8, 96, 0x44ff44).setOrigin(0, 0).setDepth(-1);
+    this.add.rectangle(this.world.line.endX - 16, this.world.spawn.y - 96, 8, 96, 0xffd744).setOrigin(0, 0).setDepth(-1);
 
     const kb = this.input.keyboard!;
     const K = Phaser.Input.Keyboard.KeyCodes;
@@ -262,7 +276,7 @@ export class BaseworldScene extends Phaser.Scene {
     });
     // 블록
     $(this.room.state).blocks.onAdd((bs: BlockNet, id: string) => {
-      const spec = TESTMAP.blocks.find((b) => b.id === id);
+      const spec = this.blockSpecById.get(id);
       if (!spec) return;
       this.blockRects.get(id)?.destroy();
       this.blockRects.set(id, this.add.rectangle(bs.x, bs.y, spec.w, spec.h, 0x888888).setOrigin(0, 0).setDepth(2));
@@ -275,7 +289,7 @@ export class BaseworldScene extends Phaser.Scene {
     // 아이템 획득 중재 결과 (§60)
     this.room.onMessage("itemClaim", (m: { itemId: string; winner: string | null }) => {
       if (m.winner === this.room.sessionId) {
-        const spec = TESTMAP.items.find((i) => i.id === m.itemId)
+        const spec = this.itemSpecById.get(m.itemId)
           ?? ({ id: m.itemId, kind: this.room.state.items.get(m.itemId)?.kind ?? "speed", x: 0, y: 0 } as ItemSpec);
         applyItem(this.me, spec);
         feedback.pickup(this, this.me.body.x, this.me.body.y, spec.kind);
@@ -289,7 +303,7 @@ export class BaseworldScene extends Phaser.Scene {
       this.me.body.x = m.x; this.me.body.y = m.y; this.me.body.vx = 0; this.me.body.vy = 0;
     });
 
-    this.cameras.main.setBounds(0, 0, TESTMAP.width, TESTMAP.height);
+    this.cameras.main.setBounds(0, this.world.top ?? 0, this.world.width, this.world.height);
     this.cameras.main.startFollow(this.myRect, true, 0.15, 0.15);
   }
 
@@ -363,7 +377,7 @@ export class BaseworldScene extends Phaser.Scene {
       ghostStep(g, FIXED_MS, TUNING.net.monsterLerp);
 
       // §A: 내가 밟고 있으면 고스트 대신 로컬 stepRules 결과로 대체(서버와 동일 규칙, 지연 없음)
-      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      const spec = this.blockSpecById.get(id);
       if (!spec?.rules || !bs.active) { this.blockShadowRt.delete(id); return; }
       let sh = this.blockShadowRt.get(id);
       if (!sh) { sh = { x: g.x, y: g.y, mem: {}, engaged: false }; this.blockShadowRt.set(id, sh); }
@@ -604,7 +618,7 @@ export class BaseworldScene extends Phaser.Scene {
         this.room.send("hitMonster", { monsterId: id, hitId: `h${this.monsterHitSeq++}` });
       } else if (hOvBase > 0) {
         // contactDamage/shove는 스펙에서(테스트맵 밖 스폰 몬스터는 기본 T/F) — 이전엔 항상 피해였음
-        const spec = TESTMAP.monsters.find((ms) => ms.id === id);
+        const spec = this.monsterSpecById.get(id);
         const contactDamage = spec?.contactDamage ?? true;
         const shove = spec?.shove ?? false;
         if (shove) {
@@ -633,7 +647,7 @@ export class BaseworldScene extends Phaser.Scene {
 
     // ── 블록 상호작용: 머리치기/내려찍기 파괴·물음표·물성 ──
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
-      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      const spec = this.blockSpecById.get(id);
       if (!spec || !bs.active || !bs.visibleNow) return;
       const g = this.blockGhosts.get(id);   // 상호작용도 보간 위치로 (충돌과 일치)
       const bx = g ? g.x : bs.x, by = g ? g.y : bs.y;
@@ -757,7 +771,7 @@ export class BaseworldScene extends Phaser.Scene {
 
   respawn(): void {
     this.dead = false;
-    this.me = createAvatar(TESTMAP.spawn.x, TESTMAP.spawn.y, TUNING.sizes.playerHeight);
+    this.me = createAvatar(this.world.spawn.x, this.world.spawn.y, TUNING.sizes.playerHeight);
     this.me.hp = 1;
     this.myRect.setVisible(true);
   }
@@ -955,7 +969,7 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
       const r = this.blockRects.get(id);
       if (!r) return;
-      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      const spec = this.blockSpecById.get(id);
       // reappearing 동안은 비충돌이지만(§상호작용은 active 게이트로 이미 배제) 화면엔 점멸로 보여준다.
       const bVisible = (bs.active && bs.visibleNow) || bs.reappearing;
       const bAlpha = bs.reappearing ? flickerAlpha(this.time.now) : 1;
@@ -1020,7 +1034,7 @@ export class BaseworldScene extends Phaser.Scene {
     // ── 지형 레이어(ground, 엔티티보다 아래) ──────────────────────────────
     // 정적 지형 + 살아있는 직사각형 블록을 한 목록으로 모아 이음선 병합(1×1 타일 이어붙임 대응).
     const seamRects: SeamRect[] = [];
-    for (const r of TESTMAP.terrain.solids) {
+    for (const r of this.world.terrain.solids) {
       const f = facesOf(r);
       seamRects.push({
         left: r.x, top: r.y, w: r.w, h: r.h,
@@ -1033,7 +1047,7 @@ export class BaseworldScene extends Phaser.Scene {
     // 항상 표시(§1) 오버레이(스위치·물음표 발광)와 맥락 표시(§2)는 병합 테두리 위에 나중에 그려야 하므로 지연 수집.
     const laterDraws: Array<() => void> = [];
     this.room.state.blocks.forEach((bs: BlockNet, id: string) => {
-      const spec = TESTMAP.blocks.find((bl) => bl.id === id);
+      const spec = this.blockSpecById.get(id);
       if (!spec) return;
       const g = this.blockGhosts.get(id);
       const bumpFx = this.blockBumpFx.get(id);   // §B4: 띠용 오프셋 — 블록 사각형과 동일하게 테두리도 반영
@@ -1104,7 +1118,7 @@ export class BaseworldScene extends Phaser.Scene {
       }
     });
     drawSeamMergedBorders(ground, seamRects);
-    for (const s of TESTMAP.terrain.slopes) drawSlopeBorder(ground, s);
+    for (const s of this.world.terrain.slopes) drawSlopeBorder(ground, s);
     for (const draw of laterDraws) draw();
 
     // ── 엔티티 레이어(entities, 자기 몸 위 — 병합 없이 항상 통짜로) ──────────
@@ -1147,8 +1161,8 @@ export class BaseworldScene extends Phaser.Scene {
     this.room.state.monsters.forEach((m: MonsterNet, id: string) => {
       const visible = m.alive && !m.hidden && this.monEffHits(id, m.hitCount) < m.hp;
       if (!visible || this.room.state.serverTime < m.graceEndsAt) return;   // 재생성 유예 중엔 위험 표시 생략(점멸이 대신 알림)
-      const spec = TESTMAP.monsters.find((ms) => ms.id === id);
-      if (!spec) return;   // 콘솔 spawnmonster 등 테스트맵 밖 엔티티는 스펙이 없어 테두리 생략
+      const spec = this.monsterSpecById.get(id);
+      if (!spec) return;   // 콘솔 spawnmonster 등 맵 밖 엔티티는 스펙이 없어 테두리 생략
       const v = this.monsters.get(id);
       const mx = v ? v.ghost.x : m.x, my = v ? v.ghost.y : m.y;
       const box = squashedBox(mx, my, m.w, m.h, v ? v.squash : { sx: 1, sy: 1, offsetX: 0, offsetY: 0 });
