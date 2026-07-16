@@ -116,13 +116,15 @@ export const COMMANDS: Record<string, Command> = {
     },
   },
   tp: {
-    usage: "tp <x> <y>",
-    desc: "순간이동",
+    usage: "tp <타일x> <타일y>",
+    desc: "순간이동(타일 좌표)",
     run: (args, ctx) => {
       const room = getRoom();
-      const x = Number(args[0]), y = Number(args[1]);
-      if (!room || !Number.isFinite(x) || !Number.isFinite(y)) { ctx.print("사용법: tp <x> <y>"); return; }
-      room.send("tp", { x, y });
+      const tx = Number(args[0]), ty = Number(args[1]);
+      if (!room) { ctx.print("접속 중 아님(?testmap 또는 join 먼저)"); return; }
+      if (!Number.isFinite(tx) || !Number.isFinite(ty)) { ctx.print("사용법: tp <타일x> <타일y>"); return; }
+      room.send("tp", { x: tx * 64, y: ty * 64 });   // 타일→px(TILE_PX=64)
+      ctx.print(`tp → (${tx}, ${ty})타일`);
     },
   },
   tune: {
