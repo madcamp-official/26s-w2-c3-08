@@ -31,6 +31,10 @@ const DRAG_CENTER_WINDOW = 0.5;
 
 const BTN_LEFT = 1;
 const BTN_RIGHT = 2;
+/** 좌우 동시누름 팬 유예(ms) — 이 시간 안에 반대 버튼이 오면 단독 동작(배치/삭제/깃발잡기)을
+ *  실행하지 않고 팬으로 전환한다(스펙: "클릭 즉시 반응하지 않고 짧게 대기"). 한쪽이 미세하게
+ *  먼저 눌려도 오배치가 없도록 pointerdown에서는 절대 즉시 실행하지 않는다. */
+const PAN_GRACE_MS = 90;
 
 interface Tile { x: number; y: number }
 
@@ -55,7 +59,33 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
     flag: null as null | "start" | "end",
     lastActedTile: null as string | null, // 연속배치/삭제 중복 방지
     panLast: { x: 0, y: 0 },
+    // 팬 유예 중 보류된 단독 동작 — 타이머 만료 시 실행, 반대 버튼 오면 폐기
+    pending: null as null | { mode: "place" | "erase" | "flag"; flag?: "start" | "end"; tile: Tile; timer: number },
   });
+
+  /** 보류 동작 폐기(타이머 포함) */
+  function cancelPending() {
+    const p = g.current.pending;
+    if (p) { clearTimeout(p.timer); g.current.pending = null; }
+  }
+
+  /** 보류 동작을 지금 실행(유예 만료 or 유예 중 pointerup) */
+  function commitPending() {
+    const p = g.current.pending;
+    if (!p) return;
+    clearTimeout(p.timer);
+    g.current.pending = null;
+    if (p.mode === "flag") {
+      g.current.flag = p.flag!;
+      useEditorStore.getState().setLiftedFlag(p.flag!);
+      playSound("pick");
+      return;
+    }
+    g.current.dragMode = p.mode;
+    g.current.lastActedTile = null;
+    actOnTile(p.tile, p.mode, false); // 단일 클릭 첫 타일 — 느슨한 판정으로 즉시 인정
+    g.current.lastActedTile = `${p.tile.x},${p.tile.y}`;
+  }
 
   function clampPan(nx: number, ny: number, z: number) {
     const ww = WORLD_W * z, wh = WORLD_H * z;
@@ -109,8 +139,8 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
   // 테스트 모드가 이 호스트 위에 Phaser 게임을 얹을 수 있게 등록(testRunner.ts)
   useEffect(() => {
     setCanvasHost(hostRef.current);
-    return () => setCanvasHost(null);
-  }, []);
+    return () => { setCanvasHost(null); cancelPending(); };
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const host = hostRef.current, canvas = canvasRef.current;
@@ -160,7 +190,7 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
         ghost = { x: tl.x, y: tl.y, w: brush.w, h: brush.h, ok: canPlace(tl.x, tl.y, brush.w, brush.h, occ, forb) };
       }
 
-      drawEditor(ctx, { placements: items, startFlag: s.startFlag, endFlag: s.endFlag, ghost, testing: false });
+      drawEditor(ctx, { placements: items, startFlag: s.startFlag, endFlag: s.endFlag, ghost, testing: false, liftedFlag: s.liftedFlag });
 
       // 커스텀 커서 이미지 있으면 적용(로드 전엔 null → 기본 크로스헤어 유지)
       const cursorImg = getSlotImage("cursor");
@@ -194,26 +224,30 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
     g.current.buttons = e.buttons;
 
     if ((g.current.buttons & BTN_LEFT) && (g.current.buttons & BTN_RIGHT)) {
+      cancelPending();
       startPanning(e);
       return;
     }
-    g.current.lastActedTile = null;
+    // 단독 버튼 — 즉시 실행하지 않고 PAN_GRACE_MS 보류(반대 버튼이 오면 팬으로 전환, 오배치 방지)
+    cancelPending();
+    let pending: { mode: "place" | "erase" | "flag"; flag?: "start" | "end"; tile: Tile; timer: number } | null = null;
     if (e.button === 0) {
-      if (inFlagZone(t, "start")) { g.current.flag = "start"; return; }
-      if (inFlagZone(t, "end")) { g.current.flag = "end"; return; }
-      g.current.dragMode = "place";
-      actOnTile(t, "place", false); // 단일 클릭 첫 타일 — 느슨한 판정으로 즉시 인정
-      g.current.lastActedTile = `${t.x},${t.y}`;
+      if (inFlagZone(t, "start")) pending = { mode: "flag", flag: "start", tile: t, timer: 0 };
+      else if (inFlagZone(t, "end")) pending = { mode: "flag", flag: "end", tile: t, timer: 0 };
+      else pending = { mode: "place", tile: t, timer: 0 };
     } else if (e.button === 2) {
-      g.current.dragMode = "erase";
-      actOnTile(t, "erase", false);
-      g.current.lastActedTile = `${t.x},${t.y}`;
+      pending = { mode: "erase", tile: t, timer: 0 };
+    }
+    if (pending) {
+      pending.timer = window.setTimeout(commitPending, PAN_GRACE_MS);
+      g.current.pending = pending;
     }
   }
 
   function startPanning(e: { clientX: number; clientY: number }) {
     g.current.panning = true;
     g.current.dragMode = null;
+    if (g.current.flag) useEditorStore.getState().setLiftedFlag(null);
     g.current.flag = null;
     g.current.panLast = { x: e.clientX, y: e.clientY };
   }
@@ -223,8 +257,9 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
     hover.current = t;
     g.current.buttons = e.buttons;
 
-    // 드래그 도중 반대쪽 버튼이 추가로 눌리면 팬으로 전환(단일동작 취소)
+    // 반대쪽 버튼이 추가로 눌리면 팬으로 전환 — 보류 중이던 단독 동작은 폐기(오배치 방지 핵심)
     if (!g.current.panning && (g.current.buttons & BTN_LEFT) && (g.current.buttons & BTN_RIGHT)) {
+      cancelPending();
       startPanning(e);
       return;
     }
@@ -246,9 +281,15 @@ export function MapCanvas({ index, closing }: { index: number; closing: boolean 
 
   function onPointerUp(e: React.PointerEvent) {
     g.current.buttons = e.buttons;
+    // 유예가 안 끝난 빠른 클릭 — 놓는 순간 실행(클릭 손실 없음). 깃발 잡기는 클릭 후 즉시 놓으면 들었다 놓는 셈이라 무시.
+    if (g.current.pending) {
+      if (g.current.pending.mode !== "flag") commitPending();
+      else cancelPending();
+    }
     if (!(g.current.buttons & BTN_LEFT) && !(g.current.buttons & BTN_RIGHT)) {
       g.current.panning = false;
       g.current.dragMode = null;
+      if (g.current.flag) useEditorStore.getState().setLiftedFlag(null);
       g.current.flag = null;
       g.current.lastActedTile = null;
       try { canvasRef.current!.releasePointerCapture(e.pointerId); } catch { /* 이미 해제됨 */ }

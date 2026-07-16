@@ -31,6 +31,8 @@ export interface RenderParams {
   ghost: GhostInfo | null;
   /** 테스트 중이면 격자 숨김(P2). P1은 항상 false. */
   testing: boolean;
+  /** 드래그로 들려 있는 깃발 — 흔들흔들+그림자 연출(스펙: 꾹 누르면 들림 표시) */
+  liftedFlag?: "start" | "end" | null;
 }
 
 export function drawEditor(ctx: CanvasRenderingContext2D, p: RenderParams): void {
@@ -103,9 +105,9 @@ export function drawEditor(ctx: CanvasRenderingContext2D, p: RenderParams): void
     }
   }
 
-  // 깃발
-  drawFlag(ctx, p.startFlag, "#1D9E75", "flagStart");
-  drawFlag(ctx, p.endFlag, "#F6BE00", "flagEnd");
+  // 깃발 — 들려 있는 쪽은 흔들흔들 + 그림자
+  drawFlag(ctx, p.startFlag, "#1D9E75", "flagStart", p.liftedFlag === "start");
+  drawFlag(ctx, p.endFlag, "#F6BE00", "flagEnd", p.liftedFlag === "end");
 
   // 배치 고스트
   if (p.ghost) {
@@ -117,13 +119,29 @@ export function drawEditor(ctx: CanvasRenderingContext2D, p: RenderParams): void
   }
 }
 
-function drawFlag(ctx: CanvasRenderingContext2D, flag: FlagPos, color: string, slot: "flagStart" | "flagEnd"): void {
+function drawFlag(ctx: CanvasRenderingContext2D, flag: FlagPos, color: string, slot: "flagStart" | "flagEnd", lifted = false): void {
   const half = Math.floor(FLAGPOLE.baseWidthTiles / 2);
   const cx = (flag.x + 0.5) * TILE;
   const baseTop = (flag.y + 1) * TILE;
   const poleTop = (flag.y - (FLAGPOLE.poleHeightTiles - 1)) * TILE;
   const baseLeft = (flag.x - half) * TILE;
   const baseW = FLAGPOLE.baseWidthTiles * TILE;
+
+  ctx.save();
+  if (lifted) {
+    // 들림 연출 — 발밑 타원 그림자(제자리) + 깃발 전체 살짝 위로 + 시간 기반 좌우 흔들흔들 회전
+    ctx.fillStyle = "rgba(59,47,20,0.30)";
+    ctx.beginPath();
+    ctx.ellipse(cx, baseTop + TILE + 4, baseW * 0.42, TILE * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const t = performance.now() / 1000;
+    const wobble = Math.sin(t * 9) * 0.05; // ±약 3도
+    const pivotX = cx, pivotY = baseTop + TILE; // 기단 바닥 기준으로 흔들리게
+    ctx.translate(pivotX, pivotY - 7); // 살짝 들림
+    ctx.rotate(wobble);
+    ctx.translate(-pivotX, -pivotY);
+  }
 
   // 기단 3×1 — 이미지 있으면 그걸로, 없으면 반투명 채움
   const baseImg = getSlotImage("flagBase");
@@ -154,4 +172,5 @@ function drawFlag(ctx: CanvasRenderingContext2D, flag: FlagPos, color: string, s
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
 }

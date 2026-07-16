@@ -56,6 +56,9 @@ interface EditorState {
   eraseAt: (tx: number, ty: number) => boolean;
   /** 깃발 이동(규칙 위반이면 무시). 성공 시 true */
   moveFlag: (which: "start" | "end", nx: number, ny: number) => boolean;
+  /** 드래그로 "들려 있는" 깃발 — 렌더러가 흔들흔들+그림자 연출(스펙: 꾹 누르면 들림 표시) */
+  liftedFlag: "start" | "end" | null;
+  setLiftedFlag: (which: "start" | "end" | null) => void;
 
   // 닫기 연출(방향별 스프링 퇴장) 트리거 — mount.tsx의 콘솔 토글이 외부에서 setState로 제어
   closing: boolean;
@@ -139,6 +142,9 @@ export const useEditorStore = create<EditorState>()(
         set(which === "start" ? { startFlag: { x: nx, y: ny } } : { endFlag: { x: nx, y: ny } });
         return true;
       },
+
+      liftedFlag: null,
+      setLiftedFlag: (which) => set({ liftedFlag: which }),
 
       closing: false,
     }),
