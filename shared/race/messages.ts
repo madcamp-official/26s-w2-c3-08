@@ -52,7 +52,26 @@ export interface RaceJoinOptions {
   name?: string;
   isPublic?: boolean;
   password?: string;
+  /** 간이 매칭 배차로 생성된 방 — 고정 라인 + 인원 다 차면 자동 시작 */
+  quick?: boolean;
+  /** quick: 이 인원이 모이면(또는 타임아웃) 자동 racing 시작 */
+  autoStartSize?: number;
 }
+
+/** QuickHubRoom(간이 매칭 허브) 계약 */
+export const QUICK_HUB_MSG = {
+  /** 클라 → 허브: 전원 매칭·시작(비공개 콘솔) */
+  start: "startstart",
+  /** 클라 → 허브: 전원 대기 복귀 */
+  stop: "stopstop",
+  /** 허브 → 클라(개별): 이 좌석 예약으로 레이스 방에 합류하라 */
+  goRace: "goRace",
+  /** 허브 → 클라(broadcast): 대기 상태로 — 레이스 방에서 나와 허브로 복귀하라 */
+  backToHub: "backToHub",
+} as const;
+export interface GoRacePayload { reservation: unknown }
+/** presence 채널 — 허브 stop → 모든 quick 레이스 방 전파 */
+export const QUICK_STOP_CHANNEL = "quick:stop";
 
 /**
  * GET /api/rooms 응답 1건 — @colyseus/sdk 0.17엔 네이티브 방 목록 조회가 없어(getAvailableRooms 부재)
