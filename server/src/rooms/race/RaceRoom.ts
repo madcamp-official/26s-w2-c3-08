@@ -15,6 +15,7 @@ import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
 import { RaceState, MemberState } from "../schema/RaceState.js";
 import { prisma } from "../../prisma.js";
 import { resolveMemberLines } from "../../game/resolveMemberLines.js";
+import { ensureQuickLine } from "../../game/ensureQuickLine.js";
 import { mergeLines, type MergedMap } from "shared/build";
 
 const T = TUNING.world.tileSize;
@@ -49,6 +50,8 @@ export class RaceRoom extends PhysicsRoom {
   private transitioning = false;
   private merged: MergedMap | null = null;
   private racingStartClock = 0;
+  /** 간이 레이스 모드(콘솔 startstart) — racing 진입 시 유저 라인 대신 고정 평지 라인 사용 */
+  private quickMode = false;
   private lastRespawnNotifyAt = new Map<string, number>();
 
   /** 2단계: 빈 월드(로비엔 물리 대상 없음). 3단계에서 racing 진입 시 병합맵으로 교체. */
@@ -98,6 +101,21 @@ export class RaceRoom extends PhysicsRoom {
       if (client.sessionId !== this.hostSessionId || this.state.phase !== "finished") return;
       void this.enterPhase("lobby");
     });
+    // ── 간이 레이스(비공개 콘솔 명령, 2026-07-16 이벤트용) ──
+    // startstart: lobby에서 곧장 racing 직행(에디터 흐름 생략, 고정 평지 라인). 방장 체크 없음(명령 자체가 비밀).
+    this.onMessage("startstart", (client) => {
+      if (this.state.phase !== "lobby") return;
+      this.quickMode = true;
+      console.log(`[race] 간이 시작 by ${(client.auth as User)?.nickname}`);
+      void this.enterPhase("racing");
+    });
+    // stopstop: 어느 페이즈에서든 대기(lobby)로 복귀.
+    this.onMessage("stopstop", () => {
+      this.quickMode = false;
+      console.log("[race] 간이 중단 → lobby");
+      void this.enterPhase("lobby");
+    });
+
     // 시간조정(±30s) — building 한정, 플레이어당 평생 1회, 단축은 잔여 ≤45s면 거부(15s 미만 방지).
     this.onMessage(RACE_MSG.adjustTime, (client, msg: AdjustTimePayload) => {
       if (this.state.phase !== "building") return;
@@ -252,8 +270,10 @@ export class RaceRoom extends PhysicsRoom {
     });
 
     try {
-      const { lines, fallbackUserIds } = await resolveMemberLines(this.roomCode, memberUserIds);
-      shuffleInPlace(lines);
+      const { lines, fallbackUserIds } = this.quickMode
+        ? { lines: [await ensureQuickLine()], fallbackUserIds: [] as bigint[] }
+        : await resolveMemberLines(this.roomCode, memberUserIds);
+      if (!this.quickMode) shuffleInPlace(lines);
       this.merged = mergeLines(lines);
       this.loadWorld(this.merged.worldDef);
       this.state.lineCount = lines.length;
