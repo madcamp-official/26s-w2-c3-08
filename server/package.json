@@ -15,7 +15,8 @@
     "clean": "rimraf build",
     "test": "mocha -r tsx test/**.test.ts --exit --timeout 15000",
     "seed": "tsx src/seed/systemAssets.ts",
-    "ingest-sprites": "tsx src/seed/ingestSpriteSheet.ts"
+    "ingest-sprites": "tsx src/seed/ingestSpriteSheet.ts",
+    "ingest-offline": "tsx src/seed/ingestOfflineSprites.ts"
   },
   "author": "",
   "license": "UNLICENSED",

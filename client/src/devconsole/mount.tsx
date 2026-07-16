@@ -6,6 +6,7 @@ import { Console } from "./Console.js";
 import "./raceCommands.js";   // race 명령 자기 등록 (commands.ts 비침습)
 import "./lineCommands.js";   // lines 명령 자기 등록
 import "./testCommands.js";   // testline 명령 자기 등록
+import "./quickCommands.js";  // 간이 레이스 startstart/stopstop 자기 등록
 
 export function mountDevConsole(): void {
   const el = document.createElement("div");
