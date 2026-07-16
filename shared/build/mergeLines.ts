@@ -40,6 +40,7 @@ export function mergeLines(lines: LineRecord[]): MergedMap {
   let offsetY = 0;
   const blocks: WorldDef["blocks"] = [];
   const monsters: WorldDef["monsters"] = [];
+  const items: WorldDef["items"] = [];
   const flagBases: ReturnType<typeof flagBaseRect>[] = [];
   const lineFlags: MergedMap["lineFlags"] = [];
   const lineRanges: MergedMap["lineRanges"] = [];
@@ -52,6 +53,7 @@ export function mergeLines(lines: LineRecord[]): MergedMap {
     const loaded = loadLine(line, offsetX, offsetY);
     blocks.push(...loaded.blocks);
     monsters.push(...loaded.monsters);
+    items.push(...loaded.items);
     flagBases.push(flagBaseRect(loaded.startFlag), flagBaseRect(loaded.endFlag));
     lineFlags.push({ start: loaded.startFlag, end: loaded.endFlag });
     if (i === 0) startFlagTiles = loaded.startFlag;
@@ -81,7 +83,7 @@ export function mergeLines(lines: LineRecord[]): MergedMap {
       ],
       slopes: [],
     },
-    blocks, monsters, items: [],
+    blocks, monsters, items,
     line: { startX: 0, endX: totalWidthTiles * T, index: 0 },
     // 스폰 = 시작 깃발 기단 윗면 (body y = 발 위치)
     spawn: { x: startFlagTiles.x * T + T / 2, y: (startFlagTiles.y + 1) * T },

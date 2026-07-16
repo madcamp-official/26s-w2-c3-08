@@ -5,7 +5,7 @@ import { type Body, createBody, moveAndCollide } from "../physics/body.js";
 import type { Avatar } from "./avatar.js";
 import { applySizeStage } from "./avatar.js";
 
-export type ItemKind = "speed" | "sizeUp" | "sizeDown" | "hpUp" | "invincible" | "score";
+export type ItemKind = "speed" | "sizeUp" | "sizeDown" | "hpUp" | "invincible" | "score" | "giant";
 
 export interface ItemSpec {
   id: string;
@@ -54,6 +54,12 @@ export function applyItem(a: Avatar, spec: ItemSpec, t: Tuning = TUNING): void {
       break;
     case "sizeUp":
       applySizeStage(a, a.sizeStage >= 3 ? 3 : ((a.sizeStage + 1) as 1 | 2 | 3), t);
+      break;
+    case "giant":
+      // 거대버섯(ItemAttrs effect=giant_mushroom): 생명+1 + 크기 확대 — 둘 다 (asset-attributes §4)
+      a.hp = Math.min(2, a.hp + 1);
+      applySizeStage(a, a.sizeStage >= 3 ? 3 : ((a.sizeStage + 1) as 1 | 2 | 3), t);
+      a.freezeLeftMs = t.item.pickupFreezeMs;   // 크기 전환 고정(§58) — kind 분기 위에서 못 잡으므로 여기서
       break;
     case "sizeDown":
       applySizeStage(a, a.sizeStage <= 1 ? 1 : ((a.sizeStage - 1) as 1 | 2 | 3), t);

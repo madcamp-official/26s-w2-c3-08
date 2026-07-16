@@ -51,7 +51,8 @@ export function linesRouter(): Router {
     for (const p of b.placements) {
       const cat = byId.get(String(p.assetId));
       if (!cat) { res.status(400).json({ error: `asset not found: ${p.assetId}` }); return; }
-      if (cat !== "block" && cat !== "monster") { res.status(400).json({ error: `asset ${p.assetId} category '${cat}' not placeable` }); return; }
+      // item 허용 추가(2026-07-16) — loadLine이 attrs.effect→ItemKind로 실체화
+      if (cat !== "block" && cat !== "monster" && cat !== "item") { res.status(400).json({ error: `asset ${p.assetId} category '${cat}' not placeable` }); return; }
     }
 
     const created = await prisma.mapLine.create({

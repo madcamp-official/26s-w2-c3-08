@@ -32,10 +32,11 @@ export function getCanvasHost(): HTMLElement | null { return canvasHostEl; }
 
 export type TestBadge = "unverified" | "running" | "passed" | "error";
 
-/** 저장 가능한 카테고리(block/monster)만 추려서 LineData 직렬화. item/background는 서버 미지원이라 제외. */
+/** 저장 가능한 카테고리(block/monster/item — 2026-07-16 item 백엔드 추가)만 추려 LineData 직렬화. */
 function buildTestableLineData() {
   const s = useEditorStore.getState();
-  const placements = Object.values(s.placements).filter((p) => p.category === "block" || p.category === "monster");
+  const placements = Object.values(s.placements)
+    .filter((p) => p.category === "block" || p.category === "monster" || p.category === "item");
   return toLineData("에디터 테스트", placements, s.startFlag, s.endFlag);
 }
 
