@@ -20,7 +20,10 @@ if (!process.env.DATABASE_URL) {
   }
 }
 
-const T = 64;   // 프레임 기준 타일 px(TILE_PX)
+// 오프라인 생성기(gpu-worker/src/dev/generateOffline.ts)는 액션당 항상 8프레임 가로 스트립으로 뽑는다
+// (_gen.log 전수 확인: 모든 idle/walk/onair가 "8f"). 프레임 크기는 에셋 비율에 따라 다르므로
+// frameW = 시트폭/8, frameH = 시트높이. (이전 버그: frameW를 tiles.w×64로 고정 계산해 한 프레임을 3등분해 잘랐음.)
+const FRAMES = 8;
 
 interface ManifestAsset { id: string; name: string; category: string; tiles: { w: number; h: number } }
 
@@ -47,9 +50,9 @@ async function main(): Promise<void> {
       const meta = await sharp(buf).metadata();
       const width = meta.width ?? 0, height = meta.height ?? 0;
       if (!width || !height) { console.warn(`[ingest] 크기 판독 실패: ${m.id}/${file}`); continue; }
-      // 프레임 폭 = tiles.w×64 기준으로 프레임 수 산출(스케일이 달라도 근사 후 재계산으로 자기보정)
-      const frameCount = Math.max(1, Math.round(width / (m.tiles.w * T)));
-      const frameW = Math.round(width / frameCount);
+      // 항상 8프레임 가로 스트립 — frameW는 폭/8, frameH는 시트 높이.
+      const frameCount = FRAMES;
+      const frameW = Math.round(width / FRAMES);
       const frameH = height;
 
       const existing = await prisma.assetSprite.findFirst({ where: { assetId: row.id, action }, select: { id: true } });
