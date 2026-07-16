@@ -10,7 +10,7 @@ import {
   parseAttrs, deriveColumnMirror, defaultBlockAttrs, defaultMonsterAttrs,
   type Category, type AssetAttrs,
 } from "shared/schemas";
-import { TESTLINES } from "shared/maps";
+import { TESTLINES, QUICKLINES } from "shared/maps";
 import { prisma } from "../prisma.js";
 import { saveSourcePng } from "../asset/storage.js";
 
@@ -61,6 +61,10 @@ const SEED_ASSETS: SeedAsset[] = [
     key: "sys.gate", name: "스위치 발판", category: "block",
     attrs: block({ size: { w: 2, h: 1 }, presence: { type: "switch_on" } }), color: { r: 180, g: 140, b: 255 },
   },
+  {
+    key: "sys.qblock", name: "물음표 블록", category: "block",
+    attrs: block({ itemGiver: "giant" }), color: { r: 246, g: 190, b: 0 },
+  },
   { key: "sys.goomba", name: "굼바", category: "monster", attrs: monster({}), color: { r: 160, g: 100, b: 60 } },
   {
     key: "sys.spiky", name: "가시돌이", category: "monster",
@@ -100,7 +104,7 @@ async function seedAssets(): Promise<Map<string, bigint>> {
 }
 
 async function seedLines(assetIds: Map<string, bigint>): Promise<void> {
-  for (const line of TESTLINES) {
+  for (const line of [...TESTLINES, ...QUICKLINES]) {
     const existing = await prisma.mapLine.findFirst({ where: { name: line.name }, select: { id: true } });
     if (existing) continue;
     const created = await prisma.mapLine.create({

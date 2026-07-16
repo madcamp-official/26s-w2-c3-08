@@ -86,6 +86,8 @@ export const BlockAttrs = z
     harmMonsters: z.boolean(),
     breakBlocks: z.boolean(),
     togglesSwitch: z.boolean(),                        // 접촉 시 라인 스위치 토글
+    // 물음표 블록(2026-07-16 추가) — 밟으면(머리치기/내려찍기) 이 종류 아이템 지급. 기존 저장물 호환 default "none".
+    itemGiver: z.enum(["none", "speed", "giant"]).default("none"),
   })
   .superRefine((a, ctx) => {
     if (a.contactReaction.type !== "none" && a.motion.type !== "none") {
@@ -115,6 +117,7 @@ export const defaultBlockAttrs = (): BlockAttrs => ({
   harmMonsters: false,
   breakBlocks: false,
   togglesSwitch: false,
+  itemGiver: "none",
 });
 
 /** 충돌 방식 → 4면 플래그. none = 전부 false(비충돌) */

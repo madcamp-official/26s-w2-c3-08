@@ -15,7 +15,7 @@ import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
 import { RaceState, MemberState } from "../schema/RaceState.js";
 import { prisma } from "../../prisma.js";
 import { resolveMemberLines } from "../../game/resolveMemberLines.js";
-import { ensureQuickLine } from "../../game/ensureQuickLine.js";
+import { ensureQuickLines } from "../../game/ensureQuickLine.js";
 import { mergeLines, type MergedMap } from "shared/build";
 
 const T = TUNING.world.tileSize;
@@ -271,7 +271,7 @@ export class RaceRoom extends PhysicsRoom {
 
     try {
       const { lines, fallbackUserIds } = this.quickMode
-        ? { lines: [await ensureQuickLine()], fallbackUserIds: [] as bigint[] }
+        ? { lines: await ensureQuickLines(), fallbackUserIds: [] as bigint[] }
         : await resolveMemberLines(this.roomCode, memberUserIds);
       if (!this.quickMode) shuffleInPlace(lines);
       this.merged = mergeLines(lines);

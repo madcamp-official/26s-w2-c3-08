@@ -72,6 +72,9 @@ export function buildBlock(id: string, a: BlockAttrs, g: BuildGeom): BlockSpec {
   const spec: BlockSpec = { id, x: g.x, y: g.y, w: g.w, h: g.h, faces };
   if (properties.length) spec.properties = properties;
 
+  // 물음표 블록 — 밟으면(머리치기/내려찍기) 지급, 자체는 안 부서짐(breakBy 별도 지정 없으면 무한)
+  if (a.itemGiver !== "none") spec.emitsItem = { assets: [a.itemGiver], random: false };
+
   if (a.shape.type === "slope") spec.shape = slopeShape(a.shape.dir, g.flipX);
 
   if (a.presence.type === "hidden") spec.visibility = "hidden";

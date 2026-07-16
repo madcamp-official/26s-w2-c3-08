@@ -38,7 +38,7 @@ export const GAME_RULES = {
   lineMaxHeightTiles: 20,     // 라인 내부 세로 상한 (병합맵 전체는 무제한 누적)
   buildSec: 180,              // 제작 페이즈 3분
   previewSec: 15,             // 사용가능 에셋 프리뷰
-  perLineSec: 30,             // 게임시간 = 라인수 × 30초 (2026-07-16: 40→30)
+  perLineSec: 45,             // 게임시간 = 라인수 × 45초 (2026-07-16: 40→30→45, 이벤트 4라인 조정)
   finishCountdownSec: 10,     // 1등 도달 후 카운트다운
   lastDanceSec: 30,           // 1등 없이 종료 시 라스트댄스
   sweepSec: 30,               // 첫 라인부터 순차 파괴 간격 (2026-07-16: 50→30)
