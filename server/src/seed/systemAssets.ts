@@ -10,7 +10,8 @@ import {
   parseAttrs, deriveColumnMirror, defaultBlockAttrs, defaultMonsterAttrs,
   type Category, type AssetAttrs,
 } from "shared/schemas";
-import { TESTLINES, QUICKLINES } from "shared/maps";
+import { TESTLINES } from "shared/maps";
+import { TILE_PX, AVATAR_CANVAS } from "shared";
 import { prisma } from "../prisma.js";
 import { saveSourcePng } from "../asset/storage.js";
 
@@ -83,8 +84,13 @@ async function seedAssets(): Promise<Map<string, bigint>> {
     }
     const attrs = parseAttrs(s.category, s.attrs);
     const mirror = deriveColumnMirror(s.category, attrs);
+    // 원본 PNG 크기 = 실제 타일 크기(픽셀). 전부 64×64로 찍던 버그 수정(2026-07-16) —
+    // 아바타 1×2(64×128)인데 정사각형으로 만들어져 클라 앵커 계산이 어긋나 "한 칸 아래로" 밀려 보였음.
+    const { w: tilesW, h: tilesH } = s.category === "avatar"
+      ? { w: AVATAR_CANVAS.w / TILE_PX, h: AVATAR_CANVAS.h / TILE_PX }
+      : { w: mirror.widthCells ?? 1, h: mirror.heightCells ?? 1 };
     const png = await sharp({
-      create: { width: 64, height: 64, channels: 4, background: { ...s.color, alpha: 1 } },
+      create: { width: tilesW * TILE_PX, height: tilesH * TILE_PX, channels: 4, background: { ...s.color, alpha: 1 } },
     }).png().toBuffer();
     const sourceImageUrl = await saveSourcePng(`system_${s.key.replace(".", "_")}`, png);
     const created = await prisma.asset.create({
@@ -104,7 +110,7 @@ async function seedAssets(): Promise<Map<string, bigint>> {
 }
 
 async function seedLines(assetIds: Map<string, bigint>): Promise<void> {
-  for (const line of [...TESTLINES, ...QUICKLINES]) {
+  for (const line of TESTLINES) {
     const existing = await prisma.mapLine.findFirst({ where: { name: line.name }, select: { id: true } });
     if (existing) continue;
     const created = await prisma.mapLine.create({

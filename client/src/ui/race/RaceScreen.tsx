@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { mergeLines, type LineRecord } from "shared/build";
+import { QUICK_WORLD } from "shared/maps";
 import { YELLOW, INK, SIGNAL, SPRING_POP } from "../../design/tokens/index.js";
 import { useRoomStore } from "../../store/room.js";
 import { startGame, stopGame } from "../../rooms/baseworld/boot.js";
@@ -44,6 +45,12 @@ export function RaceScreen() {
     if (!room || !hostRef.current) return;
     const lineIds = (room.state as unknown as RaceSnap).lineIds;
     if (!lineIds) { setLoadError("라인 정보가 없습니다(서버 병합 실패)"); return; }
+    // 간이 레이스 — 서버 왕복 없이 같은 shared 모듈에서 바로 조립(§14, quickWorld.ts 참조)
+    if (lineIds === "quick") {
+      startGame(room, hostRef.current, worldFromMerged(QUICK_WORLD));
+      setReady(true);
+      return () => stopGame();
+    }
     let cancelled = false;
     void (async () => {
       try {

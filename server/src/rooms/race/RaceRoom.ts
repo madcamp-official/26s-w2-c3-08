@@ -9,14 +9,15 @@ import { TUNING } from "shared/physics";
 import {
   type Phase, NEXT_PHASE, phaseDurationSec, RACE_MSG, RACE_S2C_MSG, type RaceJoinOptions,
   type AdjustTimePayload, type TimeAdjustedPayload,
+  QUICK_HUB_MSG, QUICK_STOP_CHANNEL,
   flagpoleRect, overlapsFlagpole, sweepGroundSolids,
 } from "shared/race";
 import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
 import { RaceState, MemberState } from "../schema/RaceState.js";
 import { prisma } from "../../prisma.js";
 import { resolveMemberLines } from "../../game/resolveMemberLines.js";
-import { ensureQuickLines } from "../../game/ensureQuickLine.js";
 import { mergeLines, type MergedMap } from "shared/build";
+import { QUICK_WORLD } from "shared/maps";
 
 const T = TUNING.world.tileSize;
 const RESPAWN_NOTIFY_COOLDOWN_MS = 1500;
@@ -50,8 +51,12 @@ export class RaceRoom extends PhysicsRoom {
   private transitioning = false;
   private merged: MergedMap | null = null;
   private racingStartClock = 0;
-  /** 간이 레이스 모드(콘솔 startstart) — racing 진입 시 유저 라인 대신 고정 평지 라인 사용 */
+  /** 간이 레이스 모드(콘솔 startstart 또는 허브 배차) — racing 진입 시 유저 라인 대신 고정 라인 세트 사용 */
   private quickMode = false;
+  /** 허브 배차 방: 이 인원이 모이면 자동 시작 */
+  private autoStartSize = 0;
+  private autoStartTimer: NodeJS.Timeout | null = null;
+  private onQuickStop: ((data: unknown) => void) | null = null;
   private lastRespawnNotifyAt = new Map<string, number>();
 
   /** 2단계: 빈 월드(로비엔 물리 대상 없음). 3단계에서 racing 진입 시 병합맵으로 교체. */
@@ -67,6 +72,21 @@ export class RaceRoom extends PhysicsRoom {
   override onCreate(options?: RaceJoinOptions): void {
     super.onCreate();
     if (options?.password) this.passwordHash = hashPassword(options.password);
+
+    // 허브 배차 quick 방 — 고정 라인 + 인원 다 차면 자동 시작 + stop 전파 구독
+    if (options?.quick) {
+      this.quickMode = true;
+      this.autoStartSize = Math.max(1, options.autoStartSize ?? 4);
+      this.onQuickStop = () => {
+        if (this.state.phase === "finished" || this.state.phase === "lobby") return;
+        this.broadcast(QUICK_HUB_MSG.backToHub, {});
+      };
+      void this.presence.subscribe(QUICK_STOP_CHANNEL, this.onQuickStop);
+      // 안전장치: 일부가 좌석을 소비 못 해도(새로고침 등) 6초 뒤 온 사람만으로 시작
+      this.autoStartTimer = setTimeout(() => {
+        if (this.state.phase === "lobby" && this.state.members.size >= 1) void this.enterPhase("racing");
+      }, 6000);
+    }
 
     // DB Room 행 생성 (기록용, 비동기). 방 목록은 REST(/api/rooms)가 이 테이블을 읽는다 —
     // Colyseus SDK(@colyseus/sdk 0.17)엔 getAvailableRooms가 없어 네이티브 매치메이킹 대신 이 방식.
@@ -101,19 +121,12 @@ export class RaceRoom extends PhysicsRoom {
       if (client.sessionId !== this.hostSessionId || this.state.phase !== "finished") return;
       void this.enterPhase("lobby");
     });
-    // ── 간이 레이스(비공개 콘솔 명령, 2026-07-16 이벤트용) ──
-    // startstart: lobby에서 곧장 racing 직행(에디터 흐름 생략, 고정 평지 라인). 방장 체크 없음(명령 자체가 비밀).
-    this.onMessage("startstart", (client) => {
-      if (this.state.phase !== "lobby") return;
-      this.quickMode = true;
-      console.log(`[race] 간이 시작 by ${(client.auth as User)?.nickname}`);
-      void this.enterPhase("racing");
-    });
-    // stopstop: 어느 페이즈에서든 대기(lobby)로 복귀.
+    // ── 간이 레이스 중단(레이스 방 안에서 stopstop) ──
+    // 매칭 배차로 여러 방에 흩어져 있으므로, 한 방의 stopstop이 presence로 전체 quick 방에 전파된다.
     this.onMessage("stopstop", () => {
-      this.quickMode = false;
-      console.log("[race] 간이 중단 → lobby");
-      void this.enterPhase("lobby");
+      if (!this.quickMode) return;
+      console.log("[race] 간이 중단(전파)");
+      void this.presence.publish(QUICK_STOP_CHANNEL, {});
     });
 
     // 시간조정(±30s) — building 한정, 플레이어당 평생 1회, 단축은 잔여 ≤45s면 거부(15s 미만 방지).
@@ -269,11 +282,25 @@ export class RaceRoom extends PhysicsRoom {
       userIdToSessionId.set(m.userId, sessionId);
     });
 
+    // 간이 레이스 — DB/에셋 파이프라인 전혀 안 씀. shared/maps/quickWorld.ts(TESTMAP과 동일 방식,
+    // 리터럴 BlockSpec/MonsterSpec)를 그대로 this.merged로 쓴다. 클라도 같은 모듈을 import해서
+    // 조립하므로(lineIds="quick" 센티널로 분기) 서버 왕복 없이 동일 월드가 보장된다(§14).
+    if (this.quickMode) {
+      this.merged = QUICK_WORLD;
+      this.loadWorld(this.merged.worldDef);
+      this.state.lineCount = this.merged.lineFlags.length;
+      this.state.lineIds = "quick";
+      this.state.sweepIndex = 0;
+      this.state.goalX = this.merged.goalFlagTiles.x * T;
+      this.state.members.forEach((m) => { m.rank = 0; m.finishMs = 0; m.bestX = this.merged!.worldDef.spawn.x; });
+      this.lastRespawnNotifyAt.clear();
+      console.log("[race] 간이 월드 로드 완료(quickWorld)");
+      return;
+    }
+
     try {
-      const { lines, fallbackUserIds } = this.quickMode
-        ? { lines: await ensureQuickLines(), fallbackUserIds: [] as bigint[] }
-        : await resolveMemberLines(this.roomCode, memberUserIds);
-      if (!this.quickMode) shuffleInPlace(lines);
+      const { lines, fallbackUserIds } = await resolveMemberLines(this.roomCode, memberUserIds);
+      shuffleInPlace(lines);
       this.merged = mergeLines(lines);
       this.loadWorld(this.merged.worldDef);
       this.state.lineCount = lines.length;
@@ -367,6 +394,13 @@ export class RaceRoom extends PhysicsRoom {
     }
     this.state.members.set(client.sessionId, m);
 
+    // 허브 배차 quick 방: 예정 인원이 다 모이면 즉시 자동 시작
+    if (this.quickMode && this.autoStartSize > 0 && this.state.phase === "lobby"
+        && this.state.members.size >= this.autoStartSize) {
+      if (this.autoStartTimer) { clearTimeout(this.autoStartTimer); this.autoStartTimer = null; }
+      void this.enterPhase("racing");
+    }
+
     if (this.roomRowId !== null) {
       const roomRowId = this.roomRowId;
       prisma.roomMember.upsert({
@@ -404,6 +438,8 @@ export class RaceRoom extends PhysicsRoom {
    * 없었던 게 드러남).
    */
   override onDispose(): void {
+    if (this.autoStartTimer) { clearTimeout(this.autoStartTimer); this.autoStartTimer = null; }
+    if (this.onQuickStop) { void this.presence.unsubscribe(QUICK_STOP_CHANNEL, this.onQuickStop); this.onQuickStop = null; }
     if (this.roomRowId !== null) {
       prisma.room.update({ where: { id: this.roomRowId }, data: { status: "closed" } })
         .catch((e) => console.warn("[race] 방 종료 마킹 실패:", e instanceof Error ? e.message : e));
