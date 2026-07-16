@@ -12,24 +12,31 @@ import { TUNING } from "../physics/tuning.js";
 const T = TUNING.world.tileSize;   // 타일 크기 단일 원천 — tileSize 바꾸면 맵도 비례
 
 export const TESTMAP = {
-  width: 50 * T,
+  width: 92 * T,
   height: 15 * T,
   spawn: { x: 2 * T, y: 12 * T },
-  line: { startX: 0, endX: 50 * T, index: 0 } satisfies LineBounds,
+  line: { startX: 0, endX: 92 * T, index: 0 } satisfies LineBounds,
 
   terrain: {
     // 바닥 윗면 = 13T. 발판 윗면은 이전 지면에서 1칸(~1.4칸 최대) 이내로만 배치.
     // G(40~50T) = 신규 기능 전시 구간(§A·§B, 2026-07-15) — 넉백/얼음/대시/컨베이어/도넛/라이드/점멸.
+    // H(52~90T) = 확장 전시 구간(2026-07-16) — 진자/회전화염/대포/이동발판/몬스터 다종/아이템 다종.
     solids: [
-      { x: 0, y: 13 * T, w: 50 * T, h: 2 * T, faces: SOLID_ALL },       // 바닥
+      { x: 0, y: 13 * T, w: 92 * T, h: 2 * T, faces: SOLID_ALL },       // 바닥
       { x: -T, y: 0, w: T, h: 15 * T, faces: SOLID_ALL },                // 좌벽
-      { x: 50 * T, y: 0, w: T, h: 15 * T, faces: SOLID_ALL },            // 우벽
+      { x: 92 * T, y: 0, w: T, h: 15 * T, faces: SOLID_ALL },            // 우벽
+      // ── H 전시 구간 발판 ──
+      { x: 62 * T, y: 10 * T, w: 2 * T, h: T, faces: SOLID_ALL },        // 대포 발판 앞 계단
+      { x: 78 * T, y: 11 * T, w: 2 * T, h: T, faces: SOLID_ALL },        // 스프링 도달 발판
+      { x: 82 * T, y: 8 * T, w: 3 * T, h: T, faces: SOLID_ALL },         // 상단 보상 발판(7~8T)
+      { x: 88 * T, y: 12 * T, w: 2 * T, h: T, faces: SOLID_ALL },        // 마지막 계단
       // A 시작: 1칸 계단 → 반통과 발판 (각 1칸씩)
       { x: 5 * T, y: 12 * T, w: 2 * T, h: T, faces: SOLID_ALL },         // 계단 (12T)
       { x: 8 * T, y: 11 * T, w: 3 * T, h: 0.6 * T, faces: SOLID_TOP },   // 반통과 발판 (11T)
       // B 벽점프 샤프트: 두 기둥 사이(1.5칸 폭)를 지그재그로 올라 상단 7T 도달
-      { x: 13 * T, y: 7 * T, w: T, h: 6 * T, faces: SOLID_ALL },         // 좌기둥
-      { x: 15.5 * T, y: 7 * T, w: T, h: 6 * T, faces: SOLID_ALL },       // 우기둥
+      // 바닥 한 칸(12~13T) 뚫음 — 지면으로 통과 가능(웅크려서). 2026-07-16.
+      { x: 13 * T, y: 7 * T, w: T, h: 5 * T, faces: SOLID_ALL },         // 좌기둥(바닥 한칸 개방)
+      { x: 15.5 * T, y: 7 * T, w: T, h: 5 * T, faces: SOLID_ALL },       // 우기둥(바닥 한칸 개방)
       { x: 15.5 * T, y: 7 * T, w: 4 * T, h: T, faces: SOLID_ALL },       // 상단 ledge (7T)
       // C 상단 길: 7T 발판들 (갭 점프)
       { x: 22 * T, y: 7 * T, w: 2 * T, h: T, faces: SOLID_ALL },         // 상단 발판 (7T)
@@ -94,6 +101,41 @@ export const TESTMAP = {
     },
     // 점멸 — §2 사라지기 직전 예고 오버레이 데모
     { id: "blink1", x: 49 * T, y: 12 * T, w: T, h: T, visibility: "blink", blinkMs: 2000 },
+
+    // ── H 확장 전시 구간(52~90T) ──
+    // 가시 — 윗면 제외 접촉 데미지(밟기는 안전)
+    { id: "spike_h", x: 53 * T, y: 12 * T, w: T, h: T, properties: [{ type: "damage", part: "notTop" }] },
+    // 진자 해저드 — 위 앵커에서 좌우로 스윙, 전방향 데미지
+    {
+      id: "pend_h", x: 56 * T, y: 5 * T, w: T, h: T, properties: [{ type: "damage", part: "all" }],
+      rules: [{ when: { type: "always" }, do: { type: "pendulum", length: 192 } }],
+    },
+    // 회전 화염구 — 중심 기준 회전, 전방향 데미지
+    {
+      id: "orbit_h", x: 59 * T, y: 7 * T, w: T, h: T, properties: [{ type: "damage", part: "all" }],
+      rules: [{ when: { type: "always" }, do: { type: "rotate", speed: "normal" } }],
+    },
+    // 대포 — 주기적으로 직선 발사체
+    {
+      id: "cannon_h", x: 64 * T, y: 11 * T, w: T, h: 2 * T,
+      rules: [{ when: { type: "periodic", ms: 2200 }, do: { type: "shoot", speed: "normal", aim: "straight" } }],
+    },
+    // 이동 발판 — 좌우 왕복(위에서만 탑승)
+    {
+      id: "mov_h", x: 68 * T, y: 10 * T, w: 3 * T, h: 0.6 * T,
+      faces: { top: true, bottom: false, left: false, right: false },
+      rules: [{ when: { type: "always" }, do: { type: "patrol", speed: "normal" } }],
+    },
+    // 얼음 바닥 구간(미끄러움) — 3칸
+    { id: "ice_h1", x: 73 * T, y: 12 * T, w: T, h: T, properties: [{ type: "ice" }] },
+    { id: "ice_h2", x: 74 * T, y: 12 * T, w: T, h: T, properties: [{ type: "ice" }] },
+    { id: "ice_h3", x: 75 * T, y: 12 * T, w: T, h: T, properties: [{ type: "ice" }] },
+    // 스프링 — 상단 보상 발판(82T,8T)까지 발사
+    { id: "spring_h", x: 80 * T, y: 12 * T, w: T, h: T, properties: [{ type: "trampoline" }] },
+    // 파괴 블록 — 상단 보상 위
+    { id: "brk_h", x: 83 * T, y: 7 * T, w: T, h: T, breakBy: { headbutt: true, pound: true } },
+    // 물음표(거대버섯) — 마지막 계단 위
+    { id: "q_h", x: 88 * T, y: 10 * T, w: T, h: T, breakBy: {}, emitsItem: { assets: ["giant"], random: false } },
   ] as BlockSpec[],
 
   monsters: [
@@ -138,6 +180,35 @@ export const TESTMAP = {
       rules: [{ when: { type: "always" }, do: { type: "idle" } }],
       vuln: { stomp: "die" }, hp: 1, contactDamage: true, splitOnDeath: true,
     },
+
+    // ── H 확장 전시 구간 몬스터 ──
+    // 코파형 — 밟으면 등껍질화(껍질 발차기)
+    {
+      id: "koopa_h", asset: "koopa", x: 66 * T, y: 13 * T, w: T, h: 2 * T,
+      rules: [{ when: { type: "always" }, do: { type: "patrol", speed: "slow", turnAtLedge: true } }],
+      vuln: { stomp: "shellify" }, shell: true, hp: 1, contactDamage: true,
+    },
+    // 부 형(비행) — 밟으면 기절
+    {
+      id: "boo_h", asset: "boo", x: 71 * T, y: 9 * T, w: T, h: T,
+      rules: [{ when: { type: "always" }, do: { type: "fly" } }],
+      vuln: { stomp: "stun" }, hp: 1, contactDamage: true,
+    },
+    // 가시돌이형 — 밟으면 밟은 쪽이 피해(가시 반응)
+    {
+      id: "spiny_h", asset: "spiny", x: 76 * T, y: 13 * T, w: T, h: T,
+      rules: [{ when: { type: "always" }, do: { type: "patrol", speed: "normal", turnAtLedge: true } }],
+      vuln: { stomp: "hurtAttacker" }, hp: 1, contactDamage: true,
+    },
+    // 발사형(HP2) — 주기적으로 직선 발사, 걸어다님
+    {
+      id: "shooter_h", asset: "shooter", x: 85 * T, y: 13 * T, w: T, h: 2 * T,
+      rules: [
+        { when: { type: "always" }, do: { type: "walk", speed: "slow" } },
+        { when: { type: "periodic", ms: 2000 }, do: { type: "shoot", speed: "normal", aim: "straight" }, priority: 1 },
+      ],
+      vuln: { stomp: "die" }, hp: 2, contactDamage: true,
+    },
   ] as MonsterSpec[],
 
   // 잡고 던질 수 있는 일반 파츠 (K로 잡기 §30)
@@ -150,5 +221,10 @@ export const TESTMAP = {
     { id: "it1", kind: "speed", x: 11 * T, y: 11 * T },       // q1/반통과 발판 근처
     { id: "it2", kind: "sizeUp", x: 19 * T, y: 6 * T },        // 샤프트 상단 보상
     { id: "it3", kind: "invincible", x: 37 * T, y: 12 * T },   // 골 앞
+    // ── H 확장 전시 구간 아이템 ──
+    { id: "it_hp", kind: "hpUp", x: 60 * T, y: 12 * T },        // 대포 앞
+    { id: "it_score", kind: "score", x: 72 * T, y: 12 * T, score: 100 },  // 이동발판 뒤
+    { id: "it_big", kind: "giant", x: 83 * T, y: 6 * T },       // 상단 보상 발판
+    { id: "it_down", kind: "sizeDown", x: 89 * T, y: 12 * T },  // 마지막
   ] as ItemSpec[],
 };
