@@ -10,6 +10,7 @@ import { startGame, stopGame } from "../../rooms/baseworld/boot.js";
 import { worldFromMerged } from "../../rooms/baseworld/sceneWorld.js";
 import { HTTP_BASE } from "../../net/rest.js";
 import { useSessionStore } from "../../store/session.js";
+import { useRoomStore } from "../../store/room.js";
 import { TESTLINE_MSG, type TestPassedPayload } from "shared/race";
 
 const SERVER_URL: string =
@@ -54,11 +55,15 @@ export async function startTest(onBadge: (b: TestBadge, msg?: string) => void): 
   if (!token) { onBadge("error", "로그인 필요"); return; }
 
   onBadge("running", "저장 중…");
+  // 룸 연결 상태(building)면 방 코드를 함께 저장 — 레이스 병합(resolveMemberLines)이
+  // sourceRoomId=이 방 코드 + 내 userId 기준으로 "내 라인"을 찾으므로 이게 빠지면 내 라인이 레이스에 안 쓰임.
+  const roomCode = (useRoomStore.getState().room?.state as { code?: string } | undefined)?.code;
   const res = await fetch(`${HTTP_BASE}/api/lines`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-user-token": token },
     body: JSON.stringify({
       name: line.name, tileLength: line.tileLength, startFlag: line.startFlag, endFlag: line.endFlag,
+      roomCode: roomCode || undefined,
       placements: line.placements.map((p) => ({ assetId: p.assetKey, x: p.x, y: p.y, flipX: p.flipX, endX: p.endX, endY: p.endY })),
     }),
   });

@@ -8,6 +8,7 @@ import { GAME_RULES } from "shared";
 import { TUNING } from "shared/physics";
 import {
   type Phase, NEXT_PHASE, phaseDurationSec, RACE_MSG, RACE_S2C_MSG, type RaceJoinOptions,
+  type AdjustTimePayload, type TimeAdjustedPayload,
   flagpoleRect, overlapsFlagpole, sweepGroundSolids,
 } from "shared/race";
 import { PhysicsRoom, type WorldDef } from "../base/PhysicsRoom.js";
@@ -67,6 +68,7 @@ export class RaceRoom extends PhysicsRoom {
     // DB Room 행 생성 (기록용, 비동기). 방 목록은 REST(/api/rooms)가 이 테이블을 읽는다 —
     // Colyseus SDK(@colyseus/sdk 0.17)엔 getAvailableRooms가 없어 네이티브 매치메이킹 대신 이 방식.
     this.roomCode = randomBytes(3).toString("hex");
+    this.state.code = this.roomCode;   // 클라 에디터가 라인 저장 시 sourceRoomId로 씀
     void (async () => {
       try {
         const creator = await prisma.user.findUnique({ where: { token: options?.userToken ?? "" } });
@@ -95,6 +97,20 @@ export class RaceRoom extends PhysicsRoom {
     this.onMessage(RACE_MSG.restart, (client) => {
       if (client.sessionId !== this.hostSessionId || this.state.phase !== "finished") return;
       void this.enterPhase("lobby");
+    });
+    // 시간조정(±30s) — building 한정, 플레이어당 평생 1회, 단축은 잔여 ≤45s면 거부(15s 미만 방지).
+    this.onMessage(RACE_MSG.adjustTime, (client, msg: AdjustTimePayload) => {
+      if (this.state.phase !== "building") return;
+      const m = this.state.members.get(client.sessionId);
+      if (!m || m.usedTimeAdjust) return;
+      const dir = msg?.direction;
+      if (dir !== "add" && dir !== "reduce") return;
+      const leftMs = this.state.phaseEndsAt - this.clock_;
+      if (dir === "reduce" && leftMs <= 45_000) return;
+      this.state.phaseEndsAt += dir === "add" ? 30_000 : -30_000;
+      m.usedTimeAdjust = true;
+      this.broadcast(RACE_S2C_MSG.timeAdjusted, { nickname: m.nickname, direction: dir } satisfies TimeAdjustedPayload);
+      console.log(`[race] 시간조정 ${m.nickname} ${dir} (잔여 ${Math.round((this.state.phaseEndsAt - this.clock_) / 1000)}s)`);
     });
   }
 

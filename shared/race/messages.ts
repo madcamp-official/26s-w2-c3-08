@@ -7,19 +7,25 @@ export const RACE_MSG = {
   start: "start",
   /** 방장 전용, finished에서만: 로비로 되돌리기 */
   restart: "restart",
+  /** building 한정, 플레이어당 평생 1회: 제작시간 ±30초 (screen-design.md 시간조정 스펙) */
+  adjustTime: "adjustTime",
 } as const;
+export interface AdjustTimePayload { direction: "add" | "reduce" }
 
-/** 서버 → 클라(개별 send) */
+/** 서버 → 클라(개별 send. timeAdjusted만 broadcast) */
 export const RACE_S2C_MSG = {
   /** 본인 라인이 결손(테스트 미완료)이라 DB 랜덤 라인으로 대체됐음을 통지 */
   lineFallback: "lineFallback",
   /** 추락사 — 가장 최근 통과한 체크포인트(라인 시작 깃발) 좌표(px)로 리스폰하라 */
   respawnAt: "respawnAt",
+  /** (broadcast) 누군가 시간조정 — 방 전체 토스트 "{nickname}님이 시간을 {…}하였습니다" */
+  timeAdjusted: "timeAdjusted",
 } as const;
 export interface LineFallbackPayload {
   reason: "no_test_passed";
 }
 export interface RespawnAtPayload { x: number; y: number }
+export interface TimeAdjustedPayload { nickname: string; direction: "add" | "reduce" }
 
 // ── 테스트 룸(testline) — 자기 라인 혼자 검증 ──
 /** 서버 → 클라(개별 send) */

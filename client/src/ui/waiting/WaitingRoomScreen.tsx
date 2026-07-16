@@ -1,4 +1,5 @@
 // C. 방 대기실 — 참가자 목록·방장 표시·[시작]. 손그림 재도장.
+// preview/building 페이즈 진입 시 맵 에디터를 실제 룸과 연결해 마운트(P2, 2026-07-16).
 import { useEffect } from "react";
 import { RACE_MSG } from "shared/race";
 import { YELLOW, INK, INK_SOFT } from "../../design/tokens/index.js";
@@ -8,6 +9,8 @@ import { useMorphTransition } from "../../design/transition/index.js";
 import { useRoomStore } from "../../store/room.js";
 import { playSound } from "../../audio/sfx.js";
 import { waitForPhaseChange } from "../../net/raceRoom.js";
+import { MapEditor } from "../../mapeditor/MapEditor.js";
+import { stopTest } from "../../mapeditor/testmode/testRunner.js";
 
 interface MemberSnap { userId: string; nickname: string; isHost: boolean; canBuild: boolean }
 interface RaceStateSnap {
@@ -24,6 +27,8 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
 
   useEffect(() => {
     if (state?.phase === "finished") onFinished();
+    // building 종료(racing 진입 등)로 에디터가 내려갈 때 테스트 세션이 남지 않게 정리
+    if (state?.phase !== "building" && state?.phase !== "preview") stopTest();
   }, [state?.phase]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!room || !state) {
@@ -32,6 +37,11 @@ export function WaitingRoomScreen({ onLeave, onFinished }: { onLeave: () => void
         <span style={{ color: INK, fontFamily: "var(--font-point)", fontSize: 20 }}>방 정보를 불러오는 중…</span>
       </div>
     );
+  }
+
+  // 제작 페이즈(프리뷰 포함) — 맵 에디터가 화면 전체를 이어받음(fixed overlay, P2 룸 마운트)
+  if (state.phase === "preview" || state.phase === "building") {
+    return <MapEditor />;
   }
 
   const members: (MemberSnap & { sessionId: string })[] = [];
